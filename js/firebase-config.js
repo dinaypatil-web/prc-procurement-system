@@ -247,15 +247,18 @@ function _serializeUser(firebaseUser, role = 'User') {
 
 function _friendlyAuthError(code) {
   const map = {
-    'auth/email-already-in-use':    'An account with this email already exists.',
-    'auth/invalid-email':           'Invalid email address format.',
-    'auth/weak-password':           'Password must be at least 6 characters.',
-    'auth/user-not-found':          'No account found with this email.',
-    'auth/wrong-password':          'Incorrect password.',
-    'auth/invalid-credential':      'Invalid email or password credentials.',
-    'auth/too-many-requests':       'Too many attempts. Please try again later.',
-    'auth/network-request-failed':  'Network error. Please check your internet connection.',
-    'auth/user-disabled':           'This account has been disabled.'
+    'auth/email-already-in-use':      'An account with this email already exists.',
+    'auth/invalid-email':             'Invalid email address format.',
+    'auth/weak-password':             'Password must be at least 6 characters.',
+    'auth/user-not-found':            'No account found with this email.',
+    'auth/wrong-password':            'Incorrect password.',
+    'auth/invalid-credential':        'Invalid email or password credentials.',
+    'auth/too-many-requests':         'Too many attempts. Please try again later.',
+    'auth/network-request-failed':    'Network error. Please check your internet connection.',
+    'auth/user-disabled':             'This account has been disabled.',
+    'auth/configuration-not-found':   'Email/Password Authentication is not enabled in Firebase Console. Please go to Firebase Console → Authentication → Sign-in method and enable Email/Password.',
+    'auth/operation-not-allowed':     'Email/Password sign-in is currently disabled. Please enable it in Firebase Console → Authentication → Sign-in method.',
+    'auth/unauthorized-domain':       'Domain not authorized. Please add your domain to Firebase Console → Authentication → Settings → Authorized domains.'
   };
   return map[code] || `Authentication error (${code || 'unknown'})`;
 }
