@@ -116,12 +116,17 @@
     </nav>
 
     <div class="sidebar-footer">
-      <div class="sidebar-user" onclick="navigate('settings')">
-        <div class="sidebar-avatar" id="sidebar-avatar">AO</div>
-        <div style="overflow:hidden">
-          <div class="sidebar-user-name" id="sidebar-username">App Owner</div>
-          <div class="sidebar-user-role"  id="sidebar-role">Super Admin</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <div class="sidebar-user" style="flex:1" onclick="navigate('settings')" title="View profile & settings">
+          <div class="sidebar-avatar" id="sidebar-avatar">AO</div>
+          <div style="overflow:hidden">
+            <div class="sidebar-user-name" id="sidebar-username">User</div>
+            <div class="sidebar-user-role" id="sidebar-role">Member</div>
+          </div>
         </div>
+        <button id="sidebar-auth-btn" class="topbar-icon-btn" style="width:34px;height:34px;flex-shrink:0" onclick="handleAuthAction()" title="Sign Out / Switch User">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        </button>
       </div>
     </div>
   </aside>
@@ -139,9 +144,9 @@
         <div class="topbar-breadcrumb" id="topbar-breadcrumb">Home &rsaquo; Dashboard</div>
       </div>
       <div class="topbar-actions">
-        <div class="chip chip-completed" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer" onclick="navigate('settings');setTimeout(()=>showSettingsTab('database'),100)" title="All data is saved in central database created by the App Owner">
-          <span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block"></span>
-          App Owner DB
+        <div id="topbar-db-badge" class="chip chip-completed" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer" onclick="navigate('settings');setTimeout(()=>showSettingsTab('database'),100)" title="Click to view database sync and storage status">
+          <span id="topbar-db-dot" style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block"></span>
+          <span id="topbar-db-text">Cloud DB</span>
         </div>
         <div class="relative" id="global-search-wrap">
           <div class="topbar-search" id="global-search-box">
@@ -194,16 +199,91 @@
   </div>
 </div>
 
+<!-- ═══════════ AUTH / LOGIN & SIGNUP MODAL ═════════════════ -->
+<div class="modal-overlay hidden" id="auth-modal" style="z-index:999;backdrop-filter:blur(10px);background:rgba(0,0,0,0.75)">
+  <div class="modal" style="max-width:440px;padding:28px">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--brand-600),var(--accent-600));display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;margin:0 auto 12px;box-shadow:0 8px 16px rgba(37,99,235,0.3)">P</div>
+      <h2 style="font-size:20px;font-weight:800;letter-spacing:-0.02em" id="auth-modal-title">Welcome to ProcureTrack</h2>
+      <p style="font-size:13px;color:var(--color-text-secondary);margin-top:4px" id="auth-modal-sub">Sign in to access your user database & procurement records</p>
+    </div>
+
+    <!-- Tab switch -->
+    <div style="display:flex;background:var(--color-surface-2);border-radius:10px;padding:4px;margin-bottom:20px">
+      <button id="auth-tab-signin" class="btn btn-primary btn-sm" style="flex:1;border-radius:8px" onclick="toggleAuthTab('signin')">Sign In</button>
+      <button id="auth-tab-signup" class="btn btn-ghost btn-sm" style="flex:1;border-radius:8px" onclick="toggleAuthTab('signup')">Register</button>
+    </div>
+
+    <!-- Alert Box -->
+    <div id="auth-alert" class="hidden" style="padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;line-height:1.4"></div>
+
+    <!-- Sign In Form -->
+    <form id="auth-form-signin" onsubmit="handleAuthSignIn(event)">
+      <div class="form-group" style="margin-bottom:14px">
+        <label class="form-label" style="font-size:12px">Email Address</label>
+        <input type="email" id="auth-signin-email" class="form-control" placeholder="name@company.com" required autocomplete="email"/>
+      </div>
+      <div class="form-group" style="margin-bottom:20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <label class="form-label" style="font-size:12px;margin-bottom:0">Password</label>
+        </div>
+        <input type="password" id="auth-signin-password" class="form-control" placeholder="••••••••" required autocomplete="current-password"/>
+      </div>
+      <button type="submit" id="auth-signin-submit" class="btn btn-primary w-full" style="height:40px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">
+        <span>Sign In to Database</span>
+      </button>
+    </form>
+
+    <!-- Sign Up Form -->
+    <form id="auth-form-signup" class="hidden" onsubmit="handleAuthSignUp(event)">
+      <div class="form-group" style="margin-bottom:14px">
+        <label class="form-label" style="font-size:12px">Full Name</label>
+        <input type="text" id="auth-signup-name" class="form-control" placeholder="John Doe" required autocomplete="name"/>
+      </div>
+      <div class="form-group" style="margin-bottom:14px">
+        <label class="form-label" style="font-size:12px">Email Address</label>
+        <input type="email" id="auth-signup-email" class="form-control" placeholder="name@company.com" required autocomplete="email"/>
+      </div>
+      <div class="form-group" style="margin-bottom:14px">
+        <label class="form-label" style="font-size:12px">Password (min 6 characters)</label>
+        <input type="password" id="auth-signup-password" class="form-control" placeholder="••••••••" required minlength="6" autocomplete="new-password"/>
+      </div>
+      <div class="form-group" style="margin-bottom:20px">
+        <label class="form-label" style="font-size:12px">Role</label>
+        <select id="auth-signup-role" class="form-control">
+          <option value="Procurement Engineer">Procurement Engineer</option>
+          <option value="Procurement Manager">Procurement Manager</option>
+          <option value="Super Admin">Super Admin</option>
+        </select>
+      </div>
+      <button type="submit" id="auth-signup-submit" class="btn btn-primary w-full" style="height:40px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">
+        <span>Create Account & Database</span>
+      </button>
+    </form>
+
+    <!-- Divider & Demo mode option -->
+    <div style="display:flex;align-items:center;gap:12px;margin:20px 0 16px;color:var(--color-text-tertiary);font-size:12px">
+      <div style="flex:1;height:1px;background:var(--color-border)"></div>
+      <span>OR</span>
+      <div style="flex:1;height:1px;background:var(--color-border)"></div>
+    </div>
+
+    <button type="button" class="btn btn-secondary w-full" style="height:38px;font-size:13px" onclick="handleGuestLogin()">
+      ⚡ Continue with Offline / Guest Mode
+    </button>
+  </div>
+</div>
+
 <!-- Main App Script (ES Module) -->
 <script type="module">
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, resetDatabase } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
-import { saveFirebaseConfig, resetFirebaseConfig, saveGeminiKey, FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured } from './js/firebase-config.js';
+import { saveFirebaseConfig, resetFirebaseConfig, saveGeminiKey, FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser } from './js/firebase-config.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
 import { exportCSV, exportExcel, exportPDF, getAgeingReport } from './js/reports.js';
 
@@ -1945,33 +2025,34 @@ function renderSettings(container) {
       <button class="btn btn-primary">Save Changes</button>
     </div>
 
-    <!-- App Owner Database -->
+    <!-- User Database & Storage -->
     <div id="settings-database" class="card hidden">
-      <h3 style="font-weight:700;margin-bottom:8px">Central App Owner Database</h3>
+      <h3 style="font-weight:700;margin-bottom:8px">Firebase Cloud Database & User Workspace</h3>
       <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:16px">
-        All procurement data is stored centrally in the master database created and owned by the App Owner, not in isolated per-user databases.
+        Your procurement data is saved directly in Firebase Cloud Firestore under your isolated user workspace (/users/{userId}/...).
       </p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
         <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">DATABASE ID</div>
-          <div style="font-weight:700" class="font-mono">${dbMeta.databaseId || 'DB-PRC-APP-OWNER-MASTER-01'}</div>
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">DATABASE ENGINE</div>
+          <div style="font-weight:700">${isFirebaseConfigured() ? '🔥 Firebase Firestore (default)' : '📦 Local Storage (Offline Mode)'}</div>
         </div>
         <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">APP OWNER</div>
-          <div style="font-weight:700">${dbMeta.creatorName || 'App Owner (Super Admin)'}</div>
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">USER ACCOUNT</div>
+          <div style="font-weight:700">${user.name} (${user.email || 'Guest'})</div>
         </div>
         <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">DATABASE SCOPE</div>
-          <div style="font-weight:700">App Owner Master Database</div>
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">USER DATABASE UID</div>
+          <div style="font-weight:700" class="font-mono">${user.uid || 'Offline Mode'}</div>
         </div>
         <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">TOTAL PRCS RECORDED</div>
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">TOTAL USER RECORDS</div>
           <div style="font-weight:700">${state.prcs.length} PRCs (${state.totalMaterials} Materials)</div>
         </div>
       </div>
-      <div style="display:flex;gap:12px">
-        <button class="btn btn-primary" onclick="exportCreatorDatabase()">Export App Owner DB Backup</button>
-        <button class="btn btn-secondary" onclick="handleResetCreatorDB()">Reset to App Owner Default Seed</button>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="exportDatabaseBackup()">Export Database Backup (JSON)</button>
+        <button class="btn btn-secondary" onclick="handleResetUserDB()">Reset User Database</button>
+        <button class="btn btn-ghost" onclick="handleAuthAction()">Switch Account / Logout</button>
       </div>
     </div>
 
@@ -2057,15 +2138,18 @@ window.exportCSV    = () => exportCSV();
 window.exportExcel  = (t,l) => exportExcel(t,l);
 window.exportPDF    = (t) => exportPDF(t);
 window.downloadSampleTemplate = downloadSampleTemplate;
-window.exportCreatorDatabase  = () => exportCreatorDatabase();
-window.handleResetCreatorDB   = async function() {
-  const confirmed = await confirmDialog("Are you sure you want to reset the Creator Database to default seed data?", "Reset Creator Database");
+window.exportDatabaseBackup   = () => exportDatabaseBackup();
+window.exportCreatorDatabase  = () => exportDatabaseBackup();
+window.handleResetUserDB      = async function() {
+  const confirmed = await confirmDialog("Are you sure you want to reset your user database to a clean empty state?", "Reset User Database");
   if (confirmed) {
-    await resetCreatorDatabase();
-    toast("Creator Database reset to default seed.", "success");
+    await resetDatabase();
+    toast("User database reset to clean state.", "success");
     navigate("dashboard");
+    updateSidebarBadges();
   }
 };
+window.handleResetCreatorDB   = window.handleResetUserDB;
 
 window.handleSaveFirebaseConfig = function() {
   const config = {
@@ -3405,35 +3489,250 @@ function updateSidebarBadges() {
   setBadge('nav-pod-count', state.pods.length);
 }
 
-// ── INIT ───────────────────────────────────────────────────
-async function init() {
-  await initDemoData();
-  enableTableHorizontalScroll();
+// ═══════════════════════════════════════════════════════════
+// AUTH MODAL & USER SESSION CONTROLLERS
+// ═══════════════════════════════════════════════════════════
 
-  // Sync sidebar user info
-  const user = getState().currentUser;
-  if(user) {
-    const avatarEl = document.getElementById('sidebar-avatar');
-    const nameEl = document.getElementById('sidebar-username');
-    const roleEl = document.getElementById('sidebar-role');
-    if(avatarEl) avatarEl.textContent = user.avatar || 'AO';
-    if(nameEl) nameEl.textContent = user.name || 'App Owner';
-    if(roleEl) roleEl.textContent = user.role || 'Super Admin';
+window.toggleAuthTab = function(tab) {
+  const signinForm = document.getElementById('auth-form-signin');
+  const signupForm = document.getElementById('auth-form-signup');
+  const signinTab = document.getElementById('auth-tab-signin');
+  const signupTab = document.getElementById('auth-tab-signup');
+  const alertEl = document.getElementById('auth-alert');
+  if (alertEl) alertEl.classList.add('hidden');
+
+  if (tab === 'signin') {
+    signinForm?.classList.remove('hidden');
+    signupForm?.classList.add('hidden');
+    signinTab?.classList.add('btn-primary');
+    signinTab?.classList.remove('btn-ghost');
+    signupTab?.classList.add('btn-ghost');
+    signupTab?.classList.remove('btn-primary');
+  } else {
+    signinForm?.classList.add('hidden');
+    signupForm?.classList.remove('hidden');
+    signupTab?.classList.add('btn-primary');
+    signupTab?.classList.remove('btn-ghost');
+    signinTab?.classList.add('btn-ghost');
+    signinTab?.classList.remove('btn-primary');
+  }
+};
+
+window.showAuthModal = function(tab = 'signin') {
+  const modal = document.getElementById('auth-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    window.toggleAuthTab(tab);
+  }
+};
+
+window.closeAuthModal = function() {
+  const modal = document.getElementById('auth-modal');
+  if (modal) modal.classList.add('hidden');
+};
+
+function showAuthAlert(msg, type = 'error') {
+  const alertEl = document.getElementById('auth-alert');
+  if (!alertEl) return;
+  alertEl.className = '';
+  alertEl.style.display = 'block';
+  if (type === 'error') {
+    alertEl.style.background = 'rgba(239, 68, 68, 0.15)';
+    alertEl.style.color = '#f87171';
+    alertEl.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+  } else {
+    alertEl.style.background = 'rgba(16, 185, 129, 0.15)';
+    alertEl.style.color = '#34d399';
+    alertEl.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+  }
+  alertEl.textContent = msg;
+}
+
+window.handleAuthSignIn = async function(e) {
+  e?.preventDefault();
+  const email = document.getElementById('auth-signin-email')?.value?.trim();
+  const password = document.getElementById('auth-signin-password')?.value;
+  const submitBtn = document.getElementById('auth-signin-submit');
+
+  if (!email || !password) {
+    showAuthAlert('Please enter both email and password.');
+    return;
   }
 
-  // Update all sidebar badges
+  if (!isFirebaseConfigured()) {
+    showAuthAlert('Firebase is not configured yet. Please configure credentials in Settings or continue with Offline/Guest Mode.');
+    return;
+  }
+
+  try {
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<div class="loading-spinner" style="width:16px;height:16px;border-width:2px;margin:auto"></div>';
+    }
+    const res = await signIn(email, password);
+    if (!res.success) {
+      showAuthAlert(res.error || 'Failed to sign in.');
+    } else {
+      toast(`Welcome back, ${res.user.name}!`, 'success');
+      window.closeAuthModal();
+    }
+  } catch (err) {
+    showAuthAlert(err.message || 'An error occurred during sign in.');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span>Sign In to Database</span>';
+    }
+  }
+};
+
+window.handleAuthSignUp = async function(e) {
+  e?.preventDefault();
+  const name = document.getElementById('auth-signup-name')?.value?.trim();
+  const email = document.getElementById('auth-signup-email')?.value?.trim();
+  const password = document.getElementById('auth-signup-password')?.value;
+  const role = document.getElementById('auth-signup-role')?.value || 'Procurement Engineer';
+  const submitBtn = document.getElementById('auth-signup-submit');
+
+  if (!name || !email || !password) {
+    showAuthAlert('Please fill in all required fields.');
+    return;
+  }
+
+  if (!isFirebaseConfigured()) {
+    showAuthAlert('Firebase is not configured yet. Please configure credentials in Settings.');
+    return;
+  }
+
+  try {
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<div class="loading-spinner" style="width:16px;height:16px;border-width:2px;margin:auto"></div>';
+    }
+    const res = await signUp(email, password, name);
+    if (!res.success) {
+      showAuthAlert(res.error || 'Failed to create account.');
+    } else {
+      toast(`Account created! Welcome, ${name}!`, 'success');
+      window.closeAuthModal();
+    }
+  } catch (err) {
+    showAuthAlert(err.message || 'An error occurred during registration.');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span>Create Account & Database</span>';
+    }
+  }
+};
+
+window.handleGuestLogin = async function() {
+  window.closeAuthModal();
+  toast('Running in local offline mode.', 'info');
+  await initAppData();
+  updateUserUI();
   updateSidebarBadges();
+  navigate(getState().currentPage || 'dashboard');
+};
 
-  // Update notification dot/badge
-  const unread = (getState().notifications||[]).filter(n=>n.unread).length;
-  const notifBadge = document.getElementById('nav-notif-count');
-  if(notifBadge) notifBadge.textContent = unread||'';
-  const dot = document.getElementById('notif-dot');
-  if(dot) dot.style.display = unread?'':'none';
+window.handleAuthAction = async function() {
+  const state = getState();
+  if (state.isAuthenticated && isFirebaseConfigured()) {
+    const confirmed = await confirmDialog("Sign out of your user account and database session?", "Sign Out");
+    if (confirmed) {
+      await signOutUser();
+      clearAuthenticatedUser();
+      toast("Signed out successfully.", "info");
+      window.showAuthModal('signin');
+    }
+  } else {
+    window.showAuthModal('signin');
+  }
+};
 
-  // Route to page from hash or default
-  const hash = window.location.hash.slice(1) || 'dashboard';
-  navigate(PAGES[hash] ? hash : 'dashboard');
+function updateUserUI() {
+  const state = getState();
+  const user = state.currentUser;
+  const avatarEl = document.getElementById('sidebar-avatar');
+  const nameEl = document.getElementById('sidebar-username');
+  const roleEl = document.getElementById('sidebar-role');
+  const authBtn = document.getElementById('sidebar-auth-btn');
+  const topbarBadgeText = document.getElementById('topbar-db-text');
+  const topbarDot = document.getElementById('topbar-db-dot');
+
+  if (avatarEl) avatarEl.textContent = user.avatar || 'AO';
+  if (nameEl) nameEl.textContent = user.name || (state.isAuthenticated ? 'User' : 'Guest');
+  if (roleEl) roleEl.textContent = user.role || (state.isAuthenticated ? 'Member' : 'Offline Mode');
+
+  if (authBtn) {
+    authBtn.title = state.isAuthenticated ? 'Sign Out / Switch User' : 'Sign In';
+  }
+
+  if (topbarBadgeText && topbarDot) {
+    if (isFirebaseConfigured() && state.isAuthenticated) {
+      topbarBadgeText.textContent = `Cloud: ${user.name.split(' ')[0]}`;
+      topbarDot.style.background = '#10b981'; // green
+    } else if (isFirebaseConfigured()) {
+      topbarBadgeText.textContent = 'Auth Required';
+      topbarDot.style.background = '#f59e0b'; // yellow
+    } else {
+      topbarBadgeText.textContent = 'Offline DB';
+      topbarDot.style.background = '#64748b'; // gray
+    }
+  }
+}
+
+// ── INIT ───────────────────────────────────────────────────
+async function init() {
+  enableTableHorizontalScroll();
+
+  // 1. Initialize Firebase if configured
+  const app = await initFirebase();
+
+  if (isFirebaseConfigured() && app) {
+    // 2. Set up Auth State Listener
+    onAuthChange(async (firebaseUser) => {
+      if (firebaseUser) {
+        await setAuthenticatedUser(firebaseUser);
+        await initAppData();
+        updateUserUI();
+        updateSidebarBadges();
+        window.closeAuthModal();
+      } else {
+        clearAuthenticatedUser();
+        updateUserUI();
+        updateSidebarBadges();
+        // Show auth modal for login / signup
+        window.showAuthModal('signin');
+      }
+
+      // Update notification dot/badge
+      const unread = (getState().notifications || []).filter(n => n.unread).length;
+      const notifBadge = document.getElementById('nav-notif-count');
+      if (notifBadge) notifBadge.textContent = unread || '';
+      const dot = document.getElementById('notif-dot');
+      if (dot) dot.style.display = unread ? '' : 'none';
+
+      // Route to page
+      const hash = window.location.hash.slice(1) || 'dashboard';
+      navigate(PAGES[hash] ? hash : 'dashboard');
+    });
+  } else {
+    // Firebase not configured — run in local offline/guest mode
+    await initAppData();
+    updateUserUI();
+    updateSidebarBadges();
+
+    // Update notification dot/badge
+    const unread = (getState().notifications || []).filter(n => n.unread).length;
+    const notifBadge = document.getElementById('nav-notif-count');
+    if (notifBadge) notifBadge.textContent = unread || '';
+    const dot = document.getElementById('notif-dot');
+    if (dot) dot.style.display = unread ? '' : 'none';
+
+    const hash = window.location.hash.slice(1) || 'dashboard';
+    navigate(PAGES[hash] ? hash : 'dashboard');
+  }
 }
 
 init();

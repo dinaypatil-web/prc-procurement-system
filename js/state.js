@@ -1,40 +1,35 @@
 // =========================================================
-// GLOBAL STATE MANAGER (CREATOR-OWNED DATABASE PERSISTENCE)
+// GLOBAL STATE MANAGER (FIRESTORE + LOCALSTORAGE PERSISTENCE)
 // =========================================================
-import { generateMockPRCs, MOCK_VENDORS, MOCK_USERS, MOCK_NOTIFICATIONS, MOCK_ACTIVITY_LOGS } from './mock-data.js';
 import { calculateStatus, calculateMaterialStatus, buildStatusSummary } from './status-engine.js';
+import { loadAllUserData, saveCollection as firestoreSaveCollection } from './firestore-db.js';
+import { isFirebaseConfigured } from './firebase-config.js';
 
-// App Owner Database Metadata & Identifier
-export const CREATOR_DB_KEY = 'PRC_PROCUREMENT_APP_OWNER_DATABASE_V2';
-export const CREATOR_INFO = {
-  creatorId: 'u1',
-  creatorName: 'App Owner (Super Admin)',
-  creatorEmail: 'owner@company.com',
-  databaseId: 'DB-PRC-APP-OWNER-MASTER-01',
-  databaseName: 'App Owner Central Procurement Database',
-  createdByName: 'App Owner',
-  storageType: 'App Owner Master Database',
-  createdAt: '2026-01-01T00:00:00.000Z'
-};
+// Local storage key for offline cache
+export const LOCAL_CACHE_KEY = 'PRC_PROCUREMENT_USER_CACHE';
 
-export const APP_OWNER_USER = {
-  id: 'u1',
-  name: 'App Owner',
-  email: 'owner@company.com',
-  role: 'Super Admin',
-  avatar: 'AO'
+// Default user for when not authenticated
+export const DEFAULT_USER = {
+  id: 'guest',
+  uid: null,
+  name: 'Guest',
+  email: '',
+  role: 'User',
+  avatar: 'GU'
 };
 
 const _listeners = {};
 
+// Debounce timer for Firestore sync
+let _syncTimer = null;
+const SYNC_DEBOUNCE_MS = 1500;
+
 const state = {
   // Auth
-  currentUser: { ...APP_OWNER_USER },
-  isAuthenticated: true,
+  currentUser: { ...DEFAULT_USER },
+  isAuthenticated: false,
+  firebaseUser: null, // Raw Firebase user info (uid, email, etc.)
   theme: localStorage.getItem('theme') || 'dark',
-
-  // Database Ownership Metadata
-  creatorDbMeta: { ...CREATOR_INFO },
 
   // Core Data Collections
   prcs: [],
@@ -43,7 +38,7 @@ const state = {
   tcds: [],          // TCD (Techno-Commercial Document)
   pods: [],          // Purchase Order Documents
   vendors: [],
-  users: [{ ...APP_OWNER_USER }],
+  users: [],
   notifications: [],
   activityLogs: [],
 
@@ -68,14 +63,20 @@ const state = {
 
 export function getState() { return state; }
 
-// Save current data state directly to Creator Database
-export function saveToCreatorDatabase() {
+// ── LOCALSTORAGE CACHE (offline fallback) ─────────────────
+
+function _getCacheKey() {
+  const uid = state.firebaseUser?.uid;
+  return uid ? `${LOCAL_CACHE_KEY}_${uid}` : LOCAL_CACHE_KEY;
+}
+
+function saveToLocalCache() {
   try {
     const dataToSave = {
       meta: {
-        ...CREATOR_INFO,
         lastSavedAt: new Date().toISOString(),
-        lastSavedBy: state.currentUser?.name || CREATOR_INFO.creatorName
+        lastSavedBy: state.currentUser?.name || 'Unknown',
+        uid: state.firebaseUser?.uid || null
       },
       prcs: state.prcs,
       allocations: state.allocations,
@@ -87,37 +88,63 @@ export function saveToCreatorDatabase() {
       notifications: state.notifications,
       activityLogs: state.activityLogs
     };
-    localStorage.setItem(CREATOR_DB_KEY, JSON.stringify(dataToSave));
+    localStorage.setItem(_getCacheKey(), JSON.stringify(dataToSave));
   } catch (err) {
-    console.error('Failed to save to Creator Database:', err);
+    console.error('Failed to save to local cache:', err);
   }
 }
 
-// Load data state from Creator Database
-export function loadFromCreatorDatabase() {
+function loadFromLocalCache() {
   try {
-    // Clear legacy keys with simulation data if present
-    ['PRC_PROCUREMENT_CREATOR_DATABASE_V1', 'PRC_PROCUREMENT_APP_OWNER_DATABASE_V1'].forEach(k => localStorage.removeItem(k));
+    // Clean up legacy keys
+    ['PRC_PROCUREMENT_CREATOR_DATABASE_V1', 'PRC_PROCUREMENT_APP_OWNER_DATABASE_V1', 'PRC_PROCUREMENT_APP_OWNER_DATABASE_V2'].forEach(k => localStorage.removeItem(k));
 
-    const raw = localStorage.getItem(CREATOR_DB_KEY);
+    const raw = localStorage.getItem(_getCacheKey());
     if (!raw) return null;
     return JSON.parse(raw);
   } catch (err) {
-    console.error('Failed to load Creator Database:', err);
+    console.error('Failed to load from local cache:', err);
     return null;
   }
 }
 
-// Reset Creator Database to fresh clean state (0 simulation PRCs/users)
-export function resetCreatorDatabase() {
-  localStorage.removeItem(CREATOR_DB_KEY);
-  return initDemoData(true);
+// ── FIRESTORE SYNC (debounced) ────────────────────────────
+
+const _pendingCollections = new Set();
+
+function scheduleFirestoreSync(changedCollections) {
+  if (!isFirebaseConfigured() || !state.firebaseUser?.uid) return;
+
+  changedCollections.forEach(c => _pendingCollections.add(c));
+
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(async () => {
+    const uid = state.firebaseUser?.uid;
+    if (!uid) return;
+
+    const toSync = [..._pendingCollections];
+    _pendingCollections.clear();
+
+    for (const colName of toSync) {
+      try {
+        await firestoreSaveCollection(uid, colName, state[colName] || []);
+      } catch (err) {
+        console.error(`Firestore sync failed for ${colName}:`, err);
+      }
+    }
+    console.info(`🔄 Synced ${toSync.join(', ')} to Firestore`);
+  }, SYNC_DEBOUNCE_MS);
 }
 
-// Export Creator Database JSON
-export function exportCreatorDatabase() {
-  const data = loadFromCreatorDatabase() || {
-    meta: CREATOR_INFO,
+// ── EXPORT / RESET ────────────────────────────────────────
+
+export function exportDatabaseBackup() {
+  const data = {
+    meta: {
+      exportedAt: new Date().toISOString(),
+      exportedBy: state.currentUser?.name || 'Unknown',
+      uid: state.firebaseUser?.uid || null
+    },
     prcs: state.prcs,
     allocations: state.allocations,
     rfqs: state.rfqs,
@@ -131,20 +158,35 @@ export function exportCreatorDatabase() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `Creator_Database_Backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.download = `ProcureTrack_Backup_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
+
+// Legacy exports (keep for backward compatibility)
+export const exportCreatorDatabase = exportDatabaseBackup;
+
+export async function resetDatabase() {
+  return initAppData(true);
+}
+
+// Legacy exports
+export const resetCreatorDatabase = resetDatabase;
+
+// ── STATE MANAGEMENT ──────────────────────────────────────
 
 export function setState(patch) {
   Object.assign(state, patch);
   Object.keys(patch).forEach(key => emit(key));
   emit('*');
 
-  // Automatically sync changes to Central Creator Database whenever data arrays update
+  // Automatically sync changes to local cache and Firestore
   const dataKeys = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'users', 'notifications', 'activityLogs'];
-  if (Object.keys(patch).some(k => dataKeys.includes(k))) {
-    saveToCreatorDatabase();
+  const changedDataKeys = Object.keys(patch).filter(k => dataKeys.includes(k));
+
+  if (changedDataKeys.length > 0) {
+    saveToLocalCache();
+    scheduleFirestoreSync(changedDataKeys);
   }
 }
 
@@ -164,47 +206,75 @@ function emit(event) {
   });
 }
 
-// ── INITIALISE APP OWNER DATABASE ──────────────────────────────
-export async function initDemoData(forceClean = false) {
-  const creatorDb = forceClean ? null : loadFromCreatorDatabase();
-  let prcs, vendors, users, notifications, activityLogs, allocations, rfqs, tcds, pods;
+// ── INITIALISE APP DATA ───────────────────────────────────
 
-  if (creatorDb && Array.isArray(creatorDb.prcs)) {
-    console.info(`📦 Loaded data from App Owner Central Database (${CREATOR_INFO.databaseId}).`);
-    prcs = creatorDb.prcs;
-    allocations = creatorDb.allocations || [];
-    rfqs = creatorDb.rfqs || [];
-    tcds = creatorDb.tcds || [];
-    pods = creatorDb.pods || [];
-    vendors = creatorDb.vendors || [];
-    users = creatorDb.users || [{ ...APP_OWNER_USER }];
-    notifications = creatorDb.notifications || [];
-    activityLogs = creatorDb.activityLogs || [];
-  } else {
-    console.info(`⚙️ Initializing Clean App Owner Database (${CREATOR_INFO.databaseId}) with 0 simulation PRCs/users...`);
-    prcs = [];
-    allocations = [];
-    rfqs = [];
-    tcds = [];
-    pods = [];
-    vendors = [];
-    users = [{ ...APP_OWNER_USER }];
-    notifications = [];
+/**
+ * Initialize app data.
+ * Priority: Firestore (if authenticated) → localStorage cache → clean empty state.
+ */
+export async function initAppData(forceClean = false) {
+  let prcs = [], allocations = [], rfqs = [], tcds = [], pods = [];
+  let vendors = [], users = [], notifications = [], activityLogs = [];
+  let loadedFrom = 'empty';
+
+  if (!forceClean) {
+    // Try Firestore first (if authenticated)
+    if (isFirebaseConfigured() && state.firebaseUser?.uid) {
+      try {
+        const firestoreData = await loadAllUserData(state.firebaseUser.uid);
+        if (firestoreData && Array.isArray(firestoreData.prcs)) {
+          prcs = firestoreData.prcs;
+          allocations = firestoreData.allocations || [];
+          rfqs = firestoreData.rfqs || [];
+          tcds = firestoreData.tcds || [];
+          pods = firestoreData.pods || [];
+          vendors = firestoreData.vendors || [];
+          users = firestoreData.users || [];
+          notifications = firestoreData.notifications || [];
+          activityLogs = firestoreData.activityLogs || [];
+          loadedFrom = 'firestore';
+        }
+      } catch (err) {
+        console.warn('Failed to load from Firestore, falling back to local cache:', err);
+      }
+    }
+
+    // Fallback to local cache
+    if (loadedFrom === 'empty') {
+      const cached = loadFromLocalCache();
+      if (cached && Array.isArray(cached.prcs)) {
+        prcs = cached.prcs;
+        allocations = cached.allocations || [];
+        rfqs = cached.rfqs || [];
+        tcds = cached.tcds || [];
+        pods = cached.pods || [];
+        vendors = cached.vendors || [];
+        users = cached.users || [];
+        notifications = cached.notifications || [];
+        activityLogs = cached.activityLogs || [];
+        loadedFrom = 'local-cache';
+      }
+    }
+  }
+
+  if (loadedFrom === 'empty') {
+    console.info(`⚙️ Initializing clean database for user: ${state.currentUser?.name || 'Unknown'}`);
     activityLogs = [{
       id: `log-${Date.now()}`,
       action: 'init_database',
       collection: 'System',
-      docId: CREATOR_INFO.databaseId,
+      docId: 'init',
       timestamp: new Date().toISOString(),
-      user: APP_OWNER_USER.name,
-      changes: { message: 'Clean App Owner database initialized.' }
+      user: state.currentUser?.name || 'Unknown',
+      changes: { message: 'New user database initialized.' }
     }];
+  } else {
+    console.info(`📦 Loaded data from ${loadedFrom} for user: ${state.currentUser?.name || 'Unknown'} (${prcs.length} PRCs)`);
   }
 
   const summary = buildStatusSummary(prcs);
   const totalMats = prcs.reduce((acc, p) => acc + (p.materials || []).length, 0);
 
-  state.currentUser = { ...APP_OWNER_USER };
   state.prcs = prcs;
   state.allocations = allocations;
   state.rfqs = rfqs;
@@ -219,14 +289,59 @@ export async function initDemoData(forceClean = false) {
   state.poToday = prcs.filter(p => p.poDate === new Date().toISOString().split('T')[0]).length;
   state.overdueCount = 0;
   state.avgProcurementDays = 0;
-  state.creatorDbMeta = creatorDb?.meta || { ...CREATOR_INFO, lastSavedAt: new Date().toISOString() };
 
-  // Save state back to Creator Database key
-  saveToCreatorDatabase();
+  // Save back to local cache
+  saveToLocalCache();
   emit('*');
 }
 
-// ── PRC HELPERS ───────────────────────────────────────────────
+// Legacy alias
+export const initDemoData = initAppData;
+
+// ── Set authenticated user ────────────────────────────────
+
+/**
+ * Called when a user logs in via Firebase Auth.
+ * Sets the current user in state and loads their data.
+ */
+export async function setAuthenticatedUser(firebaseUser) {
+  state.firebaseUser = firebaseUser;
+  state.isAuthenticated = true;
+  state.currentUser = {
+    id: firebaseUser.uid,
+    uid: firebaseUser.uid,
+    name: firebaseUser.name || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+    email: firebaseUser.email || '',
+    role: firebaseUser.role || 'User',
+    avatar: firebaseUser.avatar || (firebaseUser.name || firebaseUser.email || 'U').slice(0, 2).toUpperCase()
+  };
+  emit('currentUser');
+  emit('isAuthenticated');
+  emit('*');
+}
+
+/**
+ * Called when a user logs out.
+ */
+export function clearAuthenticatedUser() {
+  state.firebaseUser = null;
+  state.isAuthenticated = false;
+  state.currentUser = { ...DEFAULT_USER };
+  state.prcs = [];
+  state.allocations = [];
+  state.rfqs = [];
+  state.tcds = [];
+  state.pods = [];
+  state.vendors = [];
+  state.users = [];
+  state.notifications = [];
+  state.activityLogs = [];
+  state.statusSummary = {};
+  state.totalMaterials = 0;
+  emit('*');
+}
+
+// ── PRC HELPERS ───────────────────────────────────────────
 export function getFilteredPRCs() {
   let list = [...state.prcs];
   const q = state.searchQuery.toLowerCase();
@@ -917,4 +1032,3 @@ export function addAuditLog(entry) {
   };
   setState({ activityLogs: [log, ...state.activityLogs] });
 }
-

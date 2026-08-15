@@ -84,6 +84,8 @@ function isFirebaseConfigured() {
 
 // Initialize Firebase (only if configured)
 let _db, _auth, _storage, _functions;
+let _firebaseApp = null;
+let _authModule = null;
 
 async function initFirebase() {
   if (!isFirebaseConfigured()) {
@@ -93,22 +95,123 @@ async function initFirebase() {
   try {
     const { initializeApp }  = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
     const { getFirestore }   = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-    const { getAuth }        = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
+    const authMod            = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
     const { getStorage }     = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js");
     const { getFunctions }   = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js");
 
-    const app   = initializeApp(FIREBASE_CONFIG);
-    _db         = getFirestore(app);
-    _auth       = getAuth(app);
-    _storage    = getStorage(app);
-    _functions  = getFunctions(app);
+    _firebaseApp = initializeApp(FIREBASE_CONFIG);
+    _db          = getFirestore(_firebaseApp);
+    _auth        = authMod.getAuth(_firebaseApp);
+    _authModule  = authMod;
+    _storage     = getStorage(_firebaseApp);
+    _functions   = getFunctions(_firebaseApp);
 
     console.info("✅ Firebase initialized.");
-    return app;
+    return _firebaseApp;
   } catch (err) {
     console.error("Firebase init failed:", err);
     return null;
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// AUTH FUNCTIONS — Email/Password Authentication
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Sign up a new user with email, password, and display name.
+ * @returns {{ success: boolean, user?: object, error?: string }}
+ */
+export async function signUp(email, password, displayName) {
+  if (!_auth || !_authModule) return { success: false, error: 'Firebase not initialized. Please configure Firebase in Settings.' };
+  try {
+    const cred = await _authModule.createUserWithEmailAndPassword(_auth, email, password);
+    if (displayName) {
+      await _authModule.updateProfile(cred.user, { displayName });
+    }
+    return { success: true, user: _serializeUser(cred.user) };
+  } catch (err) {
+    return { success: false, error: _friendlyAuthError(err.code) };
+  }
+}
+
+/**
+ * Sign in an existing user with email and password.
+ * @returns {{ success: boolean, user?: object, error?: string }}
+ */
+export async function signIn(email, password) {
+  if (!_auth || !_authModule) return { success: false, error: 'Firebase not initialized. Please configure Firebase in Settings.' };
+  try {
+    const cred = await _authModule.signInWithEmailAndPassword(_auth, email, password);
+    return { success: true, user: _serializeUser(cred.user) };
+  } catch (err) {
+    return { success: false, error: _friendlyAuthError(err.code) };
+  }
+}
+
+/**
+ * Sign out the current user.
+ */
+export async function signOutUser() {
+  if (!_auth || !_authModule) return;
+  try {
+    await _authModule.signOut(_auth);
+  } catch (err) {
+    console.error('Sign out failed:', err);
+  }
+}
+
+/**
+ * Listen for auth state changes. Calls callback(user | null).
+ * Returns an unsubscribe function.
+ */
+export function onAuthChange(callback) {
+  if (!_auth || !_authModule) {
+    // Firebase not initialized — call back with null immediately
+    setTimeout(() => callback(null), 0);
+    return () => {};
+  }
+  return _authModule.onAuthStateChanged(_auth, (firebaseUser) => {
+    callback(firebaseUser ? _serializeUser(firebaseUser) : null);
+  });
+}
+
+/**
+ * Get the currently signed-in user, or null.
+ */
+export function getCurrentUser() {
+  if (!_auth) return null;
+  const u = _auth.currentUser;
+  return u ? _serializeUser(u) : null;
+}
+
+// ── Helpers ────────────────────────────────────────────────
+
+function _serializeUser(firebaseUser) {
+  return {
+    uid: firebaseUser.uid,
+    email: firebaseUser.email || '',
+    name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+    displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+    avatar: (firebaseUser.displayName || firebaseUser.email || 'U').slice(0, 2).toUpperCase(),
+    role: 'User', // Default role — can be upgraded from Firestore user profile
+    photoURL: firebaseUser.photoURL || null
+  };
+}
+
+function _friendlyAuthError(code) {
+  const map = {
+    'auth/email-already-in-use':    'An account with this email already exists.',
+    'auth/invalid-email':           'Invalid email address.',
+    'auth/weak-password':           'Password should be at least 6 characters.',
+    'auth/user-not-found':          'No account found with this email.',
+    'auth/wrong-password':          'Incorrect password.',
+    'auth/invalid-credential':      'Invalid email or password.',
+    'auth/too-many-requests':       'Too many attempts. Please try again later.',
+    'auth/network-request-failed':  'Network error. Check your internet connection.',
+    'auth/user-disabled':           'This account has been disabled.'
+  };
+  return map[code] || `Authentication error: ${code}`;
 }
 
 export {
