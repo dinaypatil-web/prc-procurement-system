@@ -1,36 +1,108 @@
 // =========================================================
-// FIRESTORE DATA LAYER — USER-SCOPED CRUD OPERATIONS
-// All data is stored under users/{uid}/... in Firestore
+// FIRESTORE DATA LAYER — DIRECT USER-SCOPED PERSISTENCE
+// Data is saved directly in Firebase Cloud Firestore under users/{uid}/...
 // =========================================================
 
 import { db, isFirebaseConfigured } from './firebase-config.js';
 
-// Cache Firestore module imports
 let _firestoreMod = null;
 
-async function getFirestoreMod() {
+async function getFS() {
   if (!_firestoreMod) {
     _firestoreMod = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
   }
   return _firestoreMod;
 }
 
-// Collections that are synced per-user
 const COLLECTIONS = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'notifications', 'activityLogs'];
 
 // ═══════════════════════════════════════════════════════════
-// LOAD ALL USER DATA
+// DIRECT DOCUMENT LEVEL WRITES (REAL-TIME IMMEDIATE PERSISTENCE)
 // ═══════════════════════════════════════════════════════════
 
 /**
- * Load all collections for a given user UID from Firestore.
- * Returns an object keyed by collection name, or null if Firebase is not configured.
+ * Save / Update a single document directly to Firestore
+ */
+export async function directSaveDoc(uid, collectionName, docId, docData) {
+  if (!isFirebaseConfigured() || !db || !uid || !docId) return false;
+  try {
+    const fs = await getFS();
+    const docRef = fs.doc(db, `users/${uid}/${collectionName}/${docId}`);
+    await fs.setDoc(docRef, _sanitize(docData), { merge: true });
+    return true;
+  } catch (err) {
+    console.error(`Direct Firestore write error (${collectionName}/${docId}):`, err);
+    return false;
+  }
+}
+
+/**
+ * Delete a single document directly from Firestore
+ */
+export async function directDeleteDoc(uid, collectionName, docId) {
+  if (!isFirebaseConfigured() || !db || !uid || !docId) return false;
+  try {
+    const fs = await getFS();
+    const docRef = fs.doc(db, `users/${uid}/${collectionName}/${docId}`);
+    await fs.deleteDoc(docRef);
+    return true;
+  } catch (err) {
+    console.error(`Direct Firestore delete error (${collectionName}/${docId}):`, err);
+    return false;
+  }
+}
+
+/**
+ * Direct helpers for specific business entities
+ */
+export async function directSavePRC(uid, prc) {
+  return directSaveDoc(uid, 'prcs', prc.id, prc);
+}
+
+export async function directDeletePRC(uid, prcId) {
+  return directDeleteDoc(uid, 'prcs', prcId);
+}
+
+export async function directSaveAllocation(uid, allocation) {
+  return directSaveDoc(uid, 'allocations', allocation.id, allocation);
+}
+
+export async function directDeleteAllocation(uid, allocId) {
+  return directDeleteDoc(uid, 'allocations', allocId);
+}
+
+export async function directSaveRFQ(uid, rfq) {
+  return directSaveDoc(uid, 'rfqs', rfq.id, rfq);
+}
+
+export async function directDeleteRFQ(uid, rfqId) {
+  return directDeleteDoc(uid, 'rfqs', rfqId);
+}
+
+export async function directSaveTCD(uid, tcd) {
+  return directSaveDoc(uid, 'tcds', tcd.id, tcd);
+}
+
+export async function directSavePOD(uid, pod) {
+  return directSaveDoc(uid, 'pods', pod.id, pod);
+}
+
+export async function directSaveActivityLog(uid, log) {
+  return directSaveDoc(uid, 'activityLogs', log.id, log);
+}
+
+// ═══════════════════════════════════════════════════════════
+// COLLECTION AND BULK DATA OPERATIONS
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Load all collections for a given user UID directly from Firestore
  */
 export async function loadAllUserData(uid) {
-  if (!isFirebaseConfigured() || !db) return null;
+  if (!isFirebaseConfigured() || !db || !uid) return null;
 
   try {
-    const fs = await getFirestoreMod();
+    const fs = await getFS();
     const result = {};
 
     for (const colName of COLLECTIONS) {
@@ -39,12 +111,12 @@ export async function loadAllUserData(uid) {
       result[colName] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     }
 
-    // Also load user profile
+    // Load profile
     const profileRef = fs.doc(db, `users/${uid}`);
     const profileSnap = await fs.getDoc(profileRef);
     result.profile = profileSnap.exists() ? profileSnap.data() : null;
 
-    console.info(`✅ Loaded all data for user ${uid} from Firestore (${COLLECTIONS.map(c => `${c}: ${result[c].length}`).join(', ')})`);
+    console.info(`🔥 Loaded data directly from Firebase Firestore for user ${uid} (PRCs: ${result.prcs?.length || 0})`);
     return result;
   } catch (err) {
     console.error('Failed to load user data from Firestore:', err);
@@ -52,21 +124,32 @@ export async function loadAllUserData(uid) {
   }
 }
 
-// ═══════════════════════════════════════════════════════════
-// SAVE ALL USER DATA (FULL SYNC)
-// ═══════════════════════════════════════════════════════════
-
 /**
- * Save all state collections to Firestore under users/{uid}/...
- * Uses batched writes for efficiency.
+ * Bulk save a collection using Batched Writes
  */
-export async function saveAllUserData(uid, stateData) {
-  if (!isFirebaseConfigured() || !db) return false;
+export async function saveCollection(uid, collectionName, items) {
+  if (!isFirebaseConfigured() || !db || !uid) return false;
 
   try {
-    const fs = await getFirestoreMod();
+    const fs = await getFS();
+    await _syncCollection(uid, collectionName, items, fs);
+    return true;
+  } catch (err) {
+    console.error(`Failed to bulk save ${collectionName} to Firestore:`, err);
+    return false;
+  }
+}
 
-    // Save user profile document
+/**
+ * Full state save to Firestore
+ */
+export async function saveAllUserData(uid, stateData) {
+  if (!isFirebaseConfigured() || !db || !uid) return false;
+
+  try {
+    const fs = await getFS();
+
+    // User profile document
     const profileRef = fs.doc(db, `users/${uid}`);
     await fs.setDoc(profileRef, {
       name: stateData.currentUser?.name || '',
@@ -76,75 +159,16 @@ export async function saveAllUserData(uid, stateData) {
       lastSyncedAt: new Date().toISOString()
     }, { merge: true });
 
-    // Save each collection
+    // Sync all collections
     for (const colName of COLLECTIONS) {
       const items = stateData[colName] || [];
       await _syncCollection(uid, colName, items, fs);
     }
 
-    console.info(`✅ Saved all data for user ${uid} to Firestore`);
+    console.info(`🔥 Synced all collections to Firebase Firestore for user ${uid}`);
     return true;
   } catch (err) {
-    console.error('Failed to save user data to Firestore:', err);
-    return false;
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// SAVE A SINGLE COLLECTION (INCREMENTAL SYNC)
-// ═══════════════════════════════════════════════════════════
-
-/**
- * Sync a single collection for a user. Replaces all docs in that collection.
- * Call this when only one collection changes (e.g., prcs updated).
- */
-export async function saveCollection(uid, collectionName, items) {
-  if (!isFirebaseConfigured() || !db) return false;
-
-  try {
-    const fs = await getFirestoreMod();
-    await _syncCollection(uid, collectionName, items, fs);
-    return true;
-  } catch (err) {
-    console.error(`Failed to save ${collectionName} to Firestore:`, err);
-    return false;
-  }
-}
-
-// ═══════════════════════════════════════════════════════════
-// SAVE / DELETE SINGLE DOCUMENT
-// ═══════════════════════════════════════════════════════════
-
-/**
- * Save a single document to a user's collection.
- */
-export async function saveDocument(uid, collectionName, docId, data) {
-  if (!isFirebaseConfigured() || !db) return false;
-
-  try {
-    const fs = await getFirestoreMod();
-    const docRef = fs.doc(db, `users/${uid}/${collectionName}/${docId}`);
-    await fs.setDoc(docRef, data);
-    return true;
-  } catch (err) {
-    console.error(`Failed to save doc ${collectionName}/${docId}:`, err);
-    return false;
-  }
-}
-
-/**
- * Delete a single document from a user's collection.
- */
-export async function deleteDocument(uid, collectionName, docId) {
-  if (!isFirebaseConfigured() || !db) return false;
-
-  try {
-    const fs = await getFirestoreMod();
-    const docRef = fs.doc(db, `users/${uid}/${collectionName}/${docId}`);
-    await fs.deleteDoc(docRef);
-    return true;
-  } catch (err) {
-    console.error(`Failed to delete doc ${collectionName}/${docId}:`, err);
+    console.error('Failed to save all user data to Firestore:', err);
     return false;
   }
 }
@@ -153,31 +177,22 @@ export async function deleteDocument(uid, collectionName, docId) {
 // INTERNAL HELPERS
 // ═══════════════════════════════════════════════════════════
 
-/**
- * Sync a local array of items to a Firestore sub-collection.
- * Strategy: Write all current items (set with merge), delete removed items.
- * Uses batched writes (max 500 per batch).
- */
 async function _syncCollection(uid, collectionName, items, fs) {
   const colPath = `users/${uid}/${collectionName}`;
-
-  // Get existing doc IDs
   const colRef = fs.collection(db, colPath);
   const existingSnap = await fs.getDocs(colRef);
   const existingIds = new Set(existingSnap.docs.map(d => d.id));
+  const currentIds = new Set((items || []).map(item => item.id));
 
-  // Build set of current item IDs
-  const currentIds = new Set(items.map(item => item.id));
-
-  // Batch write: add/update current items + delete removed ones
-  const MAX_BATCH = 450; // Stay under Firestore's 500-write limit per batch
+  const MAX_BATCH = 450;
   let batch = fs.writeBatch(db);
   let opCount = 0;
 
-  // Set/update all current items
-  for (const item of items) {
+  // Write all current items
+  for (const item of (items || [])) {
+    if (!item.id) continue;
     const docRef = fs.doc(db, `${colPath}/${item.id}`);
-    batch.set(docRef, _sanitize(item));
+    batch.set(docRef, _sanitize(item), { merge: true });
     opCount++;
     if (opCount >= MAX_BATCH) {
       await batch.commit();
@@ -205,10 +220,6 @@ async function _syncCollection(uid, collectionName, items, fs) {
   }
 }
 
-/**
- * Sanitize an object for Firestore — remove undefined values and
- * ensure all nested objects are plain objects (not class instances).
- */
 function _sanitize(obj) {
   if (obj === null || obj === undefined) return null;
   if (typeof obj !== 'object') return obj;
@@ -216,7 +227,7 @@ function _sanitize(obj) {
 
   const clean = {};
   for (const [key, value] of Object.entries(obj)) {
-    if (value === undefined) continue; // Firestore doesn't accept undefined
+    if (value === undefined) continue;
     clean[key] = _sanitize(value);
   }
   return clean;

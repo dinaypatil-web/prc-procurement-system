@@ -199,19 +199,19 @@
   </div>
 </div>
 
-<!-- ═══════════ AUTH / LOGIN & SIGNUP MODAL ═════════════════ -->
-<div class="modal-overlay hidden" id="auth-modal" style="z-index:999;backdrop-filter:blur(10px);background:rgba(0,0,0,0.75)">
-  <div class="modal" style="max-width:440px;padding:28px">
-    <div style="text-align:center;margin-bottom:20px">
-      <div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--brand-600),var(--accent-600));display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;margin:0 auto 12px;box-shadow:0 8px 16px rgba(37,99,235,0.3)">P</div>
-      <h2 style="font-size:20px;font-weight:800;letter-spacing:-0.02em" id="auth-modal-title">Welcome to ProcureTrack</h2>
-      <p style="font-size:13px;color:var(--color-text-secondary);margin-top:4px" id="auth-modal-sub">Sign in to access your user database & procurement records</p>
+<!-- ═══════════ MANDATORY AUTH / LOGIN & SIGNUP PORTAL ═════ -->
+<div class="modal-overlay hidden" id="auth-modal" style="z-index:9999;backdrop-filter:blur(16px);background:rgba(15,23,42,0.88);display:flex;align-items:center;justify-content:center">
+  <div class="modal" style="max-width:440px;padding:32px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.1)">
+    <div style="text-align:center;margin-bottom:24px">
+      <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--brand-600),var(--accent-600));display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#fff;margin:0 auto 14px;box-shadow:0 8px 20px rgba(37,99,235,0.35)">P</div>
+      <h2 style="font-size:22px;font-weight:800;letter-spacing:-0.02em" id="auth-modal-title">ProcureTrack</h2>
+      <p style="font-size:13px;color:var(--color-text-secondary);margin-top:4px" id="auth-modal-sub">Enterprise Procurement System — Authenticate to Enter</p>
     </div>
 
     <!-- Tab switch -->
     <div style="display:flex;background:var(--color-surface-2);border-radius:10px;padding:4px;margin-bottom:20px">
       <button id="auth-tab-signin" class="btn btn-primary btn-sm" style="flex:1;border-radius:8px" onclick="toggleAuthTab('signin')">Sign In</button>
-      <button id="auth-tab-signup" class="btn btn-ghost btn-sm" style="flex:1;border-radius:8px" onclick="toggleAuthTab('signup')">Register</button>
+      <button id="auth-tab-signup" class="btn btn-ghost btn-sm" style="flex:1;border-radius:8px" onclick="toggleAuthTab('signup')">Create User</button>
     </div>
 
     <!-- Alert Box -->
@@ -221,7 +221,7 @@
     <form id="auth-form-signin" onsubmit="handleAuthSignIn(event)">
       <div class="form-group" style="margin-bottom:14px">
         <label class="form-label" style="font-size:12px">Email Address</label>
-        <input type="email" id="auth-signin-email" class="form-control" placeholder="name@company.com" required autocomplete="email"/>
+        <input type="email" id="auth-signin-email" class="form-control" placeholder="user@company.com" required autocomplete="email"/>
       </div>
       <div class="form-group" style="margin-bottom:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -229,16 +229,16 @@
         </div>
         <input type="password" id="auth-signin-password" class="form-control" placeholder="••••••••" required autocomplete="current-password"/>
       </div>
-      <button type="submit" id="auth-signin-submit" class="btn btn-primary w-full" style="height:40px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">
-        <span>Sign In to Database</span>
+      <button type="submit" id="auth-signin-submit" class="btn btn-primary w-full" style="height:42px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">
+        <span>Sign In to Workspace</span>
       </button>
     </form>
 
-    <!-- Sign Up Form -->
+    <!-- Sign Up Form (Create User) -->
     <form id="auth-form-signup" class="hidden" onsubmit="handleAuthSignUp(event)">
       <div class="form-group" style="margin-bottom:14px">
         <label class="form-label" style="font-size:12px">Full Name</label>
-        <input type="text" id="auth-signup-name" class="form-control" placeholder="John Doe" required autocomplete="name"/>
+        <input type="text" id="auth-signup-name" class="form-control" placeholder="Full Name" required autocomplete="name"/>
       </div>
       <div class="form-group" style="margin-bottom:14px">
         <label class="form-label" style="font-size:12px">Email Address</label>
@@ -256,21 +256,50 @@
           <option value="Super Admin">Super Admin</option>
         </select>
       </div>
-      <button type="submit" id="auth-signup-submit" class="btn btn-primary w-full" style="height:40px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">
-        <span>Create Account & Database</span>
+      <button type="submit" id="auth-signup-submit" class="btn btn-primary w-full" style="height:42px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">
+        <span>Create Account & Initialize Database</span>
       </button>
     </form>
+  </div>
+</div>
 
-    <!-- Divider & Demo mode option -->
-    <div style="display:flex;align-items:center;gap:12px;margin:20px 0 16px;color:var(--color-text-tertiary);font-size:12px">
-      <div style="flex:1;height:1px;background:var(--color-border)"></div>
-      <span>OR</span>
-      <div style="flex:1;height:1px;background:var(--color-border)"></div>
+<!-- ═══════════ IN-APP CREATE USER MODAL ═══════════════════ -->
+<div class="modal-overlay hidden" id="inapp-create-user-modal" style="z-index:1000">
+  <div class="modal" style="max-width:460px;padding:28px">
+    <div class="modal-header" style="padding:0 0 16px;margin-bottom:16px;border-bottom:1px solid var(--color-border)">
+      <div>
+        <h3 class="modal-title" style="font-size:18px">Create New User</h3>
+        <p style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Register a new procurement user in Firebase Auth</p>
+      </div>
+      <button class="modal-close-btn" onclick="closeInAppCreateUserModal()">✕</button>
     </div>
-
-    <button type="button" class="btn btn-secondary w-full" style="height:38px;font-size:13px" onclick="handleGuestLogin()">
-      ⚡ Continue with Offline / Guest Mode
-    </button>
+    <div id="inapp-create-user-alert" class="hidden" style="padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;line-height:1.4"></div>
+    <form onsubmit="handleInAppCreateUser(event)">
+      <div class="form-group" style="margin-bottom:14px">
+        <label class="form-label">Full Name</label>
+        <input type="text" id="inapp-user-name" class="form-control" placeholder="e.g. Sarah Jenkins" required/>
+      </div>
+      <div class="form-group" style="margin-bottom:14px">
+        <label class="form-label">Email Address</label>
+        <input type="email" id="inapp-user-email" class="form-control" placeholder="s.jenkins@company.com" required/>
+      </div>
+      <div class="form-group" style="margin-bottom:14px">
+        <label class="form-label">Password (min 6 characters)</label>
+        <input type="password" id="inapp-user-password" class="form-control" placeholder="••••••••" required minlength="6"/>
+      </div>
+      <div class="form-group" style="margin-bottom:20px">
+        <label class="form-label">Assigned Role</label>
+        <select id="inapp-user-role" class="form-control">
+          <option value="Procurement Engineer">Procurement Engineer</option>
+          <option value="Procurement Manager">Procurement Manager</option>
+          <option value="Super Admin">Super Admin</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:12px;justify-content:flex-end">
+        <button type="button" class="btn btn-secondary" onclick="closeInAppCreateUserModal()">Cancel</button>
+        <button type="submit" id="inapp-create-user-submit" class="btn btn-primary">Create User</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -283,7 +312,7 @@ import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, cl
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
-import { saveFirebaseConfig, resetFirebaseConfig, saveGeminiKey, FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser } from './js/firebase-config.js';
+import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser } from './js/firebase-config.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
 import { exportCSV, exportExcel, exportPDF, getAgeingReport } from './js/reports.js';
 
@@ -1986,7 +2015,6 @@ window.clearAIChat = function() {
 function renderSettings(container) {
   const state = getState();
   const user  = state.currentUser;
-  const dbMeta = state.creatorDbMeta || {};
 
   container.innerHTML = `
 <div class="page-header">
@@ -1996,12 +2024,12 @@ function renderSettings(container) {
   <!-- Settings Nav -->
   <div class="card" style="padding:8px;height:fit-content">
     ${[
-      {id:'profile',   label:'👤 Profile'},
-      {id:'database',  label:'🗄️ App Owner Database'},
-      {id:'appearance',label:'🎨 Appearance'},
-      {id:'users',     label:'👥 Users & Roles'},
-      {id:'firebase',  label:'🔥 Firebase Config'},
-      {id:'about',     label:'ℹ️ About'}
+      {id:'profile',    label:'👤 Profile'},
+      {id:'database',   label:'🗄️ User Cloud Database'},
+      {id:'appearance', label:'🎨 Appearance'},
+      {id:'users',      label:'👥 Users & Roles'},
+      {id:'env-config', label:'⚙️ Environment (.env)'},
+      {id:'about',      label:'ℹ️ About'}
     ].map(s=>`<button class="btn btn-ghost w-full" style="justify-content:flex-start;border-radius:8px" onclick="showSettingsTab('${s.id}')">${s.label}</button>`).join('')}
   </div>
 
@@ -2014,22 +2042,21 @@ function renderSettings(container) {
         <div class="sidebar-avatar" style="width:64px;height:64px;font-size:24px">${user.avatar}</div>
         <div>
           <div style="font-size:18px;font-weight:700">${user.name}</div>
-          <div style="color:var(--color-text-secondary)">${user.email}</div>
+          <div style="color:var(--color-text-secondary)">${user.email || 'No email attached'}</div>
           <span class="chip chip-completed" style="margin-top:6px">${user.role}</span>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-        <div class="form-group"><label class="form-label">Full Name</label><input class="form-control" value="${user.name}"/></div>
-        <div class="form-group"><label class="form-label">Email</label><input class="form-control" value="${user.email}" type="email"/></div>
+        <div class="form-group"><label class="form-label">Full Name</label><input class="form-control" value="${user.name}" readonly/></div>
+        <div class="form-group"><label class="form-label">Email</label><input class="form-control" value="${user.email || ''}" type="email" readonly/></div>
       </div>
-      <button class="btn btn-primary">Save Changes</button>
     </div>
 
     <!-- User Database & Storage -->
     <div id="settings-database" class="card hidden">
       <h3 style="font-weight:700;margin-bottom:8px">Firebase Cloud Database & User Workspace</h3>
       <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:16px">
-        Your procurement data is saved directly in Firebase Cloud Firestore under your isolated user workspace (/users/{userId}/...).
+        Your procurement data is saved directly in Firebase Cloud Firestore under your isolated user workspace (<code>users/${user.uid || 'guest'}/...</code>).
       </p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
         <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
@@ -2056,6 +2083,7 @@ function renderSettings(container) {
       </div>
     </div>
 
+    <!-- Appearance -->
     <div id="settings-appearance" class="card hidden">
       <h3 style="font-weight:700;margin-bottom:20px">Appearance</h3>
       <div class="form-group">
@@ -2067,14 +2095,28 @@ function renderSettings(container) {
       </div>
     </div>
 
+    <!-- Users & Roles -->
     <div id="settings-users" class="card hidden">
-      <h3 style="font-weight:700;margin-bottom:20px">Users & Roles</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div>
+          <h3 style="font-weight:700;margin-bottom:2px">Users & Roles</h3>
+          <p style="font-size:12px;color:var(--color-text-secondary)">Manage procurement team access & create user accounts</p>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showInAppCreateUserModal()">+ Create User</button>
+      </div>
       <div class="table-wrapper">
         <table class="data-table">
           <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
-          <tbody>${state.users.map(u=>`
+          <tbody>
             <tr>
-              <td style="display:flex;align-items:center;gap:8px"><span class="sidebar-avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${u.avatar}</span>${u.name}</td>
+              <td style="display:flex;align-items:center;gap:8px"><span class="sidebar-avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${user.avatar}</span>${user.name} (Current)</td>
+              <td>${user.email || 'N/A'}</td>
+              <td><span class="chip chip-${user.role==='Super Admin'?'completed':user.role.includes('Manager')?'partly':'awaiting'}">${user.role}</span></td>
+              <td><span class="chip chip-completed">Active Session</span></td>
+            </tr>
+            ${(state.users||[]).filter(u => u.email !== user.email).map(u=>`
+            <tr>
+              <td style="display:flex;align-items:center;gap:8px"><span class="sidebar-avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${u.avatar||'U'}</span>${u.name}</td>
               <td>${u.email}</td>
               <td><span class="chip chip-${u.role==='Super Admin'?'completed':u.role.includes('Manager')?'partly':'awaiting'}">${u.role}</span></td>
               <td><span class="chip chip-completed">Active</span></td>
@@ -2084,33 +2126,51 @@ function renderSettings(container) {
       </div>
     </div>
 
-    <div id="settings-firebase" class="card hidden">
-      <h3 style="font-weight:700;margin-bottom:8px">Firebase Cloud Database Setup</h3>
-      <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:16px">
-        Connect your App Owner Firebase project to enable live cloud Firestore database storage.
-      </p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div class="form-group"><label class="form-label">Project ID</label><input id="fb-project-id" class="form-control font-mono" value="${FIREBASE_CONFIG.projectId==='YOUR_PROJECT_ID'?'':FIREBASE_CONFIG.projectId}" placeholder="e.g. procuretrack-prod-123"/></div>
-        <div class="form-group"><label class="form-label">API Key</label><input id="fb-api-key" class="form-control font-mono" value="${FIREBASE_CONFIG.apiKey==='YOUR_API_KEY'?'':FIREBASE_CONFIG.apiKey}" type="password" placeholder="AIzaSy..."/></div>
-        <div class="form-group"><label class="form-label">Auth Domain</label><input id="fb-auth-domain" class="form-control font-mono" value="${FIREBASE_CONFIG.authDomain.includes('YOUR_PROJECT_ID')?'':FIREBASE_CONFIG.authDomain}" placeholder="e.g. project.firebaseapp.com"/></div>
-        <div class="form-group"><label class="form-label">Storage Bucket</label><input id="fb-storage-bucket" class="form-control font-mono" value="${FIREBASE_CONFIG.storageBucket.includes('YOUR_PROJECT_ID')?'':FIREBASE_CONFIG.storageBucket}" placeholder="e.g. project.appspot.com"/></div>
-        <div class="form-group"><label class="form-label">Messaging Sender ID</label><input id="fb-sender-id" class="form-control font-mono" value="${FIREBASE_CONFIG.messagingSenderId==='YOUR_SENDER_ID'?'':FIREBASE_CONFIG.messagingSenderId}" placeholder="e.g. 1234567890"/></div>
-        <div class="form-group"><label class="form-label">App ID</label><input id="fb-app-id" class="form-control font-mono" value="${FIREBASE_CONFIG.appId==='YOUR_APP_ID'?'':FIREBASE_CONFIG.appId}" placeholder="e.g. 1:12345:web:abcdef"/></div>
+    <!-- Environment Config Status -->
+    <div id="settings-env-config" class="card hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <h3 style="font-weight:700;margin-bottom:4px">Firebase Environment (.env) Status</h3>
+          <p style="color:var(--color-text-secondary);font-size:13px">
+            Firebase credentials and AI keys are securely loaded from the project <code>.env</code> file.
+          </p>
+        </div>
+        <span class="chip chip-${isFirebaseConfigured() ? 'completed' : 'awaiting'}" style="font-size:12px;font-weight:600">
+          ${isFirebaseConfigured() ? '🟢 Connected' : '🟡 Config Required'}
+        </span>
       </div>
-      <div class="form-group" style="margin-top:12px">
-        <label class="form-label">Gemini AI API Key</label>
-        <input id="fb-gemini-key" class="form-control font-mono" value="${GEMINI_API_KEY==='YOUR_GEMINI_API_KEY'?'':GEMINI_API_KEY}" placeholder="Paste Google Gemini API Key for AI Assistant"/>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">FIREBASE PROJECT ID</div>
+          <div style="font-weight:700" class="font-mono">${FIREBASE_CONFIG.projectId || 'Not set in .env'}</div>
+        </div>
+        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">AUTH DOMAIN</div>
+          <div style="font-weight:700" class="font-mono">${FIREBASE_CONFIG.authDomain || 'Not set in .env'}</div>
+        </div>
+        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">STORAGE BUCKET</div>
+          <div style="font-weight:700" class="font-mono">${FIREBASE_CONFIG.storageBucket || 'Not set in .env'}</div>
+        </div>
+        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">GEMINI AI STATUS</div>
+          <div style="font-weight:700">${GEMINI_API_KEY && GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY' ? 'Active & Ready ✅' : 'Not set in .env'}</div>
+        </div>
       </div>
-      <div style="display:flex;gap:12px;margin-top:16px">
-        <button class="btn btn-primary" onclick="handleSaveFirebaseConfig()">Save Firebase Credentials</button>
-        <button class="btn btn-secondary" onclick="handleResetFirebaseConfig()">Clear Credentials</button>
+
+      <div style="background:var(--color-surface-2);border-left:3px solid var(--brand-500);padding:14px 16px;border-radius:0 8px 8px 0;font-size:13px;line-height:1.5">
+        <strong>💡 Managing Environment Variables:</strong><br/>
+        • <strong>Local Development:</strong> Edit the <code>.env</code> file in the repository root directory.<br/>
+        • <strong>Production Hosting (Vercel / Firebase Hosting):</strong> Configure environment variables in your project deployment settings.
       </div>
     </div>
 
+    <!-- About -->
     <div id="settings-about" class="card hidden">
       <h3 style="font-weight:700;margin-bottom:20px">About ProcureTrack</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        ${[['Version','1.0.0'],['Build','2026-08'],['Tech Stack','HTML5 + Firebase'],['AI Engine','Google Gemini'],['License','Enterprise'],['Support','support@procuretrack.io']].map(([k,v])=>`
+        ${[['Version','1.0.0'],['Build','2026-08'],['Database','Firebase Cloud Firestore'],['Config Mode','.env file'],['AI Engine','Google Gemini'],['License','Enterprise']].map(([k,v])=>`
           <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
             <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">${k}</div>
             <div style="font-weight:700">${v}</div>
@@ -2151,32 +2211,6 @@ window.handleResetUserDB      = async function() {
 };
 window.handleResetCreatorDB   = window.handleResetUserDB;
 
-window.handleSaveFirebaseConfig = function() {
-  const config = {
-    projectId:         document.getElementById('fb-project-id')?.value?.trim() || "YOUR_PROJECT_ID",
-    apiKey:            document.getElementById('fb-api-key')?.value?.trim() || "YOUR_API_KEY",
-    authDomain:        document.getElementById('fb-auth-domain')?.value?.trim() || "",
-    storageBucket:     document.getElementById('fb-storage-bucket')?.value?.trim() || "",
-    messagingSenderId: document.getElementById('fb-sender-id')?.value?.trim() || "",
-    appId:             document.getElementById('fb-app-id')?.value?.trim() || ""
-  };
-  const geminiKey = document.getElementById('fb-gemini-key')?.value?.trim() || "";
-
-  saveFirebaseConfig(config);
-  saveGeminiKey(geminiKey);
-  toast("Firebase credentials saved successfully!", "success");
-  setTimeout(() => window.location.reload(), 1000);
-};
-
-window.handleResetFirebaseConfig = async function() {
-  const confirmed = await confirmDialog("Are you sure you want to clear saved Firebase credentials?", "Clear Credentials");
-  if (confirmed) {
-    resetFirebaseConfig();
-    saveGeminiKey("");
-    toast("Firebase credentials cleared.", "info");
-    setTimeout(() => window.location.reload(), 1000);
-  }
-};
 
 // ═══════════════════════════════════════════════════════════
 // DELETE PRC HANDLER
@@ -3521,6 +3555,7 @@ window.toggleAuthTab = function(tab) {
 window.showAuthModal = function(tab = 'signin') {
   const modal = document.getElementById('auth-modal');
   if (modal) {
+    modal.classList.add('open');
     modal.classList.remove('hidden');
     window.toggleAuthTab(tab);
   }
@@ -3528,7 +3563,10 @@ window.showAuthModal = function(tab = 'signin') {
 
 window.closeAuthModal = function() {
   const modal = document.getElementById('auth-modal');
-  if (modal) modal.classList.add('hidden');
+  if (modal) {
+    modal.classList.remove('open');
+    modal.classList.add('hidden');
+  }
 };
 
 function showAuthAlert(msg, type = 'error') {
@@ -3560,7 +3598,7 @@ window.handleAuthSignIn = async function(e) {
   }
 
   if (!isFirebaseConfigured()) {
-    showAuthAlert('Firebase is not configured yet. Please configure credentials in Settings or continue with Offline/Guest Mode.');
+    showAuthAlert('Firebase is not configured in .env. Please add your Firebase credentials to the .env file.');
     return;
   }
 
@@ -3581,7 +3619,7 @@ window.handleAuthSignIn = async function(e) {
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = '<span>Sign In to Database</span>';
+      submitBtn.innerHTML = '<span>Sign In to Workspace</span>';
     }
   }
 };
@@ -3600,7 +3638,7 @@ window.handleAuthSignUp = async function(e) {
   }
 
   if (!isFirebaseConfigured()) {
-    showAuthAlert('Firebase is not configured yet. Please configure credentials in Settings.');
+    showAuthAlert('Firebase is not configured in .env. Please check your .env file.');
     return;
   }
 
@@ -3609,11 +3647,11 @@ window.handleAuthSignUp = async function(e) {
       submitBtn.disabled = true;
       submitBtn.innerHTML = '<div class="loading-spinner" style="width:16px;height:16px;border-width:2px;margin:auto"></div>';
     }
-    const res = await signUp(email, password, name);
+    const res = await signUp(email, password, name, role);
     if (!res.success) {
       showAuthAlert(res.error || 'Failed to create account.');
     } else {
-      toast(`Account created! Welcome, ${name}!`, 'success');
+      toast(`User account created! Welcome, ${name}!`, 'success');
       window.closeAuthModal();
     }
   } catch (err) {
@@ -3621,18 +3659,91 @@ window.handleAuthSignUp = async function(e) {
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = '<span>Create Account & Database</span>';
+      submitBtn.innerHTML = '<span>Create Account & Initialize Database</span>';
     }
   }
 };
 
-window.handleGuestLogin = async function() {
-  window.closeAuthModal();
-  toast('Running in local offline mode.', 'info');
-  await initAppData();
-  updateUserUI();
-  updateSidebarBadges();
-  navigate(getState().currentPage || 'dashboard');
+// ── IN-APP USER CREATION ──────────────────────────────────
+
+window.showInAppCreateUserModal = function() {
+  const modal = document.getElementById('inapp-create-user-modal');
+  const alertEl = document.getElementById('inapp-create-user-alert');
+  if (alertEl) alertEl.classList.add('hidden');
+  if (modal) {
+    modal.classList.add('open');
+    modal.classList.remove('hidden');
+  }
+};
+
+window.closeInAppCreateUserModal = function() {
+  const modal = document.getElementById('inapp-create-user-modal');
+  if (modal) {
+    modal.classList.remove('open');
+    modal.classList.add('hidden');
+  }
+};
+
+window.handleInAppCreateUser = async function(e) {
+  e?.preventDefault();
+  const name = document.getElementById('inapp-user-name')?.value?.trim();
+  const email = document.getElementById('inapp-user-email')?.value?.trim();
+  const password = document.getElementById('inapp-user-password')?.value;
+  const role = document.getElementById('inapp-user-role')?.value || 'Procurement Engineer';
+  const alertEl = document.getElementById('inapp-create-user-alert');
+  const submitBtn = document.getElementById('inapp-create-user-submit');
+
+  if (!name || !email || !password) {
+    if (alertEl) {
+      alertEl.className = '';
+      alertEl.style.display = 'block';
+      alertEl.style.background = 'rgba(239, 68, 68, 0.15)';
+      alertEl.style.color = '#f87171';
+      alertEl.textContent = 'Please fill in all fields.';
+    }
+    return;
+  }
+
+  try {
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating...';
+    }
+    const res = await signUp(email, password, name, role);
+    if (!res.success) {
+      if (alertEl) {
+        alertEl.className = '';
+        alertEl.style.display = 'block';
+        alertEl.style.background = 'rgba(239, 68, 68, 0.15)';
+        alertEl.style.color = '#f87171';
+        alertEl.textContent = res.error || 'Failed to create user.';
+      }
+    } else {
+      toast(`User ${name} (${role}) created successfully in Firebase!`, 'success');
+      // Add to local state list
+      const state = getState();
+      const users = [...state.users, { name, email, role, avatar: name.slice(0, 2).toUpperCase() }];
+      setState({ users });
+      window.closeInAppCreateUserModal();
+      if (state.currentPage === 'settings') {
+        renderSettings(document.getElementById('page-content'));
+        window.showSettingsTab('users');
+      }
+    }
+  } catch (err) {
+    if (alertEl) {
+      alertEl.className = '';
+      alertEl.style.display = 'block';
+      alertEl.style.background = 'rgba(239, 68, 68, 0.15)';
+      alertEl.style.color = '#f87171';
+      alertEl.textContent = err.message || 'Error creating user.';
+    }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create User';
+    }
+  }
 };
 
 window.handleAuthAction = async function() {
@@ -3670,7 +3781,7 @@ function updateUserUI() {
 
   if (topbarBadgeText && topbarDot) {
     if (isFirebaseConfigured() && state.isAuthenticated) {
-      topbarBadgeText.textContent = `Cloud: ${user.name.split(' ')[0]}`;
+      topbarBadgeText.textContent = `Firestore: ${user.name.split(' ')[0]}`;
       topbarDot.style.background = '#10b981'; // green
     } else if (isFirebaseConfigured()) {
       topbarBadgeText.textContent = 'Auth Required';
@@ -3686,11 +3797,11 @@ function updateUserUI() {
 async function init() {
   enableTableHorizontalScroll();
 
-  // 1. Initialize Firebase if configured
+  // 1. Initialize Firebase from .env loader
   const app = await initFirebase();
 
   if (isFirebaseConfigured() && app) {
-    // 2. Set up Auth State Listener
+    // 2. Mandatory Auth State Listener
     onAuthChange(async (firebaseUser) => {
       if (firebaseUser) {
         await setAuthenticatedUser(firebaseUser);
@@ -3702,7 +3813,7 @@ async function init() {
         clearAuthenticatedUser();
         updateUserUI();
         updateSidebarBadges();
-        // Show auth modal for login / signup
+        // Mandatory Auth Gate: prompt user for login / registration
         window.showAuthModal('signin');
       }
 
@@ -3718,17 +3829,12 @@ async function init() {
       navigate(PAGES[hash] ? hash : 'dashboard');
     });
   } else {
-    // Firebase not configured — run in local offline/guest mode
+    // If Firebase .env is missing, notify user and prompt configuration
+    console.warn("Firebase not configured in .env file.");
     await initAppData();
     updateUserUI();
     updateSidebarBadges();
-
-    // Update notification dot/badge
-    const unread = (getState().notifications || []).filter(n => n.unread).length;
-    const notifBadge = document.getElementById('nav-notif-count');
-    if (notifBadge) notifBadge.textContent = unread || '';
-    const dot = document.getElementById('notif-dot');
-    if (dot) dot.style.display = unread ? '' : 'none';
+    window.showAuthModal('signin');
 
     const hash = window.location.hash.slice(1) || 'dashboard';
     navigate(PAGES[hash] ? hash : 'dashboard');

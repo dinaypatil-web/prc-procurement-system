@@ -1,14 +1,25 @@
 // =========================================================
-// GLOBAL STATE MANAGER (FIRESTORE + LOCALSTORAGE PERSISTENCE)
+// GLOBAL STATE MANAGER (DIRECT FIRESTORE PERSISTENCE)
+// Data is saved directly to Firebase Cloud Firestore per-user
 // =========================================================
 import { calculateStatus, calculateMaterialStatus, buildStatusSummary } from './status-engine.js';
-import { loadAllUserData, saveCollection as firestoreSaveCollection } from './firestore-db.js';
+import {
+  loadAllUserData,
+  saveCollection as firestoreSaveCollection,
+  directSavePRC,
+  directDeletePRC,
+  directSaveAllocation,
+  directDeleteAllocation,
+  directSaveRFQ,
+  directDeleteRFQ,
+  directSaveTCD,
+  directSavePOD,
+  directSaveActivityLog
+} from './firestore-db.js';
 import { isFirebaseConfigured } from './firebase-config.js';
 
-// Local storage key for offline cache
 export const LOCAL_CACHE_KEY = 'PRC_PROCUREMENT_USER_CACHE';
 
-// Default user for when not authenticated
 export const DEFAULT_USER = {
   id: 'guest',
   uid: null,
@@ -20,15 +31,14 @@ export const DEFAULT_USER = {
 
 const _listeners = {};
 
-// Debounce timer for Firestore sync
 let _syncTimer = null;
-const SYNC_DEBOUNCE_MS = 1500;
+const SYNC_DEBOUNCE_MS = 1000;
 
 const state = {
   // Auth
   currentUser: { ...DEFAULT_USER },
   isAuthenticated: false,
-  firebaseUser: null, // Raw Firebase user info (uid, email, etc.)
+  firebaseUser: null,
   theme: localStorage.getItem('theme') || 'dark',
 
   // Core Data Collections
@@ -45,7 +55,7 @@ const state = {
   // UI
   sidebarCollapsed: false,
   currentPage: 'dashboard',
-  viewLevel: 'prc', // 'prc' or 'material'
+  viewLevel: 'prc',
   searchQuery: '',
   filters: {},
   sortField: 'createdAt',
@@ -63,7 +73,7 @@ const state = {
 
 export function getState() { return state; }
 
-// ── LOCALSTORAGE CACHE (offline fallback) ─────────────────
+// ── LOCALSTORAGE CACHE ────────────────────────────────────
 
 function _getCacheKey() {
   const uid = state.firebaseUser?.uid;
@@ -90,15 +100,12 @@ function saveToLocalCache() {
     };
     localStorage.setItem(_getCacheKey(), JSON.stringify(dataToSave));
   } catch (err) {
-    console.error('Failed to save to local cache:', err);
+    console.error('Failed to save local cache:', err);
   }
 }
 
 function loadFromLocalCache() {
   try {
-    // Clean up legacy keys
-    ['PRC_PROCUREMENT_CREATOR_DATABASE_V1', 'PRC_PROCUREMENT_APP_OWNER_DATABASE_V1', 'PRC_PROCUREMENT_APP_OWNER_DATABASE_V2'].forEach(k => localStorage.removeItem(k));
-
     const raw = localStorage.getItem(_getCacheKey());
     if (!raw) return null;
     return JSON.parse(raw);
@@ -108,7 +115,7 @@ function loadFromLocalCache() {
   }
 }
 
-// ── FIRESTORE SYNC (debounced) ────────────────────────────
+// ── FIRESTORE ASYNC SYNC ──────────────────────────────────
 
 const _pendingCollections = new Set();
 
@@ -132,7 +139,6 @@ function scheduleFirestoreSync(changedCollections) {
         console.error(`Firestore sync failed for ${colName}:`, err);
       }
     }
-    console.info(`🔄 Synced ${toSync.join(', ')} to Firestore`);
   }, SYNC_DEBOUNCE_MS);
 }
 
@@ -158,29 +164,46 @@ export function exportDatabaseBackup() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `ProcureTrack_Backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.download = `ProcureTrack_Firestore_Backup_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-// Legacy exports (keep for backward compatibility)
 export const exportCreatorDatabase = exportDatabaseBackup;
 
 export async function resetDatabase() {
-  return initAppData(true);
+  const uid = state.firebaseUser?.uid;
+  state.prcs = [];
+  state.allocations = [];
+  state.rfqs = [];
+  state.tcds = [];
+  state.pods = [];
+  state.vendors = [];
+  state.users = [];
+  state.notifications = [];
+  state.activityLogs = [];
+  state.statusSummary = {};
+  state.totalMaterials = 0;
+
+  saveToLocalCache();
+  if (uid && isFirebaseConfigured()) {
+    const collections = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'notifications', 'activityLogs'];
+    for (const col of collections) {
+      await firestoreSaveCollection(uid, col, []);
+    }
+  }
+  emit('*');
 }
 
-// Legacy exports
 export const resetCreatorDatabase = resetDatabase;
 
-// ── STATE MANAGEMENT ──────────────────────────────────────
+// ── STATE DISPATCH ────────────────────────────────────────
 
 export function setState(patch) {
   Object.assign(state, patch);
   Object.keys(patch).forEach(key => emit(key));
   emit('*');
 
-  // Automatically sync changes to local cache and Firestore
   const dataKeys = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'users', 'notifications', 'activityLogs'];
   const changedDataKeys = Object.keys(patch).filter(k => dataKeys.includes(k));
 
@@ -208,22 +231,18 @@ function emit(event) {
 
 // ── INITIALISE APP DATA ───────────────────────────────────
 
-/**
- * Initialize app data.
- * Priority: Firestore (if authenticated) → localStorage cache → clean empty state.
- */
 export async function initAppData(forceClean = false) {
   let prcs = [], allocations = [], rfqs = [], tcds = [], pods = [];
   let vendors = [], users = [], notifications = [], activityLogs = [];
   let loadedFrom = 'empty';
 
   if (!forceClean) {
-    // Try Firestore first (if authenticated)
+    // 1. Direct Firestore fetch if authenticated
     if (isFirebaseConfigured() && state.firebaseUser?.uid) {
       try {
         const firestoreData = await loadAllUserData(state.firebaseUser.uid);
-        if (firestoreData && Array.isArray(firestoreData.prcs)) {
-          prcs = firestoreData.prcs;
+        if (firestoreData) {
+          prcs = firestoreData.prcs || [];
           allocations = firestoreData.allocations || [];
           rfqs = firestoreData.rfqs || [];
           tcds = firestoreData.tcds || [];
@@ -235,11 +254,11 @@ export async function initAppData(forceClean = false) {
           loadedFrom = 'firestore';
         }
       } catch (err) {
-        console.warn('Failed to load from Firestore, falling back to local cache:', err);
+        console.warn('Firestore load failed, falling back to cache:', err);
       }
     }
 
-    // Fallback to local cache
+    // 2. Cache fallback
     if (loadedFrom === 'empty') {
       const cached = loadFromLocalCache();
       if (cached && Array.isArray(cached.prcs)) {
@@ -255,21 +274,6 @@ export async function initAppData(forceClean = false) {
         loadedFrom = 'local-cache';
       }
     }
-  }
-
-  if (loadedFrom === 'empty') {
-    console.info(`⚙️ Initializing clean database for user: ${state.currentUser?.name || 'Unknown'}`);
-    activityLogs = [{
-      id: `log-${Date.now()}`,
-      action: 'init_database',
-      collection: 'System',
-      docId: 'init',
-      timestamp: new Date().toISOString(),
-      user: state.currentUser?.name || 'Unknown',
-      changes: { message: 'New user database initialized.' }
-    }];
-  } else {
-    console.info(`📦 Loaded data from ${loadedFrom} for user: ${state.currentUser?.name || 'Unknown'} (${prcs.length} PRCs)`);
   }
 
   const summary = buildStatusSummary(prcs);
@@ -290,20 +294,14 @@ export async function initAppData(forceClean = false) {
   state.overdueCount = 0;
   state.avgProcurementDays = 0;
 
-  // Save back to local cache
   saveToLocalCache();
   emit('*');
 }
 
-// Legacy alias
 export const initDemoData = initAppData;
 
-// ── Set authenticated user ────────────────────────────────
+// ── AUTH STATE SETTERS ────────────────────────────────────
 
-/**
- * Called when a user logs in via Firebase Auth.
- * Sets the current user in state and loads their data.
- */
 export async function setAuthenticatedUser(firebaseUser) {
   state.firebaseUser = firebaseUser;
   state.isAuthenticated = true;
@@ -320,9 +318,6 @@ export async function setAuthenticatedUser(firebaseUser) {
   emit('*');
 }
 
-/**
- * Called when a user logs out.
- */
 export function clearAuthenticatedUser() {
   state.firebaseUser = null;
   state.isAuthenticated = false;
@@ -341,7 +336,8 @@ export function clearAuthenticatedUser() {
   emit('*');
 }
 
-// ── PRC HELPERS ───────────────────────────────────────────
+// ── PRC OPERATIONS ────────────────────────────────────────
+
 export function getFilteredPRCs() {
   let list = [...state.prcs];
   const q = state.searchQuery.toLowerCase();
@@ -364,7 +360,6 @@ export function getFilteredPRCs() {
     );
   }
 
-  // Apply filters
   const f = state.filters;
   if (f.status)     list = list.filter(p => p.status === f.status);
   if (f.department) list = list.filter(p => p.department === f.department);
@@ -373,7 +368,6 @@ export function getFilteredPRCs() {
   if (f.dateFrom)   list = list.filter(p => p.createdAt >= f.dateFrom);
   if (f.dateTo)     list = list.filter(p => p.createdAt <= f.dateTo);
 
-  // Sort
   list.sort((a,b) => {
     const av = a[state.sortField] || '';
     const bv = b[state.sortField] || '';
@@ -482,6 +476,12 @@ export function updatePRC(id, patch, cascadeToMaterials = false) {
   const prcs = [...state.prcs];
   prcs[idx] = updated;
   setState({ prcs, statusSummary: buildStatusSummary(prcs) });
+
+  // Direct Firestore write
+  if (state.firebaseUser?.uid) {
+    directSavePRC(state.firebaseUser.uid, updated);
+  }
+
   addAuditLog({
     action: 'update_prc', collection: 'PRCs', docId: id,
     changes: { ...patch, cascaded: cascadeToMaterials }
@@ -492,9 +492,7 @@ export function getPRCById(id) {
   return state.prcs.find(p => p.id === id) || null;
 }
 
-// ── DELETE PRC ────────────────────────────────────────────────
 export function deletePRC(id) {
-  // Check for downstream references
   const hasAllocations = state.allocations.some(a => a.items.some(i => i.prcId === id));
   const hasRFQs = state.rfqs.some(r => r.items.some(i => i.prcId === id));
   const hasTCDs = state.tcds.some(t => (t.vendorAllocations || []).some(va => va.items.some(i => i.prcId === id)));
@@ -509,6 +507,12 @@ export function deletePRC(id) {
 
   const prcs = state.prcs.filter(p => p.id !== id);
   setState({ prcs, statusSummary: buildStatusSummary(prcs), totalMaterials: prcs.reduce((a, p) => a + (p.materials || []).length, 0) });
+
+  // Direct Firestore delete
+  if (state.firebaseUser?.uid) {
+    directDeletePRC(state.firebaseUser.uid, id);
+  }
+
   addAuditLog({
     action: 'delete_prc', collection: 'PRCs', docId: id,
     changes: { prNumber: prc.prNumber, materialsCount: (prc.materials || []).length }
@@ -545,6 +549,11 @@ export function updateMaterial(prcId, materialId, patch) {
   const prcs = [...state.prcs];
   prcs[prcIdx] = updatedPRC;
   setState({ prcs, statusSummary: buildStatusSummary(prcs) });
+
+  if (state.firebaseUser?.uid) {
+    directSavePRC(state.firebaseUser.uid, updatedPRC);
+  }
+
   addAuditLog({
     action: 'update_material', collection: 'PRC Materials', docId: `${prcId}/${materialId}`,
     changes: patch
@@ -581,19 +590,19 @@ export function bulkUpdateMaterials(prcId, materialIds, patch) {
   const prcs = [...state.prcs];
   prcs[prcIdx] = updatedPRC;
   setState({ prcs, statusSummary: buildStatusSummary(prcs) });
+
+  if (state.firebaseUser?.uid) {
+    directSavePRC(state.firebaseUser.uid, updatedPRC);
+  }
+
   addAuditLog({
     action: 'bulk_update_materials', collection: 'PRC Materials', docId: prcId,
     changes: { materialCount: materialIds.length, patch }
   });
 }
 
-// ═══════════════════════════════════════════════════════════
-// ALLOCATION DOCUMENT OPERATIONS
-// ═══════════════════════════════════════════════════════════
+// ── ALLOCATION OPERATIONS ─────────────────────────────────
 
-/**
- * Get the already-allocated quantity for a specific material across all allocations.
- */
 export function getAllocatedQty(prcId, materialId) {
   return state.allocations.reduce((sum, alloc) => {
     return sum + (alloc.items || [])
@@ -602,16 +611,11 @@ export function getAllocatedQty(prcId, materialId) {
   }, 0);
 }
 
-/**
- * Returns list of PRCs that are available for allocation.
- * No filters applied except excluding PRCs where all materials are already fully allocated.
- */
 export function getAvailablePRCsForAllocation() {
   return (state.prcs || []).filter(p => {
     const mats = p.materials || [];
     if (!mats.length) return false;
 
-    // Get unallocated materials (materials where allocated quantity < total quantity)
     const availableMats = mats.filter(m => {
       const allocd = getAllocatedQty(p.id, m.id);
       const totalQty = parseFloat(m.quantity) || 0;
@@ -622,10 +626,6 @@ export function getAvailablePRCsForAllocation() {
   });
 }
 
-/**
- * Create a new Allocation document.
- * @param {Object} data - { allocationNumber, allocationDate, buyerName, items: [{prcId, materialId, quantity, matCode, description, unit, prNumber}] }
- */
 export function createAllocation(data) {
   const allocation = {
     id: `alloc-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
@@ -640,7 +640,6 @@ export function createAllocation(data) {
 
   const allocations = [allocation, ...state.allocations];
 
-  // Update material-level and PRC-level allocation info across all affected PRCs
   const prcs = [...state.prcs];
   const affectedPrcIds = new Set(allocation.items.map(i => i.prcId));
 
@@ -672,9 +671,20 @@ export function createAllocation(data) {
     prc.status = calculateStatus(prc, prc.materials);
     prc.updatedAt = new Date().toISOString();
     prcs[prcIdx] = prc;
+
+    // Direct Firestore write for updated PRC
+    if (state.firebaseUser?.uid) {
+      directSavePRC(state.firebaseUser.uid, prc);
+    }
   });
 
   setState({ allocations, prcs, statusSummary: buildStatusSummary(prcs) });
+
+  // Direct Firestore write for allocation
+  if (state.firebaseUser?.uid) {
+    directSaveAllocation(state.firebaseUser.uid, allocation);
+  }
+
   addAuditLog({
     action: 'create_allocation', collection: 'Allocations', docId: allocation.id,
     changes: { allocationNumber: data.allocationNumber, itemCount: data.items.length, prcCount: affectedPrcIds.size }
@@ -688,24 +698,23 @@ export function getAllocationById(id) {
 }
 
 export function deleteAllocation(id) {
-  // Check if any RFQs reference this allocation
   const hasRFQs = state.rfqs.some(r => r.items.some(i => i.allocationId === id));
   if (hasRFQs) {
     return { success: false, reason: 'Cannot delete Allocation — it has downstream RFQ documents.' };
   }
   const allocations = state.allocations.filter(a => a.id !== id);
   setState({ allocations });
+
+  if (state.firebaseUser?.uid) {
+    directDeleteAllocation(state.firebaseUser.uid, id);
+  }
+
   addAuditLog({ action: 'delete_allocation', collection: 'Allocations', docId: id, changes: {} });
   return { success: true };
 }
 
-// ═══════════════════════════════════════════════════════════
-// RFQ DOCUMENT OPERATIONS
-// ═══════════════════════════════════════════════════════════
+// ── RFQ OPERATIONS ────────────────────────────────────────
 
-/**
- * Get the already-RFQ'd quantity for a material from a specific allocation.
- */
 export function getRFQdQty(allocationId, prcId, materialId) {
   return state.rfqs.reduce((sum, rfq) => {
     return sum + rfq.items
@@ -714,9 +723,6 @@ export function getRFQdQty(allocationId, prcId, materialId) {
   }, 0);
 }
 
-/**
- * Get all allocated materials with available (un-RFQ'd) quantities.
- */
 export function getAvailableForRFQ() {
   const result = [];
   state.allocations.forEach(alloc => {
@@ -740,10 +746,6 @@ export function getAvailableForRFQ() {
   return result;
 }
 
-/**
- * Create a new RFQ document.
- * @param {Object} data - { rfqNumber, rfqDate, items: [{allocationId, prcId, materialId, quantity, matCode, description, unit, prNumber}] }
- */
 export function createRFQ(data) {
   const rfq = {
     id: `rfq-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
@@ -758,7 +760,6 @@ export function createRFQ(data) {
 
   const rfqs = [rfq, ...state.rfqs];
 
-  // Update material-level RFQ info
   const prcs = [...state.prcs];
   rfq.items.forEach(item => {
     const prcIdx = prcs.findIndex(p => p.id === item.prcId);
@@ -775,9 +776,18 @@ export function createRFQ(data) {
     prc.status = calculateStatus(prc, prc.materials);
     prc.updatedAt = new Date().toISOString();
     prcs[prcIdx] = prc;
+
+    if (state.firebaseUser?.uid) {
+      directSavePRC(state.firebaseUser.uid, prc);
+    }
   });
 
   setState({ rfqs, prcs, statusSummary: buildStatusSummary(prcs) });
+
+  if (state.firebaseUser?.uid) {
+    directSaveRFQ(state.firebaseUser.uid, rfq);
+  }
+
   addAuditLog({
     action: 'create_rfq', collection: 'RFQs', docId: rfq.id,
     changes: { rfqNumber: data.rfqNumber, itemCount: data.items.length }
@@ -797,17 +807,17 @@ export function deleteRFQ(id) {
   }
   const rfqs = state.rfqs.filter(r => r.id !== id);
   setState({ rfqs });
+
+  if (state.firebaseUser?.uid) {
+    directDeleteRFQ(state.firebaseUser.uid, id);
+  }
+
   addAuditLog({ action: 'delete_rfq', collection: 'RFQs', docId: id, changes: {} });
   return { success: true };
 }
 
-// ═══════════════════════════════════════════════════════════
-// TCD (TECHNO-COMMERCIAL DOCUMENT) OPERATIONS
-// ═══════════════════════════════════════════════════════════
+// ── TCD OPERATIONS ────────────────────────────────────────
 
-/**
- * Get the already-TCD'd quantity for a material from a specific RFQ.
- */
 export function getTCDdQty(rfqId, prcId, materialId) {
   return state.tcds.reduce((sum, tcd) => {
     return sum + (tcd.vendorAllocations || []).reduce((vaSum, va) => {
@@ -818,9 +828,6 @@ export function getTCDdQty(rfqId, prcId, materialId) {
   }, 0);
 }
 
-/**
- * Get all RFQ'd materials with available (un-TCD'd) quantities.
- */
 export function getAvailableForTCD() {
   const result = [];
   state.rfqs.forEach(rfq => {
@@ -843,10 +850,6 @@ export function getAvailableForTCD() {
   return result;
 }
 
-/**
- * Create a new TCD (Techno-Commercial Document).
- * @param {Object} data - { tcdNumber, tcdDate, vendorAllocations: [{ vendorName, items: [{rfqId, prcId, materialId, quantity, matCode, description, unit, prNumber}] }] }
- */
 export function createTCD(data) {
   const tcd = {
     id: `tcd-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
@@ -863,7 +866,6 @@ export function createTCD(data) {
 
   const tcds = [tcd, ...state.tcds];
 
-  // Update material-level TCD info
   const prcs = [...state.prcs];
   (tcd.vendorAllocations || []).forEach(va => {
     va.items.forEach(item => {
@@ -881,10 +883,19 @@ export function createTCD(data) {
       prc.status = calculateStatus(prc, prc.materials);
       prc.updatedAt = new Date().toISOString();
       prcs[prcIdx] = prc;
+
+      if (state.firebaseUser?.uid) {
+        directSavePRC(state.firebaseUser.uid, prc);
+      }
     });
   });
 
   setState({ tcds, prcs, statusSummary: buildStatusSummary(prcs) });
+
+  if (state.firebaseUser?.uid) {
+    directSaveTCD(state.firebaseUser.uid, tcd);
+  }
+
   addAuditLog({
     action: 'create_tcd', collection: 'TCDs', docId: tcd.id,
     changes: { tcdNumber: data.tcdNumber, vendorCount: data.vendorAllocations.length }
@@ -897,10 +908,6 @@ export function getTCDById(id) {
   return state.tcds.find(t => t.id === id) || null;
 }
 
-/**
- * Approve a TCD and auto-generate POD(s) — one per vendor.
- * PODs are generated with EMPTY PO numbers — user fills them in manually.
- */
 export function approveTCD(tcdId) {
   const tcdIdx = state.tcds.findIndex(t => t.id === tcdId);
   if (tcdIdx === -1) return { success: false, reason: 'TCD not found.' };
@@ -916,15 +923,14 @@ export function approveTCD(tcdId) {
   const tcds = [...state.tcds];
   tcds[tcdIdx] = tcd;
 
-  // Generate PODs — one per vendor, with EMPTY PO number for user to fill
   const generatedPODs = [];
   const prcs = [...state.prcs];
 
   (tcd.vendorAllocations || []).forEach(va => {
     const pod = {
       id: `pod-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-      poNumber: '',       // User will fill this in
-      poDate: '',         // User will fill this in
+      poNumber: '',
+      poDate: '',
       vendorName: va.vendorName,
       tcdId: tcd.id,
       tcdNumber: tcd.tcdNumber,
@@ -935,7 +941,10 @@ export function approveTCD(tcdId) {
     };
     generatedPODs.push(pod);
 
-    // Update material-level TCD approval and vendor info (but NOT PO number yet)
+    if (state.firebaseUser?.uid) {
+      directSavePOD(state.firebaseUser.uid, pod);
+    }
+
     va.items.forEach(item => {
       const prcIdx = prcs.findIndex(p => p.id === item.prcId);
       if (prcIdx === -1) return;
@@ -951,11 +960,20 @@ export function approveTCD(tcdId) {
       prc.status = calculateStatus(prc, prc.materials);
       prc.updatedAt = new Date().toISOString();
       prcs[prcIdx] = prc;
+
+      if (state.firebaseUser?.uid) {
+        directSavePRC(state.firebaseUser.uid, prc);
+      }
     });
   });
 
   const pods = [...generatedPODs, ...state.pods];
   setState({ tcds, pods, prcs, statusSummary: buildStatusSummary(prcs) });
+
+  if (state.firebaseUser?.uid) {
+    directSaveTCD(state.firebaseUser.uid, tcd);
+  }
+
   addAuditLog({
     action: 'approve_tcd', collection: 'TCDs', docId: tcdId,
     changes: { tcdNumber: tcd.tcdNumber, podsGenerated: generatedPODs.length }
@@ -964,18 +982,12 @@ export function approveTCD(tcdId) {
   return { success: true, pods: generatedPODs };
 }
 
-// ═══════════════════════════════════════════════════════════
-// POD (PURCHASE ORDER DOCUMENT) OPERATIONS
-// ═══════════════════════════════════════════════════════════
+// ── POD OPERATIONS ────────────────────────────────────────
 
 export function getPODById(id) {
   return state.pods.find(p => p.id === id) || null;
 }
 
-/**
- * Update a POD — primarily for setting PO Number and PO Date.
- * Cascades PO info to the underlying PRC materials.
- */
 export function updatePOD(podId, patch) {
   const podIdx = state.pods.findIndex(p => p.id === podId);
   if (podIdx === -1) return;
@@ -988,7 +1000,6 @@ export function updatePOD(podId, patch) {
   const pods = [...state.pods];
   pods[podIdx] = pod;
 
-  // Cascade PO number/date to materials
   const prcs = [...state.prcs];
   if (patch.poNumber || patch.poDate) {
     pod.items.forEach(item => {
@@ -1009,26 +1020,37 @@ export function updatePOD(podId, patch) {
       prc.status = calculateStatus(prc, prc.materials);
       prc.updatedAt = new Date().toISOString();
       prcs[prcIdx] = prc;
+
+      if (state.firebaseUser?.uid) {
+        directSavePRC(state.firebaseUser.uid, prc);
+      }
     });
   }
 
   setState({ pods, prcs, statusSummary: buildStatusSummary(prcs) });
+
+  if (state.firebaseUser?.uid) {
+    directSavePOD(state.firebaseUser.uid, pod);
+  }
+
   addAuditLog({
     action: 'update_pod', collection: 'PODs', docId: podId,
     changes: patch
   });
 }
 
-// ═══════════════════════════════════════════════════════════
-// AUDIT LOG
-// ═══════════════════════════════════════════════════════════
+// ── AUDIT LOG ─────────────────────────────────────────────
 
 export function addAuditLog(entry) {
   const log = {
-    id: `log-${Date.now()}`,
+    id: `log-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
     ...entry,
     timestamp: new Date().toISOString(),
     user: state.currentUser.name
   };
   setState({ activityLogs: [log, ...state.activityLogs] });
+
+  if (state.firebaseUser?.uid) {
+    directSaveActivityLog(state.firebaseUser.uid, log);
+  }
 }
