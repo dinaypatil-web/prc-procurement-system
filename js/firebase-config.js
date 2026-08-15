@@ -1,6 +1,6 @@
 // =========================================================
 // PRC PROCUREMENT SYSTEM — FIREBASE CONFIGURATION (.ENV BASED)
-// Configuration is loaded from .env / environment variables
+// Configuration is loaded from /api/env, .env, or environment variables
 // =========================================================
 
 import { loadEnv, getEnv } from './env.js';
@@ -36,7 +36,11 @@ const APP_CONFIG = {
 
 // Detect if Firebase is configured
 function isFirebaseConfigured() {
-  return FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY" && FIREBASE_CONFIG.projectId !== "YOUR_PROJECT_ID";
+  return Boolean(
+    FIREBASE_CONFIG.apiKey &&
+    FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY" &&
+    FIREBASE_CONFIG.apiKey.trim() !== ""
+  );
 }
 
 // Global Firebase instances
@@ -45,17 +49,23 @@ let _firebaseApp = null;
 let _authModule = null;
 
 /**
- * Initialize Firebase from .env configuration
+ * Initialize Firebase from environment configuration
  */
 async function initFirebase() {
-  // Load environment variables from .env
+  if (_firebaseApp && _auth && _authModule) {
+    return _firebaseApp;
+  }
+
+  // Load environment variables from /api/env or .env
   await loadEnv();
+
+  const projectId = getEnv('FIREBASE_PROJECT_ID', 'YOUR_PROJECT_ID');
 
   FIREBASE_CONFIG = {
     apiKey:            getEnv('FIREBASE_API_KEY', 'YOUR_API_KEY'),
-    authDomain:        getEnv('FIREBASE_AUTH_DOMAIN', `${getEnv('FIREBASE_PROJECT_ID', 'YOUR_PROJECT_ID')}.firebaseapp.com`),
-    projectId:         getEnv('FIREBASE_PROJECT_ID', 'YOUR_PROJECT_ID'),
-    storageBucket:     getEnv('FIREBASE_STORAGE_BUCKET', `${getEnv('FIREBASE_PROJECT_ID', 'YOUR_PROJECT_ID')}.appspot.com`),
+    authDomain:        getEnv('FIREBASE_AUTH_DOMAIN', `${projectId}.firebaseapp.com`),
+    projectId:         projectId,
+    storageBucket:     getEnv('FIREBASE_STORAGE_BUCKET', `${projectId}.appspot.com`),
     messagingSenderId: getEnv('FIREBASE_MESSAGING_SENDER_ID', 'YOUR_SENDER_ID'),
     appId:             getEnv('FIREBASE_APP_ID', 'YOUR_APP_ID'),
     measurementId:     getEnv('FIREBASE_MEASUREMENT_ID', '')
@@ -64,7 +74,7 @@ async function initFirebase() {
   GEMINI_API_KEY = getEnv('GEMINI_API_KEY', 'YOUR_GEMINI_API_KEY');
 
   if (!isFirebaseConfigured()) {
-    console.warn("⚠️ Firebase configuration missing in .env file. Please check .env.example.");
+    console.warn("⚠️ Firebase API Key missing in environment variables. Please check Vercel settings or .env file.");
     return null;
   }
 
@@ -99,7 +109,10 @@ async function initFirebase() {
  */
 export async function signUp(email, password, displayName, role = 'Procurement Engineer') {
   if (!_auth || !_authModule) {
-    return { success: false, error: 'Firebase is not initialized. Please verify .env configuration.' };
+    await initFirebase();
+  }
+  if (!_auth || !_authModule) {
+    return { success: false, error: 'Firebase is not initialized. Please verify your environment variables on Vercel.' };
   }
   try {
     const cred = await _authModule.createUserWithEmailAndPassword(_auth, email, password);
@@ -136,7 +149,10 @@ export async function signUp(email, password, displayName, role = 'Procurement E
  */
 export async function signIn(email, password) {
   if (!_auth || !_authModule) {
-    return { success: false, error: 'Firebase is not initialized. Please verify .env configuration.' };
+    await initFirebase();
+  }
+  if (!_auth || !_authModule) {
+    return { success: false, error: 'Firebase is not initialized. Please verify your environment variables on Vercel.' };
   }
   try {
     const cred = await _authModule.signInWithEmailAndPassword(_auth, email, password);
@@ -190,7 +206,6 @@ export function onAuthChange(callback) {
       return;
     }
 
-    // Try to load role from Firestore
     let role = 'User';
     try {
       const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");

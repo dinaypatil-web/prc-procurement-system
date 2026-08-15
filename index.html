@@ -3598,7 +3598,11 @@ window.handleAuthSignIn = async function(e) {
   }
 
   if (!isFirebaseConfigured()) {
-    showAuthAlert('Firebase is not configured in .env. Please add your Firebase credentials to the .env file.');
+    await initFirebase();
+  }
+
+  if (!isFirebaseConfigured()) {
+    showAuthAlert('Firebase configuration not found. Please verify your Vercel Project Environment Variables (FIREBASE_API_KEY, FIREBASE_PROJECT_ID, etc.) and redeploy.');
     return;
   }
 
@@ -3638,7 +3642,11 @@ window.handleAuthSignUp = async function(e) {
   }
 
   if (!isFirebaseConfigured()) {
-    showAuthAlert('Firebase is not configured in .env. Please check your .env file.');
+    await initFirebase();
+  }
+
+  if (!isFirebaseConfigured()) {
+    showAuthAlert('Firebase configuration not found. Please verify your Vercel Project Environment Variables (FIREBASE_API_KEY, FIREBASE_PROJECT_ID, etc.) and redeploy.');
     return;
   }
 
