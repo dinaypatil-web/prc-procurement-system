@@ -1,0 +1,170 @@
+rules_version = '2';
+// ============================================================================
+// PRC PROCUREMENT SYSTEM — FIRESTORE SECURITY RULES
+// DESIGN REQUIREMENT: All procurement data is stored in the central database
+// created and owned by the App Owner (Super Admin), NOT individual user DBs.
+// All individual users access and mutate shared records in the App Owner Database subject to RBAC.
+// ============================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── HELPER FUNCTIONS ───────────────────────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && getUserRole() == 'Super Admin';
+    }
+
+    function isProcurementManager() {
+      return isAuthenticated() && getUserRole() in ['Super Admin', 'Procurement Manager'];
+    }
+
+    function isProcurementEngineer() {
+      return isAuthenticated() && getUserRole() in ['Super Admin', 'Procurement Manager', 'Procurement Engineer'];
+    }
+
+    function isViewer() {
+      return isAuthenticated();  // All authenticated users can read
+    }
+
+    function isOwnerOrAdmin(userId) {
+      return request.auth.uid == userId || isSuperAdmin();
+    }
+
+    // Manual fields that engineers can update but cannot be overwritten by import
+    function hasOnlyManualFields(data) {
+      let manualFields = ['allocationNumber','allocationDate','rfqNumber','rfqDate',
+        'offersReceived','offersReceivedDate','tcdNumber','tcdDate','tcdApproved',
+        'tcdApprovedDate','poNumber','poDate','vendorName','remarks','priority',
+        'expectedCompletion','isWrongPRC','isPRNotApproved','isFuturePRC',
+        'isSystemIssue','inputFromStores','inputFromEngineering','inputFromEndUser',
+        'inputFromVendor','updatedAt','updatedBy','status'];
+      return data.keys().hasOnly(manualFields);
+    }
+
+    // ── USERS ──────────────────────────────────────────────
+    match /users/{userId} {
+      allow read: if isViewer();
+      allow create: if isSuperAdmin();
+      allow update: if isOwnerOrAdmin(userId);
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── ROLES ──────────────────────────────────────────────
+    match /roles/{roleId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
+    // ── PERMISSIONS ────────────────────────────────────────
+    match /permissions/{permId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
+    // ── PRCs ───────────────────────────────────────────────
+    match /prcs/{prcId} {
+      // All authenticated users can read
+      allow read: if isViewer();
+
+      // Import (create): Manager or Engineer
+      allow create: if isProcurementEngineer();
+
+      // Update: Engineers can update manual fields only
+      //         Managers can update any field
+      allow update: if
+        isProcurementManager() ||
+        (isProcurementEngineer() && hasOnlyManualFields(request.resource.data.diff(resource.data).affectedKeys()));
+
+      // Delete: Super Admin only
+      allow delete: if isSuperAdmin();
+
+      // ── Materials (sub-collection) ─────────────────────
+      match /materials/{materialId} {
+        allow read: if isViewer();
+        allow create: if isProcurementEngineer();
+        allow update: if isProcurementEngineer();
+        allow delete: if isSuperAdmin();
+      }
+
+      // ── Audit History (sub-collection — APPEND ONLY) ───
+      match /history/{histId} {
+        allow read: if isViewer();
+        allow create: if isProcurementEngineer();
+        allow update: if false;  // History is immutable
+        allow delete: if false;  // History can NEVER be deleted
+      }
+
+      // ── Attachments (sub-collection) ──────────────────
+      match /attachments/{attachId} {
+        allow read: if isViewer();
+        allow create: if isProcurementEngineer();
+        allow delete: if isProcurementManager();
+        allow update: if false;
+      }
+    }
+
+    // ── RFQs ───────────────────────────────────────────────
+    match /rfqs/{rfqId} {
+      allow read: if isViewer();
+      allow create, update: if isProcurementEngineer();
+      allow delete: if isProcurementManager();
+    }
+
+    // ── VENDORS ────────────────────────────────────────────
+    match /vendors/{vendorId} {
+      allow read: if isViewer();
+      allow create, update: if isProcurementManager();
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── TCDs ───────────────────────────────────────────────
+    match /tcds/{tcdId} {
+      allow read: if isViewer();
+      allow create, update: if isProcurementEngineer();
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── PURCHASE ORDERS ────────────────────────────────────
+    match /purchaseOrders/{poId} {
+      allow read: if isViewer();
+      allow create, update: if isProcurementEngineer();
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── NOTIFICATIONS ──────────────────────────────────────
+    match /notifications/{notifId} {
+      allow read: if isAuthenticated() &&
+        (resource.data.userId == request.auth.uid || isProcurementManager());
+      allow create: if isProcurementEngineer();
+      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow delete: if isSuperAdmin();
+    }
+
+    // ── ACTIVITY LOGS (APPEND ONLY) ────────────────────────
+    match /activityLogs/{logId} {
+      allow read: if isProcurementManager();
+      allow create: if isAuthenticated();
+      allow update: if false;   // Logs are immutable
+      allow delete: if false;   // Logs can NEVER be deleted
+    }
+
+    // ── DASHBOARD CACHE ────────────────────────────────────
+    match /dashboardCache/{cacheId} {
+      allow read: if isViewer();
+      allow write: if false;  // Only Cloud Functions write cache
+    }
+
+    // ── SETTINGS ───────────────────────────────────────────
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+  }
+}

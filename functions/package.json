@@ -1,0 +1,22 @@
+{
+  "name": "prc-procurement-functions",
+  "version": "1.0.0",
+  "description": "Firebase Cloud Functions for PRC Procurement System",
+  "main": "index.js",
+  "engines": { "node": "20" },
+  "scripts": {
+    "lint":  "eslint .",
+    "build": "echo 'No build needed'",
+    "serve": "firebase emulators:start --only functions",
+    "deploy":"firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-admin":    "^12.1.0",
+    "firebase-functions": "^5.0.1"
+  },
+  "devDependencies": {
+    "eslint":                "^8.15.0",
+    "eslint-config-google":  "^0.14.0"
+  },
+  "private": true
+}

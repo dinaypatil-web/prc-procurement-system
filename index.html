@@ -1,0 +1,3442 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ProcureTrack — Enterprise Procurement Management System</title>
+  <meta name="description" content="AI-powered enterprise procurement tracking and workflow management system for tracking PRCs from allocation to PO issuance."/>
+  <meta name="theme-color" content="#1e293b"/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232563eb'/><text y='.9em' font-size='70' x='50%' text-anchor='middle'>📦</text></svg>"/>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/design-system.css"/>
+  <link rel="stylesheet" href="css/components.css"/>
+  <link rel="stylesheet" href="css/animations.css"/>
+
+  <!-- External Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+
+<body>
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- Mobile sidebar overlay -->
+<div id="sidebar-overlay" class="fixed inset-0 hidden" style="background:rgba(0,0,0,0.5);z-index:299" onclick="closeMobileSidebar()"></div>
+
+<!-- ═══════════ APP SHELL ════════════════════════════════ -->
+<div id="app">
+
+  <!-- ── SIDEBAR ──────────────────────────────────────── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">P</div>
+      <div class="sidebar-logo-text">
+        <div class="sidebar-logo-title">ProcureTrack</div>
+        <div class="sidebar-logo-sub">Enterprise Procurement</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav" id="sidebar-nav">
+      <div class="nav-section-label">Main</div>
+      <a class="nav-item active" data-page="dashboard" href="#dashboard">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <a class="nav-item" data-page="prc-list" href="#prc-list">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        <span>PRC Records</span>
+        <span class="nav-badge" id="nav-prc-count">0</span>
+      </a>
+
+      <div class="nav-section-label">Procurement</div>
+      <a class="nav-item" data-page="import" href="#import">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+        <span>Excel Import</span>
+      </a>
+      <a class="nav-item" data-page="allocations" href="#allocations">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+        <span>Allocations</span>
+        <span class="nav-badge" id="nav-alloc-count">0</span>
+      </a>
+      <a class="nav-item" data-page="rfqs" href="#rfqs">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v8m0 0l3-3m-3 3L9 8m-5 5h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293h3.172a1 1 0 00.707-.293l2.414-2.414a1 1 0 01.707-.293H20"/></svg>
+        <span>RFQs</span>
+        <span class="nav-badge" id="nav-rfq-count">0</span>
+      </a>
+      <a class="nav-item" data-page="tcds" href="#tcds">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        <span>TCDs</span>
+        <span class="nav-badge" id="nav-tcd-count">0</span>
+      </a>
+      <a class="nav-item" data-page="pods" href="#pods">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
+        <span>Purchase Orders</span>
+        <span class="nav-badge" id="nav-pod-count">0</span>
+      </a>
+      <a class="nav-item" data-page="notifications" href="#notifications">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+        <span>Notifications</span>
+        <span class="nav-badge" id="nav-notif-count">0</span>
+      </a>
+
+      <div class="nav-section-label">Analytics</div>
+      <a class="nav-item" data-page="reports" href="#reports">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        <span>Reports</span>
+      </a>
+      <a class="nav-item" data-page="vendors" href="#vendors">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+        <span>Vendors</span>
+      </a>
+      <a class="nav-item" data-page="audit" href="#audit">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <span>Audit Trail</span>
+      </a>
+
+      <div class="nav-section-label">AI</div>
+      <a class="nav-item" data-page="ai-assistant" href="#ai-assistant">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+        <span>AI Assistant</span>
+      </a>
+
+      <div class="nav-section-label">Settings</div>
+      <a class="nav-item" data-page="settings" href="#settings">
+        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        <span>Settings</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-user" onclick="navigate('settings')">
+        <div class="sidebar-avatar" id="sidebar-avatar">AO</div>
+        <div style="overflow:hidden">
+          <div class="sidebar-user-name" id="sidebar-username">App Owner</div>
+          <div class="sidebar-user-role"  id="sidebar-role">Super Admin</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN WRAPPER ──────────────────────────────────── -->
+  <div class="main-wrapper" id="main-wrapper">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <button class="topbar-menu-btn" onclick="toggleSidebar()" title="Toggle sidebar">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div>
+        <div class="topbar-title" id="topbar-title">Dashboard</div>
+        <div class="topbar-breadcrumb" id="topbar-breadcrumb">Home &rsaquo; Dashboard</div>
+      </div>
+      <div class="topbar-actions">
+        <div class="chip chip-completed" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 10px;cursor:pointer" onclick="navigate('settings');setTimeout(()=>showSettingsTab('database'),100)" title="All data is saved in central database created by the App Owner">
+          <span style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block"></span>
+          App Owner DB
+        </div>
+        <div class="relative" id="global-search-wrap">
+          <div class="topbar-search" id="global-search-box">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="flex-shrink:0;color:var(--color-text-tertiary)"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input type="text" id="global-search" placeholder="Search PRCs, RFQ, PO, vendors…" autocomplete="off"/>
+            <kbd style="font-size:10px;color:var(--color-text-tertiary);white-space:nowrap">Ctrl+K</kbd>
+          </div>
+          <div class="search-dropdown hidden" id="search-dropdown"></div>
+        </div>
+        <button class="topbar-icon-btn" onclick="toggleTheme()" title="Toggle theme" id="theme-btn">
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+        </button>
+        <button class="topbar-icon-btn" onclick="navigate('notifications')" title="Notifications">
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+          <span class="notif-dot" id="notif-dot"></span>
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="navigate('import')">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+          Import Excel
+        </button>
+      </div>
+    </header>
+
+    <!-- PAGE CONTENT -->
+    <main class="page-content" id="page-content">
+      <!-- Pages are rendered here by the router -->
+      <div class="empty-state">
+        <div class="loading-spinner"></div>
+        <p style="margin-top:16px;color:var(--color-text-secondary)">Loading ProcureTrack…</p>
+      </div>
+    </main>
+  </div>
+
+</div><!-- /#app -->
+
+<!-- ═══════════ PRC DETAIL MODAL ════════════════════════════ -->
+<div class="modal-overlay" id="prc-detail-modal">
+  <div class="modal modal-lg" style="max-width:1000px">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title" id="prc-detail-title">PR-2025-0001</h2>
+        <div id="prc-detail-meta" style="font-size:13px;color:var(--color-text-secondary);margin-top:4px"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span id="prc-detail-status-chip"></span>
+        <button class="modal-close-btn" onclick="closePRCDetail()">✕</button>
+      </div>
+    </div>
+    <div class="modal-body" id="prc-detail-body" style="padding:0"></div>
+  </div>
+</div>
+
+<!-- Main App Script (ES Module) -->
+<script type="module">
+// =========================================================
+// MAIN APPLICATION ENTRY POINT
+// =========================================================
+import { getState, setState, initDemoData, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD } from './js/state.js';
+import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS } from './js/status-engine.js';
+import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll } from './js/utils.js';
+import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
+import { saveFirebaseConfig, resetFirebaseConfig, saveGeminiKey, FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured } from './js/firebase-config.js';
+import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
+import { exportCSV, exportExcel, exportPDF, getAgeingReport } from './js/reports.js';
+
+// ── CHARTS REGISTRY ───────────────────────────────────────
+const charts = {};
+
+// ── ROUTER ────────────────────────────────────────────────
+const PAGES = {
+  dashboard:     { title:'Dashboard',      breadcrumb:'Home › Dashboard',       render: renderDashboard },
+  'prc-list':    { title:'PRC Records',    breadcrumb:'Home › PRC Records',      render: renderPRCList },
+  import:        { title:'Excel Import',   breadcrumb:'Home › Excel Import',     render: renderImport },
+  allocations:   { title:'Allocations',    breadcrumb:'Home › Procurement › Allocations', render: renderAllocationsPage },
+  rfqs:          { title:'RFQs',           breadcrumb:'Home › Procurement › RFQs',        render: renderRFQsPage },
+  tcds:          { title:'TCDs',           breadcrumb:'Home › Procurement › TCDs',        render: renderTCDsPage },
+  pods:          { title:'Purchase Orders',breadcrumb:'Home › Procurement › Purchase Orders', render: renderPODsPage },
+  notifications: { title:'Notifications',  breadcrumb:'Home › Notifications',    render: renderNotifications },
+  reports:       { title:'Reports',        breadcrumb:'Home › Reports',          render: renderReports },
+  vendors:       { title:'Vendor Performance',breadcrumb:'Home › Vendors',       render: renderVendors },
+  audit:         { title:'Audit Trail',    breadcrumb:'Home › Audit Trail',      render: renderAudit },
+  'ai-assistant':{ title:'AI Assistant',   breadcrumb:'Home › AI Assistant',     render: renderAIAssistant },
+  settings:      { title:'Settings',       breadcrumb:'Home › Settings',         render: renderSettings }
+};
+
+window.navigate = function(page) {
+  const state = getState();
+  setState({ currentPage: page });
+
+  // Update nav
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page);
+  });
+
+  // Update topbar
+  const p = PAGES[page];
+  if (p) {
+    document.getElementById('topbar-title').textContent = p.title;
+    document.getElementById('topbar-breadcrumb').innerHTML = p.breadcrumb.replace(/›/g, '&rsaquo;');
+  }
+
+  // Destroy old charts
+  Object.values(charts).forEach(c => c?.destroy?.());
+  Object.keys(charts).forEach(k => delete charts[k]);
+
+  // Render page
+  const content = document.getElementById('page-content');
+  content.innerHTML = '<div style="padding:40px;text-align:center"><div class="loading-spinner" style="margin:auto"></div></div>';
+  requestAnimationFrame(() => {
+    if (p) {
+      content.innerHTML = '';
+      p.render(content);
+      content.classList.remove('page-enter');
+      void content.offsetWidth;
+      content.classList.add('page-enter');
+    }
+    window.location.hash = page;
+    window.scrollTo(0,0);
+  });
+};
+
+// ── SIDEBAR ────────────────────────────────────────────────
+window.toggleSidebar = function() {
+  const sidebar = document.getElementById('sidebar');
+  if (window.innerWidth <= 768) {
+    sidebar.classList.toggle('mobile-open');
+    document.getElementById('sidebar-overlay').classList.toggle('hidden');
+  } else {
+    sidebar.classList.toggle('collapsed');
+  }
+};
+window.closeMobileSidebar = function() {
+  document.getElementById('sidebar').classList.remove('mobile-open');
+  document.getElementById('sidebar-overlay').classList.add('hidden');
+};
+
+// ── THEME ──────────────────────────────────────────────────
+window.toggleTheme = function() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  setState({ theme: next });
+};
+// Apply saved theme
+document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'dark');
+
+// ── GLOBAL SEARCH ──────────────────────────────────────────
+const searchInput = document.getElementById('global-search');
+const searchDropdown = document.getElementById('search-dropdown');
+
+searchInput.addEventListener('input', debounce(e => {
+  const q = e.target.value.trim();
+  setState({ searchQuery: q });
+  if (!q) { searchDropdown.classList.add('hidden'); return; }
+
+  const results = getFilteredPRCs().slice(0, 6);
+  if (!results.length) { searchDropdown.classList.add('hidden'); return; }
+
+  searchDropdown.innerHTML = results.map(p => `
+    <div class="search-result-item" onclick="openPRCDetail('${p.id}');document.getElementById('global-search').value='';document.getElementById('search-dropdown').classList.add('hidden')">
+      <span style="font-size:20px">${getStatusIcon(p.status)}</span>
+      <div>
+        <div style="font-weight:600">${highlight(p.prNumber, q)}</div>
+        <div style="font-size:11px;color:var(--color-text-tertiary)">${p.department} · ${p.status}</div>
+      </div>
+      <span class="chip ${getStatusChipClass(p.status)}" style="margin-left:auto">${p.status}</span>
+    </div>`).join('');
+  searchDropdown.classList.remove('hidden');
+}, 250));
+
+document.addEventListener('click', e => {
+  if (!document.getElementById('global-search-wrap').contains(e.target)) {
+    searchDropdown.classList.add('hidden');
+  }
+});
+
+// Ctrl+K shortcut
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey||e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    searchInput.focus();
+    searchInput.select();
+  }
+  if (e.key === 'Escape') {
+    searchDropdown.classList.add('hidden');
+    document.getElementById('prc-detail-modal').classList.remove('open');
+  }
+});
+
+// ── NAV CLICK HANDLERS ─────────────────────────────────────
+document.querySelectorAll('.nav-item[data-page]').forEach(el => {
+  el.addEventListener('click', e => {
+    e.preventDefault();
+    navigate(el.dataset.page);
+    closeMobileSidebar();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: DASHBOARD
+// ═══════════════════════════════════════════════════════════
+function renderDashboard(container) {
+  const state = getState();
+  const s     = state.statusSummary || {};
+  const prcs  = state.prcs || [];
+
+  const kpis = [
+    { label:'Total PRCs',        value: prcs.length,                       icon:'📦', style:'--kpi-accent:#3b82f6;--kpi-icon-bg:rgba(59,130,246,0.12)' },
+    { label:'Process Completed', value: s[STATUS.COMPLETED]||0,             icon:'✅', style:'--kpi-accent:#10b981;--kpi-icon-bg:rgba(16,185,129,0.12)' },
+    { label:'Pending',           value: s[STATUS.PENDING]||0,               icon:'🕐', style:'--kpi-accent:#f59e0b;--kpi-icon-bg:rgba(245,158,11,0.12)' },
+    { label:'Partly Completed',  value: s[STATUS.PARTLY_COMPLETED]||0,      icon:'🔶', style:'--kpi-accent:#06b6d4;--kpi-icon-bg:rgba(6,182,212,0.12)' },
+    { label:'Awaiting Offer',    value: s[STATUS.AWAITING_OFFER]||0,        icon:'⏳', style:'--kpi-accent:#8b5cf6;--kpi-icon-bg:rgba(139,92,246,0.12)' },
+    { label:'Inputs Required',   value: s[STATUS.INPUTS_REQUIRED]||0,       icon:'📋', style:'--kpi-accent:#ea580c;--kpi-icon-bg:rgba(234,88,12,0.12)' },
+    { label:'Wrong PRC',         value: s[STATUS.WRONG_PRC]||0,             icon:'❌', style:'--kpi-accent:#ef4444;--kpi-icon-bg:rgba(239,68,68,0.12)' },
+    { label:'PR Not Approved',   value: s[STATUS.PR_NOT_APPROVED]||0,       icon:'🚫', style:'--kpi-accent:#9333ea;--kpi-icon-bg:rgba(147,51,234,0.12)' },
+    { label:'Future PRC',        value: s[STATUS.FUTURE_PRC]||0,            icon:'🔮', style:'--kpi-accent:#0284c7;--kpi-icon-bg:rgba(2,132,199,0.12)' },
+    { label:'System Issue',      value: s[STATUS.SYSTEM_ISSUE]||0,          icon:'⚙️', style:'--kpi-accent:#475569;--kpi-icon-bg:rgba(71,85,105,0.12)' },
+    { label:'Total Materials',   value: state.totalMaterials||0,            icon:'🔩', style:'--kpi-accent:#3b82f6;--kpi-icon-bg:rgba(59,130,246,0.12)' },
+    { label:'Overdue PRCs',      value: state.overdueCount||0,              icon:'🚨', style:'--kpi-accent:#ef4444;--kpi-icon-bg:rgba(239,68,68,0.12)' },
+    { label:'Avg Days (PO)',     value: state.avgProcurementDays||0,        icon:'📅', style:'--kpi-accent:#f59e0b;--kpi-icon-bg:rgba(245,158,11,0.12)', suffix:' days' },
+    { label:'PO Issued Today',   value: state.poToday||0,                   icon:'🛒', style:'--kpi-accent:#10b981;--kpi-icon-bg:rgba(16,185,129,0.12)' }
+  ];
+
+  container.innerHTML = `
+<div class="page-header stagger-children">
+  <div>
+    <h1 class="page-title">Procurement Dashboard</h1>
+    <p class="page-subtitle">Real-time overview of all procurement activities · ${new Date().toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
+  </div>
+  <div class="flex gap-3">
+    <button class="btn btn-secondary btn-sm" onclick="navigate('reports')">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+      Export Report
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="navigate('import')">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+      Import Data
+    </button>
+  </div>
+</div>
+
+<!-- KPI GRID -->
+<div class="kpi-grid stagger-children" id="kpi-grid">
+  ${kpis.map((k,i) => `
+    <div class="kpi-card hover-lift" style="${k.style}" onclick="navigate('prc-list')">
+      <div class="kpi-icon">${k.icon}</div>
+      <div class="kpi-value" id="kpi-val-${i}">0</div>
+      <div class="kpi-label">${k.label}</div>
+    </div>
+  `).join('')}
+</div>
+
+<!-- CHARTS ROW 1 -->
+<div class="chart-grid-2 mt-4" style="margin-top:24px">
+  <div class="card chart-card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Status Distribution</div>
+        <div class="card-subtitle">All PRCs by current status</div>
+      </div>
+    </div>
+    <div class="chart-canvas-wrap" style="height:280px">
+      <canvas id="chart-status-pie"></canvas>
+    </div>
+  </div>
+  <div class="card chart-card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Monthly PRC Trend</div>
+        <div class="card-subtitle">PRCs created per month</div>
+      </div>
+    </div>
+    <div class="chart-canvas-wrap" style="height:280px">
+      <canvas id="chart-monthly-trend"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- CHARTS ROW 2 -->
+<div class="chart-grid-3" style="margin-top:20px">
+  <div class="card chart-card">
+    <div class="card-header">
+      <div class="card-title">Procurement Funnel</div>
+    </div>
+    <div class="chart-canvas-wrap" style="height:240px">
+      <canvas id="chart-funnel"></canvas>
+    </div>
+  </div>
+  <div class="card chart-card">
+    <div class="card-header">
+      <div class="card-title">Vendor Distribution</div>
+    </div>
+    <div class="chart-canvas-wrap" style="height:240px">
+      <canvas id="chart-vendor"></canvas>
+    </div>
+  </div>
+  <div class="card chart-card">
+    <div class="card-header">
+      <div class="card-title">Department Breakdown</div>
+    </div>
+    <div class="chart-canvas-wrap" style="height:240px">
+      <canvas id="chart-dept"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- AGEING CHART -->
+<div class="card chart-card" style="margin-top:20px">
+  <div class="card-header">
+    <div>
+      <div class="card-title">Ageing Analysis — Pending PRCs</div>
+      <div class="card-subtitle">Days since allocation for unresolved PRCs</div>
+    </div>
+  </div>
+  <div class="chart-canvas-wrap" style="height:220px">
+    <canvas id="chart-ageing"></canvas>
+  </div>
+</div>
+
+<!-- RECENT ACTIVITY -->
+<div class="card" style="margin-top:20px">
+  <div class="card-header">
+    <div class="card-title">Recent Activity</div>
+    <button class="btn btn-ghost btn-sm" onclick="navigate('audit')">View All →</button>
+  </div>
+  <div id="recent-activity"></div>
+</div>`;
+
+  // Animate counters
+  kpis.forEach((k, i) => {
+    const el = document.getElementById(`kpi-val-${i}`);
+    if (el) animateCounter(el, k.value);
+  });
+
+  // Render recent activity
+  const activityEl = document.getElementById('recent-activity');
+  const logs = (state.activityLogs||[]).slice(0,5);
+  activityEl.innerHTML = logs.length ? logs.map(l => `
+    <div class="notif-item">
+      <div class="notif-icon" style="background:var(--color-info-bg)">${l.action==='import'?'📥':l.action==='create'?'➕':'✏️'}</div>
+      <div class="notif-text">
+        <div class="notif-title">${l.user} — ${l.action} on ${l.collection}</div>
+        <div class="notif-message">${Object.entries(l.changes||{}).map(([k,v])=>`${k}: ${typeof v==='object'?(v.old||'')+'→'+(v.new||''):v}`).join(', ')||'No changes recorded'}</div>
+        <div class="notif-time">${fmtDateTime(l.timestamp)}</div>
+      </div>
+    </div>`).join('')
+    : '<div class="empty-state" style="padding:32px"><div class="empty-state-icon">📋</div><p>No recent activity</p></div>';
+
+  // Render charts (after DOM settles)
+  setTimeout(() => initDashboardCharts(prcs, s), 100);
+}
+
+function initDashboardCharts(prcs, s) {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const grid   = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const text   = isDark ? '#94a3b8' : '#475569';
+  Chart.defaults.color = text;
+  Chart.defaults.font.family = 'Inter, sans-serif';
+
+  // Status Pie
+  const statusLabels = Object.values(STATUS);
+  const statusData   = statusLabels.map(st => s[st]||0);
+  const statusColors = ['#dc2626','#9333ea','#0284c7','#475569','#ea580c','#8b5cf6','#06b6d4','#10b981','#d97706'];
+  charts['status-pie'] = new Chart(document.getElementById('chart-status-pie'), {
+    type: 'doughnut',
+    data: { labels: statusLabels, datasets: [{ data: statusData, backgroundColor: statusColors, borderWidth: 2, borderColor: isDark?'#111827':'#fff', hoverOffset: 8 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins: { legend: { position:'right', labels:{boxWidth:12,padding:16,font:{size:11}} }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.raw} (${prcs.length ? Math.round(ctx.raw/prcs.length*100) : 0}%)` } } }, cutout:'65%' }
+  });
+
+  // Monthly Trend
+  const monthly = monthlyDistribution(prcs);
+  charts['monthly'] = new Chart(document.getElementById('chart-monthly-trend'), {
+    type: 'line',
+    data: {
+      labels: monthly.map(([m])=>{ const d=new Date(m+'-01'); return d.toLocaleDateString('en',{month:'short',year:'2-digit'}); }),
+      datasets: [{ label:'PRCs Created', data: monthly.map(([,c])=>c), fill:true,
+        backgroundColor:'rgba(59,130,246,0.12)', borderColor:'#3b82f6', borderWidth:2,
+        pointBackgroundColor:'#3b82f6', pointRadius:4, tension:0.4 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales: { x:{grid:{color:grid}}, y:{grid:{color:grid},beginAtZero:true} } }
+  });
+
+  // Procurement Funnel
+  const funnelData = [
+    { label:'Imported',   value: prcs.length },
+    { label:'Allocated',  value: prcs.filter(p=>p.allocationNumber).length },
+    { label:'RFQ Issued', value: prcs.filter(p=>p.rfqNumber).length },
+    { label:'Offers In',  value: prcs.filter(p=>p.offersReceived).length },
+    { label:'TCD Done',   value: prcs.filter(p=>p.tcdNumber).length },
+    { label:'PO Issued',  value: prcs.filter(p=>p.poNumber).length }
+  ];
+  charts['funnel'] = new Chart(document.getElementById('chart-funnel'), {
+    type:'bar',
+    data: { labels:funnelData.map(d=>d.label), datasets:[{ data:funnelData.map(d=>d.value),
+      backgroundColor:['#3b82f6','#06b6d4','#8b5cf6','#f59e0b','#10b981','#059669'],
+      borderRadius:6, borderSkipped:false }] },
+    options: { responsive:true, maintainAspectRatio:false, indexAxis:'y',
+      plugins:{legend:{display:false}}, scales:{ x:{grid:{color:grid}}, y:{grid:{display:false}} } }
+  });
+
+  // Vendor Distribution
+  const vendorDist = {};
+  prcs.forEach(p => { if(p.vendorName) vendorDist[p.vendorName]=(vendorDist[p.vendorName]||0)+1; });
+  const vendorEntries = Object.entries(vendorDist).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  charts['vendor'] = new Chart(document.getElementById('chart-vendor'), {
+    type:'doughnut',
+    data: { labels:vendorEntries.map(([v])=>v), datasets:[{ data:vendorEntries.map(([,c])=>c),
+      backgroundColor:['#3b82f6','#8b5cf6','#10b981','#f59e0b','#ef4444'],
+      borderWidth:2, borderColor:isDark?'#111827':'#fff' }] },
+    options:{ responsive:true,maintainAspectRatio:false, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}} }
+  });
+
+  // Department Breakdown
+  const deptDist = groupBy(prcs, 'department');
+  const deptEntries = Object.entries(deptDist).sort((a,b)=>b[1].length-a[1].length).slice(0,6);
+  charts['dept'] = new Chart(document.getElementById('chart-dept'), {
+    type:'bar',
+    data: { labels:deptEntries.map(([d])=>d), datasets:[{ label:'PRCs',
+      data:deptEntries.map(([,arr])=>arr.length),
+      backgroundColor:'rgba(139,92,246,0.7)', borderColor:'#8b5cf6', borderWidth:1, borderRadius:4 }] },
+    options:{ responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:grid},beginAtZero:true} } }
+  });
+
+  // Ageing
+  const ageBuckets = {'0-3 days':0,'4-7 days':0,'8-14 days':0,'15-30 days':0,'>30 days':0};
+  prcs.filter(p=>!['Process Completed','Wrong PRC','PR Not Approved'].includes(p.status)).forEach(p=>{
+    const age = calcAgeDays(p.allocationDate||p.createdAt);
+    if(age<=3) ageBuckets['0-3 days']++;
+    else if(age<=7) ageBuckets['4-7 days']++;
+    else if(age<=14) ageBuckets['8-14 days']++;
+    else if(age<=30) ageBuckets['15-30 days']++;
+    else ageBuckets['>30 days']++;
+  });
+  charts['ageing'] = new Chart(document.getElementById('chart-ageing'), {
+    type:'bar',
+    data:{ labels:Object.keys(ageBuckets), datasets:[{ data:Object.values(ageBuckets),
+      backgroundColor:['#10b981','#f59e0b','#ea580c','#ef4444','#991b1b'], borderRadius:4 }] },
+    options:{ responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{grid:{display:false}}, y:{grid:{color:grid},beginAtZero:true} } }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: PRC LIST
+// ═══════════════════════════════════════════════════════════
+function renderPRCList(container) {
+  const state = getState();
+  const depts = uniqueBy(state.prcs, 'department');
+  const statusOpts = Object.values(STATUS);
+
+  container.innerHTML = `
+<div style="display:flex;flex-direction:column;height:calc(100vh - 90px);min-height:480px;overflow:hidden">
+  <!-- PAGE HEADER -->
+  <div class="page-header" style="margin-bottom:10px;flex-shrink:0">
+    <div>
+      <h1 class="page-title">PRC & Material Records</h1>
+      <p class="page-subtitle" id="prc-list-count">Loading…</p>
+    </div>
+    <div class="flex gap-3 flex-wrap items-center">
+      <div style="display:flex;gap:4px;background:var(--color-surface-2);padding:4px;border-radius:8px;border:1px solid var(--color-border)">
+        <button class="btn ${state.viewLevel==='prc'?'btn-primary':'btn-ghost'} btn-sm" onclick="switchViewLevel('prc')">📦 PRC Level View</button>
+        <button class="btn ${state.viewLevel==='material'?'btn-primary':'btn-ghost'} btn-sm" onclick="switchViewLevel('material')">🔩 Material Item Level View</button>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="exportCSV()" title="Export CSV">📄 CSV</button>
+      <button class="btn btn-secondary btn-sm" onclick="exportExcel()" title="Export Excel">📊 Excel</button>
+      <button class="btn btn-secondary btn-sm" onclick="exportPDF()" title="Export PDF">🖨️ PDF</button>
+      <button class="btn btn-primary btn-sm" onclick="navigate('import')">+ Import</button>
+    </div>
+  </div>
+
+  <!-- FILTERS BAR -->
+  <div class="card" style="margin-bottom:10px;padding:10px 16px;flex-shrink:0">
+    <div class="flex gap-3 flex-wrap items-center">
+      <select class="form-control" style="width:160px" id="filter-status" onchange="applyFilters()">
+        <option value="">All Statuses</option>
+        ${statusOpts.map(s=>`<option>${s}</option>`).join('')}
+      </select>
+      <select class="form-control" style="width:160px" id="filter-dept" onchange="applyFilters()">
+        <option value="">All Departments</option>
+        ${depts.map(d=>`<option>${d}</option>`).join('')}
+      </select>
+      <select class="form-control" style="width:140px" id="filter-priority" onchange="applyFilters()">
+        <option value="">All Priorities</option>
+        <option>Critical</option><option>High</option><option>Medium</option><option>Low</option>
+      </select>
+      <input type="date" class="form-control" style="width:150px" id="filter-date-from" onchange="applyFilters()" placeholder="From date"/>
+      <input type="date" class="form-control" style="width:150px" id="filter-date-to"   onchange="applyFilters()" placeholder="To date"/>
+      <button class="btn btn-ghost btn-sm" onclick="clearFilters()">✕ Clear</button>
+      <div style="margin-left:auto" class="flex gap-2 items-center">
+        <span class="text-sm text-secondary">Rows:</span>
+        <select class="form-control" style="width:80px" id="page-size-select" onchange="changePageSize(this.value)">
+          <option value="10">10</option>
+          <option value="25" selected>25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLE CONTAINER (FIT TO VIEWPORT WITH VERTICAL & HORIZONTAL SCROLLING) -->
+  <div class="card" style="padding:0;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden">
+    <div class="table-wrapper" id="prc-table-wrapper" style="flex:1;min-height:0;overflow:auto">
+      <table class="data-table" id="prc-table">
+        <thead>
+          <tr>
+            <th onclick="sortTable('prNumber')">PR Number <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('department')">Department <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('priority')">Priority <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('status')">Status <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('allocationDate')">Allocated <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('rfqNumber')">RFQ <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('tcdNumber')">TCD <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('poNumber')">PO Number <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('vendorName')">Vendor <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('createdAt')">Age <span class="sort-icon">↕</span></th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="prc-table-body">
+          <tr><td colspan="11" style="text-align:center;padding:40px"><div class="loading-spinner" style="margin:auto"></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- ALWAYS VISIBLE RECORD NAVIGATOR / PAGINATION -->
+    <div class="pagination" id="prc-pagination" style="flex-shrink:0;background:var(--color-surface);border-top:1px solid var(--color-border);padding:10px 16px;z-index:5"></div>
+  </div>
+</div>`;
+
+  renderPRCTable();
+}
+
+window.switchViewLevel = function(level) {
+  setState({ viewLevel: level, currentPage_num: 1 });
+  renderPRCList(document.getElementById('page-content'));
+};
+
+window.applyFilters = function() {
+  setState({
+    filters: {
+      status:   document.getElementById('filter-status')?.value   || '',
+      department:document.getElementById('filter-dept')?.value    || '',
+      priority:  document.getElementById('filter-priority')?.value || '',
+      dateFrom:  document.getElementById('filter-date-from')?.value|| '',
+      dateTo:    document.getElementById('filter-date-to')?.value  || ''
+    },
+    currentPage_num: 1
+  });
+  renderPRCTable();
+};
+
+window.clearFilters = function() {
+  ['filter-status','filter-dept','filter-priority','filter-date-from','filter-date-to'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.value = '';
+  });
+  setState({ filters:{}, currentPage_num:1 });
+  renderPRCTable();
+};
+
+window.sortTable = function(field) {
+  const state = getState();
+  const dir = state.sortField === field && state.sortDir === 'asc' ? 'desc' : 'asc';
+  setState({ sortField: field, sortDir: dir });
+  renderPRCTable();
+};
+
+window.changePageSize = function(size) {
+  setState({ pageSize: parseInt(size), currentPage_num: 1 });
+  renderPRCTable();
+};
+
+function renderPRCTable() {
+  const state = getState();
+  const countEl = document.getElementById('prc-list-count');
+
+  if (state.viewLevel === 'material') {
+    const { total, items, pages, page } = getPaginatedMaterials();
+    if(countEl) countEl.textContent = `${fmtNum(total)} material item records found`;
+
+    const thead = document.querySelector('#prc-table thead');
+    if (thead) {
+      thead.innerHTML = `<tr>
+        <th onclick="sortTable('prNumber')">PR Number <span class="sort-icon">↕</span></th>
+        <th>Sl</th>
+        <th onclick="sortTable('matCode')">Mat Code <span class="sort-icon">↕</span></th>
+        <th onclick="sortTable('description')">Description <span class="sort-icon">↕</span></th>
+        <th>Req Qty</th>
+        <th>Proc Qty</th>
+        <th>Pending Qty</th>
+        <th>Closed Qty</th>
+        <th onclick="sortTable('status')">Status <span class="sort-icon">↕</span></th>
+        <th>Allocation</th>
+        <th>RFQ</th>
+        <th>TCD</th>
+        <th>PO Info</th>
+        <th>Delivery Date</th>
+        <th>Actions</th>
+      </tr>`;
+    }
+
+    const tbody = document.getElementById('prc-table-body');
+    if (!tbody) return;
+
+    if (!items.length) {
+      tbody.innerHTML = `<tr><td colspan="15"><div class="empty-state" style="padding:48px">
+        <div class="empty-state-icon">🔍</div>
+        <div class="empty-state-title">No material items found</div>
+        <div class="empty-state-text">Try adjusting your filters or search query.</div>
+      </div></td></tr>`;
+    } else {
+      const q = state.searchQuery;
+      tbody.innerHTML = items.map(m => {
+        const tot = parseFloat(m.quantity) || 0;
+        const proc = parseFloat(m.processedQty) || 0;
+        const cls = parseFloat(m.closedQty) || 0;
+        const pend = Math.max(0, tot - proc - cls);
+
+        return `<tr onclick="openPRCDetail('${m.prcId}')" style="cursor:pointer">
+          <td><span class="font-mono text-sm font-semibold">${highlight(m.prNumber,q)}</span></td>
+          <td>${m.serialNumber||'—'}</td>
+          <td><span class="font-mono text-sm font-semibold">${highlight(m.matCode,q)}</span></td>
+          <td><strong>${highlight(m.description,q)}</strong></td>
+          <td class="font-semibold">${tot} ${m.unit||''}</td>
+          <td><span class="text-brand font-semibold">${proc}</span></td>
+          <td><span class="${pend>0?'text-warning font-semibold':'text-secondary'}">${pend}</span></td>
+          <td><span class="${cls>0?'text-danger':'text-secondary'}">${cls}</span></td>
+          <td><span class="chip ${getStatusChipClass(m.status)}"><span class="chip-dot"></span>${m.status}</span></td>
+          <td>${m.allocationNumber ? `<strong>${m.allocationNumber}</strong><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.allocationDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${m.rfqNumber ? `<strong>${highlight(m.rfqNumber,q)}</strong><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.rfqDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${m.tcdNumber ? `<strong>${m.tcdNumber}</strong><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.tcdDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${m.poNumber ? `<strong class="text-brand">${highlight(m.poNumber,q)}</strong><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.poDate)}${m.vendorName||m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${fmtDate(m.deliveryDate||m.deliveryEndDate)}</td>
+          <td onclick="event.stopPropagation()">
+            <button class="btn btn-primary btn-xs" style="padding:3px 8px;font-size:11px" onclick="openEditMaterialWorkflow('${m.prcId}','${m.id}')" title="Edit Material Item Record">✏️ Edit Material</button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Pagination
+    const paginEl = document.getElementById('prc-pagination');
+    if(paginEl) {
+      let btns = '';
+      const start = Math.max(1, page-2);
+      const end   = Math.min(pages, page+2);
+      btns += `<button class="page-btn" onclick="goPage(${page-1})" ${page<=1?'disabled':''}>‹</button>`;
+      if(start>1) btns += `<button class="page-btn" onclick="goPage(1)">1</button>`;
+      if(start>2) btns += `<span style="padding:0 8px">…</span>`;
+      for(let i=start;i<=end;i++) btns += `<button class="page-btn ${i===page?'active':''}" onclick="goPage(${i})">${i}</button>`;
+      if(end<pages-1) btns += `<span style="padding:0 8px">…</span>`;
+      if(end<pages) btns += `<button class="page-btn" onclick="goPage(${pages})">${pages}</button>`;
+      btns += `<button class="page-btn" onclick="goPage(${page+1})" ${page>=pages?'disabled':''}>›</button>`;
+      paginEl.innerHTML = btns + `<span class="page-info">Showing ${(page-1)*state.pageSize+1}–${Math.min(page*state.pageSize,total)} of ${fmtNum(total)} materials</span>`;
+    }
+
+  } else {
+    const { total, items, pages, page } = getPaginatedPRCs();
+    if(countEl) countEl.textContent = `${fmtNum(total)} PRC records found`;
+
+    const thead = document.querySelector('#prc-table thead');
+    if (thead) {
+      thead.innerHTML = `<tr>
+        <th onclick="sortTable('prNumber')">PR Number <span class="sort-icon">↕</span></th>
+        <th onclick="sortTable('department')">Department <span class="sort-icon">↕</span></th>
+        <th onclick="sortTable('priority')">Priority <span class="sort-icon">↕</span></th>
+        <th onclick="sortTable('status')">Status <span class="sort-icon">↕</span></th>
+        <th onclick="sortTable('allocationDate')">Allocated <span class="sort-icon">↕</span></th>
+        <th onclick="sortTable('rfqNumber')">RFQ <span class="sort-icon">↕</span></th>
+        <th onclick="sortTable('tcdNumber')">TCD <span class="sort-icon">↕</span></th>
+        <th onclick="sortTable('poNumber')">PO Number <span class="sort-icon">↕</span></th>
+        <th onclick="sortTable('vendorName')">Vendor <span class="sort-icon">↕</span></th>
+        <th onclick="sortTable('createdAt')">Age <span class="sort-icon">↕</span></th>
+        <th>Actions</th>
+      </tr>`;
+    }
+
+    const tbody = document.getElementById('prc-table-body');
+    if(!tbody) return;
+
+    if(!items.length) {
+      tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state" style="padding:48px">
+        <div class="empty-state-icon">🔍</div>
+        <div class="empty-state-title">No PRCs found</div>
+        <div class="empty-state-text">Try adjusting your filters or search query.</div>
+      </div></td></tr>`;
+    } else {
+      const q = state.searchQuery;
+      tbody.innerHTML = items.map(p => {
+        const age = getPRCAge(p);
+        const ageClass = getAgeBadgeClass(age, 7);
+        return `<tr onclick="openPRCDetail('${p.id}')" style="cursor:pointer">
+          <td><span class="font-mono text-sm font-semibold">${highlight(p.prNumber,q)}</span></td>
+          <td>${highlight(p.department,q)}</td>
+          <td><span class="chip ${priorityChipClass(p.priority)}">${p.priority}</span></td>
+          <td><span class="chip ${getStatusChipClass(p.status)}"><span class="chip-dot"></span>${p.status}</span></td>
+          <td>${fmtDate(p.allocationDate)}<br><span style="font-size:11px;color:var(--color-text-tertiary)">${p.allocationNumber||'—'}</span></td>
+          <td>${p.rfqNumber ? `<span class="text-sm font-mono">${highlight(p.rfqNumber,q)}</span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.rfqDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${p.tcdNumber ? `<span class="text-sm font-mono">${p.tcdNumber}</span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.tcdDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${p.poNumber  ? `<span class="text-sm font-mono font-semibold text-brand">${highlight(p.poNumber,q)}</span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.poDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${p.vendorName ? `<span class="text-sm">${highlight(p.vendorName,q)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td><span class="${ageClass} text-sm">${age}d</span></td>
+          <td onclick="event.stopPropagation()">
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="openPRCDetail('${p.id}')" title="View Details">👁️</button>
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="openEditPRC('${p.id}')" title="Edit">✏️</button>
+            <button class="btn btn-ghost btn-sm btn-icon" onclick="handleDeletePRC('${p.id}')" title="Delete PRC" style="color:var(--color-danger)">🗑️</button>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Pagination
+    const paginEl = document.getElementById('prc-pagination');
+    if(paginEl) {
+      let btns = '';
+      const start = Math.max(1, page-2);
+      const end   = Math.min(pages, page+2);
+      btns += `<button class="page-btn" onclick="goPage(${page-1})" ${page<=1?'disabled':''}>‹</button>`;
+      if(start>1) btns += `<button class="page-btn" onclick="goPage(1)">1</button>`;
+      if(start>2) btns += `<span style="padding:0 8px">…</span>`;
+      for(let i=start;i<=end;i++) btns += `<button class="page-btn ${i===page?'active':''}" onclick="goPage(${i})">${i}</button>`;
+      if(end<pages-1) btns += `<span style="padding:0 8px">…</span>`;
+      if(end<pages) btns += `<button class="page-btn" onclick="goPage(${pages})">${pages}</button>`;
+      btns += `<button class="page-btn" onclick="goPage(${page+1})" ${page>=pages?'disabled':''}>›</button>`;
+      paginEl.innerHTML = btns + `<span class="page-info">Showing ${(page-1)*state.pageSize+1}–${Math.min(page*state.pageSize,total)} of ${fmtNum(total)}</span>`;
+    }
+  }
+}
+
+window.goPage = function(p) {
+  const state = getState();
+  const { pages } = state.viewLevel === 'material' ? getPaginatedMaterials() : getPaginatedPRCs();
+  if(p<1||p>pages) return;
+  setState({ currentPage_num: p });
+  renderPRCTable();
+};
+
+// ═══════════════════════════════════════════════════════════
+// PRC DETAIL MODAL
+// ═══════════════════════════════════════════════════════════
+window.openPRCDetail = function(id) {
+  const prc = getPRCById(id);
+  if(!prc) return;
+
+  document.getElementById('prc-detail-title').textContent = prc.prNumber;
+  document.getElementById('prc-detail-meta').innerHTML =
+    `${prc.department} · ${prc.job||'—'} · Engineer: ${prc.engineer||'—'} · Created: ${fmtDate(prc.createdAt)}`;
+  document.getElementById('prc-detail-status-chip').innerHTML =
+    `<span class="chip ${getStatusChipClass(prc.status)}">${getStatusIcon(prc.status)} ${prc.status}</span>`;
+
+  const timeline = buildTimeline(prc);
+  const mats     = prc.materials||[];
+
+  document.getElementById('prc-detail-body').innerHTML = `
+<div style="display:grid;grid-template-columns:300px 1fr;height:100%">
+  <!-- LEFT: Timeline + flags -->
+  <div style="border-right:1px solid var(--color-border);padding:24px;background:var(--color-surface-2)">
+    <h4 style="margin-bottom:16px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-secondary)">Procurement Timeline</h4>
+    <div class="timeline">
+      ${timeline.map(t=>`
+        <div class="timeline-item">
+          <div class="timeline-dot ${t.done?'done':''}">${t.done?'✓':t.icon}</div>
+          <div class="timeline-content">
+            <div class="timeline-title">${t.label}</div>
+            <div class="timeline-meta">${t.done?(fmtDate(t.date)+' · '+(t.user||'—')):'Not yet'}</div>
+          </div>
+        </div>`).join('')}
+    </div>
+
+    <!-- Override Flags -->
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--color-border)">
+      <h4 style="margin-bottom:12px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-secondary)">Override Flags</h4>
+      ${renderToggle('Wrong PRC', prc.isWrongPRC, `setFlag('${id}','isWrongPRC',this.checked)`)}
+      ${renderToggle('PR Not Approved', prc.isPRNotApproved, `setFlag('${id}','isPRNotApproved',this.checked)`)}
+      ${renderToggle('Future PRC', prc.isFuturePRC, `setFlag('${id}','isFuturePRC',this.checked)`)}
+      ${renderToggle('System Issue', prc.isSystemIssue, `setFlag('${id}','isSystemIssue',this.checked)`)}
+      <div style="margin-top:8px;font-size:13px;font-weight:600;color:var(--color-text-secondary);margin-bottom:6px">Inputs Required From:</div>
+      ${renderToggle('Stores',      prc.inputFromStores,       `setFlag('${id}','inputFromStores',this.checked)`)}
+      ${renderToggle('Engineering', prc.inputFromEngineering,  `setFlag('${id}','inputFromEngineering',this.checked)`)}
+      ${renderToggle('End User',    prc.inputFromEndUser,      `setFlag('${id}','inputFromEndUser',this.checked)`)}
+      ${renderToggle('Vendor',      prc.inputFromVendor,       `setFlag('${id}','inputFromVendor',this.checked)`)}
+    </div>
+  </div>
+
+  <!-- RIGHT: Tabs -->
+  <div style="display:flex;flex-direction:column;overflow:hidden">
+    <div class="tabs" style="padding:0 24px;flex-shrink:0">
+      <button class="tab-btn active" onclick="switchPRCTab(this,'tab-procurement')">Procurement Info</button>
+      <button class="tab-btn" onclick="switchPRCTab(this,'tab-materials')">Materials (${mats.length})</button>
+      <button class="tab-btn" onclick="switchPRCTab(this,'tab-attachments')">Attachments</button>
+      <button class="tab-btn" onclick="switchPRCTab(this,'tab-history')">History</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:24px">
+      <!-- TAB: Procurement -->
+      <div id="tab-procurement" class="tab-panel active">
+        <div style="margin-bottom:16px;padding:10px 14px;background:var(--color-surface-2);border-radius:8px;border:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--color-primary);margin:0">
+            <input type="checkbox" id="cascade-to-mats-${id}" checked style="accent-color:var(--color-primary)"/>
+            ⚡ Automatically apply workflow field updates to all Material Line Items under this PRC
+          </label>
+        </div>
+        <h4 style="margin-bottom:12px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-primary)">Workflow & Tracking Info</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+          ${renderProcurementField('Allocation Number', prc.allocationNumber, `updateField('${id}','allocationNumber',this.value)`)}
+          ${renderDateField('Allocation Date', prc.allocationDate, `updateField('${id}','allocationDate',this.value)`)}
+          ${renderProcurementField('RFQ Number', prc.rfqNumber, `updateField('${id}','rfqNumber',this.value)`)}
+          ${renderDateField('RFQ Date', prc.rfqDate, `updateField('${id}','rfqDate',this.value)`)}
+          ${renderProcurementField('TCD Number', prc.tcdNumber, `updateField('${id}','tcdNumber',this.value)`)}
+          ${renderDateField('TCD Date', prc.tcdDate, `updateField('${id}','tcdDate',this.value)`)}
+          ${renderProcurementField('PO Number', prc.poNumber, `updateField('${id}','poNumber',this.value)`)}
+          ${renderDateField('PO Date', prc.poDate, `updateField('${id}','poDate',this.value)`)}
+          ${renderProcurementField('Vendor Name', prc.vendorName, `updateField('${id}','vendorName',this.value)`)}
+          ${renderDateField('Expected Completion', prc.expectedCompletion, `updateField('${id}','expectedCompletion',this.value)`)}
+        </div>
+
+        <h4 style="margin-bottom:12px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-primary)">Enterprise Requisition Metadata (Excel Import)</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;background:var(--color-surface-1);padding:16px;border-radius:8px;margin-bottom:16px;font-size:13px">
+          <div><strong>Job Code / Desc:</strong> ${prc.jobCode || prc.job || '—'} ${prc.jobDesc ? ' (' + prc.jobDesc + ')' : ''}</div>
+          <div><strong>From Job Code:</strong> ${prc.fromJobCode || '—'}</div>
+          <div><strong>Warehouse:</strong> ${prc.warehouseCode ? prc.warehouseCode + ' - ' + (prc.warehouseDesc||'') : (prc.warehouseDesc || '—')}</div>
+          <div><strong>PR Type:</strong> ${prc.prType || '—'}</div>
+          <div><strong>PR Status:</strong> ${prc.prStatus || prc.status || '—'}</div>
+          <div><strong>CP Code / Desc:</strong> ${prc.cpCode ? prc.cpCode + ' (' + (prc.cpDesc||'') + ')' : '—'}</div>
+          <div><strong>WBS Code / Desc:</strong> ${prc.wbsCode ? prc.wbsCode + ' (' + (prc.wbsDesc||'') + ')' : '—'}</div>
+          <div><strong>Budget Reference:</strong> ${prc.budgetReference || '—'}</div>
+          <div><strong>Currency:</strong> ${prc.currencyDesc || 'USD'}</div>
+          <div><strong>Buyer Name:</strong> ${prc.buyerName || prc.allocatedBy || '—'}</div>
+          <div><strong>Category:</strong> ${prc.categoryDesc || prc.category || '—'}</div>
+          <div><strong>BU / SBU:</strong> ${prc.bu || '—'} / ${prc.sbu || '—'} (${prc.icDesc || '—'})</div>
+          <div><strong>PR GR Number:</strong> ${prc.prGrNumber || '—'}</div>
+          <div><strong>Created By / Date:</strong> ${prc.createdBy || prc.requestedBy || '—'} (${fmtDate(prc.createdOn || prc.createdAt)})</div>
+          <div><strong>Authorized By / Date:</strong> ${prc.authorizedBy || '—'} (${fmtDate(prc.authorizedOn)})</div>
+        </div>
+
+        <div style="grid-column:1/-1;margin-top:12px">
+          <label class="form-label">Remarks</label>
+          <textarea class="form-control" rows="3" onchange="updateField('${id}','remarks',this.value)">${prc.remarks||''}</textarea>
+        </div>
+        <div style="margin-top:8px">
+          <label class="form-label">Offers Received</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+            <input type="checkbox" ${prc.offersReceived?'checked':''} onchange="setFlag('${id}','offersReceived',this.checked)"/>
+            Vendor quotations received
+          </label>
+        </div>
+        <div style="margin-top:8px">
+          <label class="form-label">TCD Approved</label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
+            <input type="checkbox" ${prc.tcdApproved?'checked':''} onchange="setFlag('${id}','tcdApproved',this.checked)"/>
+            TCD has been approved
+          </label>
+        </div>
+      </div>
+
+      <!-- TAB: Materials -->
+      <div id="tab-materials" class="tab-panel">
+        ${mats.length ? `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+          <div style="font-size:13px;font-weight:700;color:var(--color-primary)">
+            📦 Material Line Items (${mats.length}) — Workflow tracking updates occur at the Material level
+          </div>
+          <div class="flex gap-2">
+            <button class="btn btn-primary btn-sm" onclick="closePRCDetail();showCreateAllocationModal('${id}')">📦 Create Allocation Document</button>
+            <button class="btn btn-secondary btn-sm" onclick="openBulkMaterialEditModal('${id}')">⚡ Bulk Update Workflow</button>
+          </div>
+        </div>
+        <div class="table-wrapper" style="overflow:auto">
+          <table class="data-table" style="font-size:12px;white-space:nowrap">
+            <thead><tr>
+              <th style="width:30px"><input type="checkbox" id="mat-select-all-${id}" onchange="toggleSelectAllMats('${id}',this.checked)"/></th>
+              <th>Sl</th><th>Mat Code</th><th>Description</th><th>Req Qty</th><th>Proc Qty</th><th>Pending Qty</th><th>Closed Qty</th><th>Status</th>
+              <th>Allocation</th><th>RFQ</th><th>TCD</th><th>PO Info</th><th>Delivery Date</th>
+              <th>Action</th>
+            </tr></thead>
+            <tbody>${mats.map(m=>`
+              <tr>
+                <td><input type="checkbox" class="mat-checkbox-${id}" value="${m.id}"/></td>
+                <td>${m.serialNumber||'—'}</td>
+                <td class="font-mono text-sm">${m.matCode}</td>
+                <td><strong>${m.description}</strong></td>
+                <td class="font-semibold">${m.quantity} ${m.unit||''}</td>
+                <td class="text-brand font-semibold">${m.processedQty||0}</td>
+                <td class="${(m.pendingQty!==undefined?m.pendingQty:Math.max(0,(m.quantity||0)-(m.processedQty||0)-(m.closedQty||0)))>0?'text-warning font-semibold':''}">${m.pendingQty!==undefined?m.pendingQty:Math.max(0,(m.quantity||0)-(m.processedQty||0)-(m.closedQty||0))}</td>
+                <td class="${(m.closedQty||0)>0?'text-danger':''}">${m.closedQty||0}</td>
+                <td><span class="chip ${getStatusChipClass(m.status)}">${getStatusIcon(m.status)} ${m.status}</span></td>
+                <td>${m.allocationNumber ? `<strong>${m.allocationNumber}</strong> <span class="text-xs text-secondary">(${fmtDate(m.allocationDate)}${m.buyerName ? ' · ' + m.buyerName : ''})</span>` : '—'}</td>
+                <td>${m.rfqNumber ? `<strong>${m.rfqNumber}</strong> <span class="text-xs text-secondary">(${fmtDate(m.rfqDate)}${m.offersReceived ? ' · Offers In' : ''})</span>` : '—'}</td>
+                <td>${m.tcdNumber ? `<strong>${m.tcdNumber}</strong> <span class="text-xs text-secondary">(${fmtDate(m.tcdDate)}${m.tcdApproved ? ' · Approved' : ''})</span>` : '—'}</td>
+                <td>${m.poNumber ? `<strong>${m.poNumber}</strong> <span class="text-xs text-secondary">(${fmtDate(m.poDate)}${m.vendorName || m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''})</span>` : '—'}</td>
+                <td>${fmtDate(m.deliveryEndDate || m.deliveryDate)}</td>
+                <td>
+                  <button class="btn btn-primary btn-xs" style="padding:3px 8px;font-size:11px" onclick="openEditMaterialWorkflow('${id}','${m.id}')">✏️ Edit Material</button>
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>` : `<div class="empty-state"><div class="empty-state-icon">🔩</div><div class="empty-state-title">No Materials</div></div>`}
+      </div>
+
+      <!-- TAB: Attachments -->
+      <div id="tab-attachments" class="tab-panel">
+        <div class="upload-zone" style="padding:48px 24px;margin-bottom:16px" onclick="document.getElementById('attach-upload-${id}').click()">
+          <input type="file" id="attach-upload-${id}" multiple style="display:none" onchange="handleAttachUpload('${id}',this)"/>
+          <div class="upload-zone-icon">📎</div>
+          <div class="upload-zone-title">Drop files here or click to upload</div>
+          <div class="upload-zone-sub">Supports PDF, images, Word, Excel — max 25MB per file</div>
+        </div>
+        <div class="empty-state" style="padding:24px"><div class="empty-state-icon">📂</div><div class="empty-state-title">No attachments yet</div></div>
+      </div>
+
+      <!-- TAB: History -->
+      <div id="tab-history" class="tab-panel">
+        <div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-title">No history recorded</div><div class="empty-state-text">Changes to this PRC will appear here.</div></div>
+      </div>
+    </div>
+  </div>
+</div>`;
+
+  document.getElementById('prc-detail-modal').classList.add('open');
+};
+
+window.toggleSelectAllMats = function(prcId, checked) {
+  document.querySelectorAll(`.mat-checkbox-${prcId}`).forEach(cb => cb.checked = checked);
+};
+
+window.openEditMaterialWorkflow = function(prcId, materialId) {
+  const prc = getPRCById(prcId);
+  if (!prc) return;
+  const mat = (prc.materials || []).find(m => m.id === materialId);
+  if (!mat) return;
+
+  const totalQty = parseFloat(mat.quantity) || 0;
+  const procQty  = parseFloat(mat.processedQty) || 0;
+  const clsQty   = parseFloat(mat.closedQty) || 0;
+  const pendQty  = Math.max(0, totalQty - procQty - clsQty);
+
+  const modalId = 'mat-edit-modal-wrapper';
+  let modalEl = document.getElementById(modalId);
+  if (modalEl) modalEl.remove();
+
+  modalEl = document.createElement('div');
+  modalEl.id = modalId;
+  modalEl.className = 'modal-overlay open';
+  modalEl.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:780px">
+      <div class="modal-header">
+        <h3 class="modal-title">✏️ Edit Material Record — ${mat.matCode}</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+      </div>
+      <div class="modal-body" style="padding:20px">
+        <div style="background:var(--color-surface-2);padding:12px;border-radius:8px;margin-bottom:16px;font-size:13px">
+          <strong>Description:</strong> ${mat.description}<br>
+          <strong>PR Number:</strong> ${prc.prNumber} | <strong>Warehouse:</strong> ${mat.warehouseDesc || mat.warehouseCode || '—'}
+        </div>
+
+        <h4 style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin-bottom:8px">1. Quantity & Partial Processing</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:10px;background:var(--color-surface-1);padding:12px;border-radius:8px">
+          <div><label class="form-label">Total Requested Qty</label><input type="number" id="mat-qty-total" class="form-control font-semibold" value="${totalQty}" oninput="recalcMatModalQty()"/></div>
+          <div><label class="form-label">Processed Qty (PO)</label><input type="number" id="mat-qty-processed" class="form-control font-semibold text-brand" value="${procQty}" placeholder="0" oninput="recalcMatModalQty()"/></div>
+          <div><label class="form-label">Closed Qty</label><input type="number" id="mat-qty-closed" class="form-control" value="${clsQty}" placeholder="0" oninput="recalcMatModalQty()"/></div>
+          <div><label class="form-label">Pending Balance Qty</label><input type="number" id="mat-qty-pending" class="form-control font-mono font-bold" value="${pendQty}" readonly style="background:var(--color-surface-2)"/></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
+          <button class="btn btn-secondary btn-xs" type="button" onclick="closeMatModalBalance()">⚡ Close Remaining Balance Qty</button>
+          <button class="btn btn-ghost btn-xs" type="button" onclick="keepMatModalBalancePending()">🔄 Keep Balance Pending</button>
+        </div>
+
+        <h4 style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin-bottom:8px">2. Allocation</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+          <div><label class="form-label">Allocation Number</label><input type="text" id="mat-alloc-num" class="form-control" value="${mat.allocationNumber||''}"/></div>
+          <div><label class="form-label">Allocation Date</label><input type="date" id="mat-alloc-date" class="form-control" value="${mat.allocationDate||''}"/></div>
+          <div><label class="form-label">Assigned Buyer</label><input type="text" id="mat-buyer" class="form-control" value="${mat.buyerName||mat.allocatedBy||''}"/></div>
+        </div>
+
+        <h4 style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin-bottom:8px">3. Request For Quotation (RFQ)</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+          <div><label class="form-label">RFQ Number</label><input type="text" id="mat-rfq-num" class="form-control" value="${mat.rfqNumber||''}"/></div>
+          <div><label class="form-label">RFQ Date</label><input type="date" id="mat-rfq-date" class="form-control" value="${mat.rfqDate||''}"/></div>
+          <div style="display:flex;align-items:center;padding-top:20px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="mat-offers-rec" ${mat.offersReceived?'checked':''}/> Offers Received
+            </label>
+          </div>
+        </div>
+
+        <h4 style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin-bottom:8px">4. Technical & Commercial Decision (TCD)</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+          <div><label class="form-label">TCD Number</label><input type="text" id="mat-tcd-num" class="form-control" value="${mat.tcdNumber||''}"/></div>
+          <div><label class="form-label">TCD Date</label><input type="date" id="mat-tcd-date" class="form-control" value="${mat.tcdDate||''}"/></div>
+          <div style="display:flex;align-items:center;padding-top:20px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="mat-tcd-app" ${mat.tcdApproved?'checked':''}/> TCD Approved
+            </label>
+          </div>
+        </div>
+
+        <h4 style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin-bottom:8px">5. Purchase Order (PO)</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+          <div><label class="form-label">PO Number</label><input type="text" id="mat-po-num" class="form-control" value="${mat.poNumber||''}"/></div>
+          <div><label class="form-label">PO Date</label><input type="date" id="mat-po-date" class="form-control" value="${mat.poDate||''}"/></div>
+          <div><label class="form-label">Vendor Name</label><input type="text" id="mat-vendor" class="form-control" value="${mat.vendorName||mat.vendor||''}"/></div>
+          <div><label class="form-label">Delivery Date</label><input type="date" id="mat-del-date" class="form-control" value="${mat.deliveryDate||mat.deliveryEndDate||''}"/></div>
+        </div>
+
+        <div>
+          <label class="form-label">Item Remarks</label>
+          <textarea id="mat-remarks" class="form-control" rows="2">${mat.remarks||''}</textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveSingleMaterialWorkflow('${prcId}','${materialId}','${modalId}')">Save Material Record</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modalEl);
+};
+
+window.recalcMatModalQty = function() {
+  const tot = parseFloat(document.getElementById('mat-qty-total')?.value) || 0;
+  const proc = parseFloat(document.getElementById('mat-qty-processed')?.value) || 0;
+  const cls = parseFloat(document.getElementById('mat-qty-closed')?.value) || 0;
+  const pend = Math.max(0, tot - proc - cls);
+  const pendEl = document.getElementById('mat-qty-pending');
+  if (pendEl) pendEl.value = pend;
+};
+
+window.closeMatModalBalance = function() {
+  const tot = parseFloat(document.getElementById('mat-qty-total')?.value) || 0;
+  const proc = parseFloat(document.getElementById('mat-qty-processed')?.value) || 0;
+  const cls = Math.max(0, tot - proc);
+  const clsEl = document.getElementById('mat-qty-closed');
+  if (clsEl) clsEl.value = cls;
+  window.recalcMatModalQty();
+};
+
+window.keepMatModalBalancePending = function() {
+  const clsEl = document.getElementById('mat-qty-closed');
+  if (clsEl) clsEl.value = 0;
+  window.recalcMatModalQty();
+};
+
+window.saveSingleMaterialWorkflow = function(prcId, materialId, modalId) {
+  const qtyTotal = parseFloat(document.getElementById('mat-qty-total')?.value) || 0;
+  const qtyProc  = parseFloat(document.getElementById('mat-qty-processed')?.value) || 0;
+  const qtyCls   = parseFloat(document.getElementById('mat-qty-closed')?.value) || 0;
+  const qtyPend  = Math.max(0, qtyTotal - qtyProc - qtyCls);
+
+  const patch = {
+    quantity:         qtyTotal,
+    processedQty:     qtyProc,
+    closedQty:        qtyCls,
+    pendingQty:       qtyPend,
+    allocationNumber: document.getElementById('mat-alloc-num')?.value.trim() || '',
+    allocationDate:   document.getElementById('mat-alloc-date')?.value || '',
+    buyerName:        document.getElementById('mat-buyer')?.value.trim() || '',
+    allocatedBy:      document.getElementById('mat-buyer')?.value.trim() || '',
+    rfqNumber:        document.getElementById('mat-rfq-num')?.value.trim() || '',
+    rfqDate:          document.getElementById('mat-rfq-date')?.value || '',
+    offersReceived:   document.getElementById('mat-offers-rec')?.checked || false,
+    tcdNumber:        document.getElementById('mat-tcd-num')?.value.trim() || '',
+    tcdDate:          document.getElementById('mat-tcd-date')?.value || '',
+    tcdApproved:      document.getElementById('mat-tcd-app')?.checked || false,
+    poNumber:         document.getElementById('mat-po-num')?.value.trim() || '',
+    poDate:           document.getElementById('mat-po-date')?.value || '',
+    vendorName:       document.getElementById('mat-vendor')?.value.trim() || '',
+    vendor:           document.getElementById('mat-vendor')?.value.trim() || '',
+    deliveryDate:     document.getElementById('mat-del-date')?.value || '',
+    remarks:          document.getElementById('mat-remarks')?.value.trim() || ''
+  };
+
+  updateMaterial(prcId, materialId, patch);
+  document.getElementById(modalId)?.remove();
+  if (getState().currentPage === 'prc-list') {
+    renderPRCTable();
+  } else {
+    openPRCDetail(prcId);
+    switchPRCTab(document.querySelectorAll('#prc-detail-modal .tab-btn')[1], 'tab-materials');
+  }
+  toast('Material record updated successfully!', 'success');
+};
+
+window.openBulkMaterialEditModal = function(prcId) {
+  const checkboxes = Array.from(document.querySelectorAll(`.mat-checkbox-${prcId}:checked`));
+  const selectedIds = checkboxes.map(cb => cb.value);
+
+  if (!selectedIds.length) {
+    toast('Please select at least one material line item to bulk update', 'warning');
+    return;
+  }
+
+  const modalId = 'bulk-mat-edit-modal';
+  let modalEl = document.getElementById(modalId);
+  if (modalEl) modalEl.remove();
+
+  modalEl = document.createElement('div');
+  modalEl.id = modalId;
+  modalEl.className = 'modal-overlay open';
+  modalEl.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:700px">
+      <div class="modal-header">
+        <h3 class="modal-title">⚡ Bulk Update ${selectedIds.length} Selected Materials</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+      </div>
+      <div class="modal-body" style="padding:20px">
+        <p style="font-size:13px;color:var(--color-text-secondary);margin-bottom:16px">
+          Enter values to apply across all <strong>${selectedIds.length}</strong> selected material line items. Leave blank any field you do not wish to overwrite.
+        </p>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div><label class="form-label">Allocation Number</label><input type="text" id="bulk-mat-alloc-num" class="form-control" placeholder="Leave blank to keep current"/></div>
+          <div><label class="form-label">Allocation Date</label><input type="date" id="bulk-mat-alloc-date" class="form-control"/></div>
+          <div><label class="form-label">Assigned Buyer</label><input type="text" id="bulk-mat-buyer" class="form-control" placeholder="Leave blank to keep current"/></div>
+          <div><label class="form-label">RFQ Number</label><input type="text" id="bulk-mat-rfq-num" class="form-control" placeholder="Leave blank to keep current"/></div>
+          <div><label class="form-label">RFQ Date</label><input type="date" id="bulk-mat-rfq-date" class="form-control"/></div>
+          <div><label class="form-label">PO Number</label><input type="text" id="bulk-mat-po-num" class="form-control" placeholder="Leave blank to keep current"/></div>
+          <div><label class="form-label">PO Date</label><input type="date" id="bulk-mat-po-date" class="form-control"/></div>
+          <div><label class="form-label">Vendor Name</label><input type="text" id="bulk-mat-vendor" class="form-control" placeholder="Leave blank to keep current"/></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveBulkMaterialWorkflow('${prcId}', ${JSON.stringify(selectedIds).replace(/"/g, '&quot;')}, '${modalId}')">Apply Bulk Update</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modalEl);
+};
+
+window.saveBulkMaterialWorkflow = function(prcId, selectedIds, modalId) {
+  const patch = {};
+  const allocNum = document.getElementById('bulk-mat-alloc-num')?.value.trim();
+  const allocDate = document.getElementById('bulk-mat-alloc-date')?.value;
+  const buyer = document.getElementById('bulk-mat-buyer')?.value.trim();
+  const rfqNum = document.getElementById('bulk-mat-rfq-num')?.value.trim();
+  const rfqDate = document.getElementById('bulk-mat-rfq-date')?.value;
+  const poNum = document.getElementById('bulk-mat-po-num')?.value.trim();
+  const poDate = document.getElementById('bulk-mat-po-date')?.value;
+  const vendor = document.getElementById('bulk-mat-vendor')?.value.trim();
+
+  if (allocNum) patch.allocationNumber = allocNum;
+  if (allocDate) patch.allocationDate = allocDate;
+  if (buyer) { patch.buyerName = buyer; patch.allocatedBy = buyer; }
+  if (rfqNum) patch.rfqNumber = rfqNum;
+  if (rfqDate) patch.rfqDate = rfqDate;
+  if (poNum) patch.poNumber = poNum;
+  if (poDate) patch.poDate = poDate;
+  if (vendor) { patch.vendorName = vendor; patch.vendor = vendor; }
+
+  if (!Object.keys(patch).length) {
+    toast('No changes specified for bulk update', 'warning');
+    return;
+  }
+
+  bulkUpdateMaterials(prcId, selectedIds, patch);
+  document.getElementById(modalId)?.remove();
+  openPRCDetail(prcId);
+  switchPRCTab(document.querySelectorAll('#prc-detail-modal .tab-btn')[1], 'tab-materials');
+  toast(`Bulk updated ${selectedIds.length} materials successfully!`, 'success');
+};
+
+function renderToggle(label, checked, onchange) {
+  return `<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;padding:4px 0">
+    <input type="checkbox" ${checked?'checked':''} onchange="${onchange}" style="accent-color:var(--color-primary)"/>
+    ${label}
+  </label>`;
+}
+
+function renderProcurementField(label, value, onchange) {
+  return `<div class="form-group" style="margin:0">
+    <label class="form-label">${label}</label>
+    <input type="text" class="form-control" value="${value||''}" onchange="${onchange}" placeholder="${label}"/>
+  </div>`;
+}
+
+function renderDateField(label, value, onchange) {
+  return `<div class="form-group" style="margin:0">
+    <label class="form-label">${label}</label>
+    <input type="date" class="form-control" value="${value||''}" onchange="${onchange}"/>
+  </div>`;
+}
+
+window.switchPRCTab = function(btn, tabId) {
+  const modal = document.getElementById('prc-detail-modal');
+  modal.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  modal.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tabId)?.classList.add('active');
+};
+
+window.updateField = function(id, field, value) {
+  const cascade = document.getElementById(`cascade-to-mats-${id}`)?.checked || false;
+  updatePRC(id, { [field]: value }, cascade);
+  toast(`${field} updated${cascade ? ' (applied to material line items)' : ''}`, 'success', 2000);
+};
+
+window.setFlag = function(id, flag, value) {
+  updatePRC(id, { [flag]: value });
+  // Update status chip in modal
+  const prc = getPRCById(id);
+  if(prc) {
+    const chip = document.getElementById('prc-detail-status-chip');
+    if(chip) chip.innerHTML = `<span class="chip ${getStatusChipClass(prc.status)}">${getStatusIcon(prc.status)} ${prc.status}</span>`;
+  }
+  toast(`Flag updated`, 'success', 2000);
+};
+
+window.closePRCDetail = function() {
+  document.getElementById('prc-detail-modal').classList.remove('open');
+};
+
+window.openEditPRC = function(id) {
+  openPRCDetail(id);
+};
+
+window.handleAttachUpload = function(prcId, input) {
+  const files = Array.from(input.files);
+  if(!files.length) return;
+  toast(`Uploading ${files.length} file(s)… (Demo: no actual upload in demo mode)`, 'info');
+};
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: EXCEL IMPORT
+// ═══════════════════════════════════════════════════════════
+let importStep = 1;
+let parsedRows = [];
+let validationResult = null;
+
+function renderImport(container) {
+  container.innerHTML = `
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Excel Import</h1>
+    <p class="page-subtitle">Import PRC data from Excel using official 45 Enterprise Columns</p>
+  </div>
+  <div class="flex gap-3">
+    <button class="btn btn-secondary" onclick="loadSampleRequisitionData()">⚡ Load Demo Requisition Data</button>
+    <button class="btn btn-secondary" onclick="downloadSampleTemplate()">📥 Download 45-Column Template</button>
+  </div>
+</div>
+
+<!-- Steps -->
+<div class="steps mb-8" style="max-width:500px;margin-bottom:32px">
+  <div class="step-item active" id="step-1">
+    <div class="step-circle">1</div>
+    <span class="step-label">Upload File</span>
+    <div class="step-line"></div>
+  </div>
+  <div class="step-item" id="step-2">
+    <div class="step-circle">2</div>
+    <span class="step-label">Preview & Validate</span>
+    <div class="step-line"></div>
+  </div>
+  <div class="step-item" id="step-3">
+    <div class="step-circle">3</div>
+    <span class="step-label">Confirm Import</span>
+  </div>
+</div>
+
+<!-- Step Panels -->
+<div id="import-step-1">
+  <div class="card" style="max-width:850px">
+    <h3 style="margin-bottom:16px;font-weight:700">Step 1: Upload Enterprise Excel Requisition File</h3>
+    <div class="upload-zone" id="drop-zone" onclick="document.getElementById('excel-file-input').click()">
+      <input type="file" id="excel-file-input" accept=".xlsx,.xls" style="display:none" onchange="handleFileSelect(this)"/>
+      <div class="upload-zone-icon">📊</div>
+      <div class="upload-zone-title">Drop your Excel file here</div>
+      <div class="upload-zone-sub">Supports .xlsx and .xls formats · Max 50MB</div>
+    </div>
+    <div class="alert alert-info mt-4" style="margin-top:16px">
+      <span>ℹ️</span>
+      <div>
+        <strong style="color:var(--color-primary)">Mandatory Required Columns:</strong> PR NUMBER, MATERIAL CODE, MATERIAL DESC, UOM, QUANTITY<br>
+        <strong style="color:var(--color-primary)">All 45 Enterprise Upload Columns Supported:</strong><br>
+        <span style="font-size:11px;line-height:1.5;color:var(--color-text-secondary);display:block;margin-top:4px">
+          JOB CODE, JOB DESC, FROM JOB CODE, WAREHOUSE CODE, WAREHOUSE DESC, PR NUMBER, PR DATE, PR TYPE, SERIAL NUMBER, MATERIAL CODE, MATERIAL DESC, UOM, CP CODE, CP DESC, WBS CODE, WBS DESC, QUANTITY, SUGGESTED RATE, VALUE, PENDING QTY, CURRENCY DESC, BUDGET REFERENCE, DELIVERY START DATE, DELIVERY END DATE, DRAWING NUMBER, REMARKS, PR STATUS, CLOSED QTY, CLOSED BY, CLOSED ON, CREATED BY, CREATED ON, AUTHORIZED BY, AUTHORIZED ON, ALLOCATION NUMBER, ALLOCATION DATE, BUYER NAME, CATEGORY DESC, MATERIAL GROUP CODE, MATERIAL GROUP DESCRIPTION, MATERIAL CLASS, IC DESC, BU, SBU, PR GR NUMBER
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="import-step-2" style="display:none;height:calc(100vh - 180px);min-height:400px">
+  <div class="card" style="height:100%;display:flex;flex-direction:column;padding:16px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-shrink:0">
+      <div>
+        <h3 style="font-weight:700">Step 2: Preview & Validation</h3>
+        <p id="import-summary" style="font-size:13px;color:var(--color-text-secondary);margin-top:4px"></p>
+      </div>
+      <div class="flex gap-3">
+        <button class="btn btn-ghost" onclick="resetImport()">← Back</button>
+        <button class="btn btn-primary" id="import-confirm-btn" onclick="confirmImport()">Confirm Import →</button>
+      </div>
+    </div>
+    <div id="import-preview-table" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column"></div>
+  </div>
+</div>
+
+<div id="import-step-3" style="display:none">
+  <div class="card" style="max-width:600px;text-align:center;padding:48px">
+    <div style="font-size:72px;margin-bottom:16px">🎉</div>
+    <h3 style="font-size:24px;font-weight:800;margin-bottom:8px">Import Successful!</h3>
+    <p id="import-result-text" style="color:var(--color-text-secondary);margin-bottom:24px"></p>
+    <div class="flex gap-3 justify-center">
+      <button class="btn btn-secondary" onclick="resetImport()">Import Another File</button>
+      <button class="btn btn-primary" onclick="navigate('prc-list')">View PRC Records →</button>
+    </div>
+  </div>
+</div>`;
+
+  // Drag & drop
+  const zone = document.getElementById('drop-zone');
+  if(zone) {
+    zone.ondragover = e => { e.preventDefault(); zone.classList.add('drag-over'); };
+    zone.ondragleave= () => zone.classList.remove('drag-over');
+    zone.ondrop = e => {
+      e.preventDefault(); zone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if(file) processImportFile(file);
+    };
+  }
+}
+
+window.handleFileSelect = function(input) {
+  if(input.files[0]) processImportFile(input.files[0]);
+};
+
+window.loadSampleRequisitionData = function() {
+  toast('Loading sample requisition data…', 'info', 1500);
+  parsedRows = SAMPLE_IMPORT_DATA;
+  validationResult = validateRows(parsedRows);
+
+  document.getElementById('import-step-1').style.display = 'none';
+  document.getElementById('import-step-2').style.display = 'block';
+  document.getElementById('step-1').classList.remove('active');
+  document.getElementById('step-1').classList.add('done');
+  document.getElementById('step-2').classList.add('active');
+
+  const { valid, errors, cleanRows } = validationResult;
+  const existingSet = new Set((getState().prcs || []).map(p => String(p.prNumber || '').trim().toUpperCase()));
+  const uniquePRsInFile = new Set(parsedRows.map(r => String(r['PR NUMBER'] || '').trim().toUpperCase()));
+  let existingPRCCount = 0;
+  uniquePRsInFile.forEach(pr => { if (existingSet.has(pr)) existingPRCCount++; });
+  const newPRCCount = uniquePRsInFile.size - existingPRCCount;
+
+  document.getElementById('import-summary').innerHTML =
+    `<strong>${parsedRows.length}</strong> row(s) · <strong>${uniquePRsInFile.size}</strong> PRC(s) in file · <span class="text-success font-semibold">${newPRCCount} new to import</span> · <span class="text-warning font-semibold">${existingPRCCount} already in database (will skip)</span> · <span class="text-danger">${errors.length} errors</span>`;
+
+  document.getElementById('import-preview-table').innerHTML = renderPreviewTable(parsedRows, errors);
+
+  const confirmBtn = document.getElementById('import-confirm-btn');
+  if (confirmBtn) confirmBtn.disabled = false;
+};
+
+async function processImportFile(file) {
+  try {
+    toast('Parsing Excel file…', 'info', 2000);
+    const confirmBtn = document.getElementById('import-confirm-btn');
+    if (confirmBtn) confirmBtn.disabled = false;
+
+    parsedRows = await parseExcelFile(file);
+    validationResult = validateRows(parsedRows);
+
+    // Show step 2
+    document.getElementById('import-step-1').style.display = 'none';
+    document.getElementById('import-step-2').style.display = 'block';
+    document.getElementById('step-1').classList.remove('active');
+    document.getElementById('step-1').classList.add('done');
+    document.getElementById('step-2').classList.add('active');
+
+    const { valid, errors, cleanRows } = validationResult;
+    const existingSet = new Set((getState().prcs || []).map(p => String(p.prNumber || '').trim().toUpperCase()));
+    const uniquePRsInFile = new Set(parsedRows.map(r => String(r['PR NUMBER'] || '').trim().toUpperCase()));
+    let existingPRCCount = 0;
+    uniquePRsInFile.forEach(pr => { if (existingSet.has(pr)) existingPRCCount++; });
+    const newPRCCount = uniquePRsInFile.size - existingPRCCount;
+
+    document.getElementById('import-summary').innerHTML =
+      `<strong>${parsedRows.length}</strong> row(s) · <strong>${uniquePRsInFile.size}</strong> PRC(s) in file · <span class="text-success font-semibold">${newPRCCount} new to import</span> · <span class="text-warning font-semibold">${existingPRCCount} already in database (will skip)</span> · <span class="text-danger">${errors.length} errors</span>`;
+
+    document.getElementById('import-preview-table').innerHTML = renderPreviewTable(parsedRows, errors);
+
+    if(!cleanRows.length && !parsedRows.length) {
+      if (confirmBtn) confirmBtn.disabled = true;
+      toast('No rows found in the uploaded file.', 'error');
+    }
+  } catch(err) {
+    toast('Failed to parse file: ' + err.message, 'error');
+  }
+}
+
+window.confirmImport = function() {
+  try {
+    const rowsToImport = (validationResult && validationResult.cleanRows && validationResult.cleanRows.length)
+      ? validationResult.cleanRows
+      : (parsedRows || []).map(r => normalizeRow(r));
+
+    if (!rowsToImport.length) {
+      toast('No rows available to import.', 'error');
+      return;
+    }
+
+    const results = mergeImport(rowsToImport);
+
+    document.getElementById('import-step-2').style.display = 'none';
+    document.getElementById('import-step-3').style.display = 'block';
+    document.getElementById('step-2').classList.remove('active');
+    document.getElementById('step-2').classList.add('done');
+    document.getElementById('step-3').classList.add('active');
+
+    document.getElementById('import-result-text').innerHTML =
+      `✅ <strong>${results.new}</strong> new PRC record(s) created<br>` +
+      `⏭ <strong>${results.skipped}</strong> existing PRC(s) skipped (already in system, protected from duplicate/overwrite)` +
+      `${results.duplicateRows > 0 ? `<br>🔗 <strong>${results.duplicateRows}</strong> redundant duplicate line item(s) deduplicated` : ''}`;
+
+    if (results.new > 0) {
+      toast(`Import complete! ${results.new} new PRCs added. (${results.skipped} skipped to prevent overwrite)`, 'success');
+    } else {
+      toast(`All ${results.skipped} PRCs in file already exist in the system and were skipped to prevent overwriting.`, 'info');
+    }
+
+    // Update nav badge
+    const badge = document.getElementById('nav-prc-count');
+    if(badge) badge.textContent = getState().prcs.length;
+  } catch (err) {
+    console.error('Import Error:', err);
+    toast('Import error: ' + err.message, 'error');
+  }
+};
+
+window.resetImport = function() {
+  importStep = 1; parsedRows = []; validationResult = null;
+  renderImport(document.getElementById('page-content'));
+};
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════
+function renderNotifications(container) {
+  const state = getState();
+  const notifs = state.notifications || [];
+
+  container.innerHTML = `
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Notifications</h1>
+    <p class="page-subtitle">${notifs.filter(n=>n.unread).length} unread notifications</p>
+  </div>
+  <button class="btn btn-ghost btn-sm" onclick="markAllRead()">✓ Mark All Read</button>
+</div>
+
+<div class="card" style="padding:0">
+  ${notifs.length ? notifs.map(n => `
+    <div class="notif-item ${n.unread?'unread':''}" id="notif-${n.id}" onclick="readNotif('${n.id}')">
+      <div class="notif-icon" style="background:${
+        n.type==='danger'?'var(--color-danger-bg)':
+        n.type==='warning'?'var(--color-warning-bg)':
+        n.type==='success'?'var(--color-success-bg)':'var(--color-info-bg)'}">
+        ${n.type==='danger'?'🚨':n.type==='warning'?'⚠️':n.type==='success'?'✅':'ℹ️'}
+      </div>
+      <div class="notif-text">
+        <div class="notif-title">${n.title} ${n.unread?'<span style="width:8px;height:8px;background:var(--color-primary);border-radius:50%;display:inline-block;margin-left:4px"></span>':''}</div>
+        <div class="notif-message">${n.message}</div>
+        <div class="notif-time">${timeAgo(n.createdAt)}</div>
+      </div>
+      ${n.prcId?`<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();openPRCDetail('${n.prcId}')">View PRC →</button>`:''}
+    </div>`).join('')
+  : `<div class="empty-state" style="padding:80px"><div class="empty-state-icon">🔔</div><div class="empty-state-title">No notifications</div></div>`}
+</div>`;
+}
+
+window.readNotif = function(id) {
+  const state = getState();
+  const notifs = state.notifications.map(n => n.id===id?{...n,unread:false}:n);
+  setState({ notifications: notifs });
+  const el = document.getElementById('notif-'+id);
+  if(el) el.classList.remove('unread');
+  const badge = document.getElementById('nav-notif-count');
+  if(badge) badge.textContent = notifs.filter(n=>n.unread).length||'';
+  const dot = document.getElementById('notif-dot');
+  if(dot) dot.style.display = notifs.some(n=>n.unread)?'':'none';
+};
+
+window.markAllRead = function() {
+  const state = getState();
+  setState({ notifications: state.notifications.map(n=>({...n,unread:false})) });
+  document.querySelectorAll('.notif-item').forEach(el=>el.classList.remove('unread'));
+  const badge = document.getElementById('nav-notif-count');
+  if(badge) badge.textContent = '';
+  document.getElementById('notif-dot').style.display='none';
+  toast('All notifications marked as read', 'success', 2000);
+};
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: REPORTS
+// ═══════════════════════════════════════════════════════════
+function renderReports(container) {
+  const prcs = getFilteredPRCs();
+  const ageingData = getAgeingReport();
+  const completed = ageingData.filter(p => p.status === STATUS.COMPLETED);
+  const partly = ageingData.filter(p => p.status === STATUS.PARTLY_COMPLETED);
+
+  const avgCompletedAge = completed.length ? Math.round(completed.reduce((a,b)=>a+(b.ageDays||0),0)/completed.length) : 0;
+  const avgPartlyAge = partly.length ? Math.round(partly.reduce((a,b)=>a+(b.ageDays||0),0)/partly.length) : 0;
+
+  container.innerHTML = `
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Reports & Exports</h1>
+    <p class="page-subtitle">Generate, download, and share procurement reports</p>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px" class="stagger-children">
+  ${[
+    {icon:'📊', title:'PRC Status Report', desc:'Complete list of all PRCs with current status, engineer, and timeline.', action:"exportExcel('prc','PRC Status Report')", label:'Excel'},
+    {icon:'📄', title:'Pending PRCs Report', desc:'All PRCs that are not yet completed — for follow-up.', action:"exportCSV()", label:'CSV'},
+    {icon:'🏢', title:'Vendor Performance', desc:'Vendor-wise PO distribution and response statistics.', action:"exportPDF('Vendor Performance Report')", label:'PDF'},
+    {icon:'📅', title:'PRC Ageing Report', desc:'PRC aging calculated up to Process Completed or Partly Completed milestones.', action:"exportExcel('prc','Ageing Report')", label:'Excel'},
+    {icon:'📦', title:'Material Item Report', desc:'All material items with requested, processed, and pending quantities.', action:"exportExcel('prc','Material Report')", label:'Excel'},
+    {icon:'📈', title:'Monthly Summary', desc:'Monthly procurement activity and trend analysis.', action:"exportPDF('Monthly Summary')", label:'PDF'}
+  ].map(r=>`
+    <div class="card hover-lift" style="cursor:default">
+      <div style="font-size:40px;margin-bottom:12px">${r.icon}</div>
+      <h3 style="font-weight:700;margin-bottom:6px">${r.title}</h3>
+      <p style="font-size:13px;color:var(--color-text-secondary);margin-bottom:16px;flex:1">${r.desc}</p>
+      <button class="btn btn-primary w-full" onclick="${r.action}">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Download ${r.label}
+      </button>
+    </div>`).join('')}
+</div>
+
+<!-- Ageing Table Preview -->
+<div class="card" style="margin-top:24px">
+  <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div>
+      <div class="card-title" style="font-size:16px;font-weight:700">📅 PRC Ageing Report (Calculated till Process Completed / Partly Completed)</div>
+      <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">
+        Avg Cycle Time for Completed: <strong>${avgCompletedAge} days</strong> · Avg Days for Partly Completed: <strong>${avgPartlyAge} days</strong>
+      </div>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="exportExcel('prc','Ageing Report')">Download Excel</button>
+  </div>
+  <div class="table-wrapper">
+    <table class="data-table">
+      <thead><tr><th>PR Number</th><th>Status</th><th>Department</th><th>Allocation Date</th><th>Completion / PO Date</th><th>Total Age (days)</th><th>Alert</th></tr></thead>
+      <tbody>
+        ${ageingData.slice(0,15).map(p=>`
+          <tr onclick="openPRCDetail('${p.id}')" style="cursor:pointer">
+            <td class="font-mono font-semibold">${p.prNumber}</td>
+            <td><span class="chip ${getStatusChipClass(p.status)}">${p.status}</span></td>
+            <td>${p.department}</td>
+            <td>${fmtDate(p.allocationDate)}</td>
+            <td>${fmtDate(p.poDate || p.tcdDate || p.updatedAt)}</td>
+            <td><span class="${getAgeBadgeClass(p.ageDays||0,7)} font-semibold">${p.ageDays||0} days</span></td>
+            <td>${p.ageDays>30?'🔴':p.ageDays>14?'🟠':p.ageDays>7?'🟡':'🟢'}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: VENDORS
+// ═══════════════════════════════════════════════════════════
+function renderVendors(container) {
+  const state = getState();
+  const vendors = state.vendors || [];
+
+  container.innerHTML = `
+<div class="page-header">
+  <h1 class="page-title">Vendor Performance</h1>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px" class="stagger-children">
+  ${vendors.map(v => {
+    const stars = Array.from({length:5},(_,i)=>`<span class="star ${i<Math.floor(v.rating)?'':'empty'}">★</span>`).join('');
+    return `<div class="card hover-lift">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <div style="width:48px;height:48px;border-radius:12px;background:var(--color-primary-light);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:var(--color-primary)">${v.name[0]}</div>
+        <div>
+          <div style="font-weight:700;font-size:15px">${v.name}</div>
+          <div style="font-size:12px;color:var(--color-text-tertiary)">${v.code} · ${v.country}</div>
+        </div>
+      </div>
+      <div class="star-rating">${stars}</div>
+      <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="background:var(--color-surface-3);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:var(--color-primary)">${v.poCount}</div>
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600">Total POs</div>
+        </div>
+        <div style="background:var(--color-surface-3);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:22px;font-weight:800;color:${v.avgResponseDays<=3?'var(--color-success)':v.avgResponseDays<=5?'var(--color-warning)':'var(--color-danger)'}">${v.avgResponseDays}d</div>
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600">Avg Response</div>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;font-size:12px">
+          <span class="text-secondary">On-time rate</span>
+          <span class="font-semibold">${Math.round(70+v.rating*5)}%</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${70+v.rating*5}%"></div></div>
+      </div>
+      <div style="margin-top:12px">
+        <span class="chip" style="background:var(--color-surface-3);color:var(--color-text-secondary)">${v.category}</span>
+      </div>
+    </div>`;
+  }).join('')}
+</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: AUDIT TRAIL
+// ═══════════════════════════════════════════════════════════
+function renderAudit(container) {
+  const state = getState();
+  const logs  = state.activityLogs || [];
+
+  container.innerHTML = `
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Audit Trail</h1>
+    <p class="page-subtitle">Complete, tamper-proof history of all system changes</p>
+  </div>
+  <button class="btn btn-secondary btn-sm" onclick="exportCSV()">Export Log</button>
+</div>
+<div class="card" style="padding:0">
+  ${logs.length ? `
+  <div class="table-wrapper">
+    <table class="data-table">
+      <thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Record</th><th>Changes</th></tr></thead>
+      <tbody>
+        ${logs.map(l=>`
+          <tr>
+            <td class="font-mono text-sm">${fmtDateTime(l.timestamp)}</td>
+            <td>${l.user}</td>
+            <td><span class="audit-badge audit-${l.action}">${l.action.toUpperCase()}</span></td>
+            <td class="font-mono text-sm">${l.collection} / ${l.docId}</td>
+            <td style="max-width:300px;font-size:12px;color:var(--color-text-secondary)">
+              ${Object.entries(l.changes||{}).map(([k,v])=>
+                `<div><strong>${k}:</strong> ${typeof v==='object'?`${v.old||'—'} → ${v.new||'—'}`:v}</div>`
+              ).join('') || '—'}
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>` : `<div class="empty-state" style="padding:80px"><div class="empty-state-icon">📋</div><div class="empty-state-title">No audit records</div></div>`}
+</div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: AI ASSISTANT
+// ═══════════════════════════════════════════════════════════
+let chatMessages = [];
+
+function renderAIAssistant(container) {
+  container.innerHTML = `
+<div class="page-header">
+  <div>
+    <h1 class="page-title">🤖 AI Procurement Assistant</h1>
+    <p class="page-subtitle">Ask anything about your procurement data — powered by Gemini AI</p>
+  </div>
+  <button class="btn btn-ghost btn-sm" onclick="clearAIChat()">🗑️ Clear Chat</button>
+</div>
+
+<div style="display:grid;grid-template-columns:280px 1fr;gap:20px;max-height:calc(100vh - 220px)">
+  <!-- Quick Suggestions -->
+  <div class="card" style="padding:16px;overflow-y:auto">
+    <h4 style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-secondary);margin-bottom:12px">Quick Questions</h4>
+    <div style="display:flex;flex-direction:column;gap:6px" id="ai-suggestions">
+    </div>
+  </div>
+
+  <!-- Chat Area -->
+  <div class="card" style="padding:0;display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:16px;border-bottom:1px solid var(--color-border);display:flex;align-items:center;gap:10px">
+      <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:18px">🤖</div>
+      <div>
+        <div style="font-weight:700">Gemini Procurement AI</div>
+        <div style="font-size:12px;color:var(--color-success)">● Online · Context-aware</div>
+      </div>
+    </div>
+    <div class="chat-messages" id="chat-messages">
+      <div class="chat-bubble ai">
+        👋 Hello! I'm your AI Procurement Assistant. I have access to your current procurement data and can help you:<br><br>
+        • Identify overdue PRCs<br>
+        • Analyze vendor performance<br>
+        • Check engineer workloads<br>
+        • Recommend priorities<br><br>
+        What would you like to know?
+      </div>
+    </div>
+    <div class="chat-input-row">
+      <textarea class="form-control" id="chat-input" placeholder="Ask about your procurement data…" rows="1"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAIMessage()}"></textarea>
+      <button class="btn btn-primary" onclick="sendAIMessage()" id="chat-send-btn">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+      </button>
+    </div>
+  </div>
+</div>`;
+
+  // Render suggestions
+  const sugEl = document.getElementById('ai-suggestions');
+  if(sugEl) {
+    AI_SUGGESTIONS.forEach(q => {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-ghost btn-sm';
+      btn.style.cssText = 'text-align:left;white-space:normal;justify-content:flex-start;font-size:12px;border:1px solid var(--color-border);padding:8px 10px';
+      btn.textContent = q;
+      btn.onclick = () => {
+        document.getElementById('chat-input').value = q;
+        sendAIMessage();
+      };
+      sugEl.appendChild(btn);
+    });
+  }
+}
+
+window.sendAIMessage = async function() {
+  const input   = document.getElementById('chat-input');
+  const btn     = document.getElementById('chat-send-btn');
+  const messages= document.getElementById('chat-messages');
+  const text    = input.value.trim();
+  if(!text || !messages) return;
+
+  // User bubble
+  messages.innerHTML += `<div class="chat-bubble user fade-in-up">${text}</div>`;
+  input.value = '';
+  btn.disabled = true;
+  messages.scrollTop = messages.scrollHeight;
+
+  // Typing indicator
+  const typingId = 'typing-'+Date.now();
+  messages.innerHTML += `<div class="chat-bubble ai" id="${typingId}"><span class="pulse">●●●</span></div>`;
+  messages.scrollTop = messages.scrollHeight;
+
+  try {
+    const response = await sendMessage(text);
+    document.getElementById(typingId).innerHTML = formatAIResponse(response);
+  } catch(err) {
+    document.getElementById(typingId).innerHTML = `❌ Error: ${err.message}`;
+  }
+
+  btn.disabled = false;
+  messages.scrollTop = messages.scrollHeight;
+};
+
+window.clearAIChat = function() {
+  clearChat();
+  const msgs = document.getElementById('chat-messages');
+  if(msgs) msgs.innerHTML = `<div class="chat-bubble ai">Chat cleared. How can I help you with your procurement data?</div>`;
+};
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: SETTINGS
+// ═══════════════════════════════════════════════════════════
+function renderSettings(container) {
+  const state = getState();
+  const user  = state.currentUser;
+  const dbMeta = state.creatorDbMeta || {};
+
+  container.innerHTML = `
+<div class="page-header">
+  <h1 class="page-title">Settings</h1>
+</div>
+<div style="display:grid;grid-template-columns:220px 1fr;gap:24px;max-width:1000px">
+  <!-- Settings Nav -->
+  <div class="card" style="padding:8px;height:fit-content">
+    ${[
+      {id:'profile',   label:'👤 Profile'},
+      {id:'database',  label:'🗄️ App Owner Database'},
+      {id:'appearance',label:'🎨 Appearance'},
+      {id:'users',     label:'👥 Users & Roles'},
+      {id:'firebase',  label:'🔥 Firebase Config'},
+      {id:'about',     label:'ℹ️ About'}
+    ].map(s=>`<button class="btn btn-ghost w-full" style="justify-content:flex-start;border-radius:8px" onclick="showSettingsTab('${s.id}')">${s.label}</button>`).join('')}
+  </div>
+
+  <!-- Settings Content -->
+  <div id="settings-content">
+    <!-- Profile -->
+    <div id="settings-profile" class="card">
+      <h3 style="font-weight:700;margin-bottom:20px">Profile</h3>
+      <div style="display:flex;align-items:center;gap:20px;margin-bottom:24px">
+        <div class="sidebar-avatar" style="width:64px;height:64px;font-size:24px">${user.avatar}</div>
+        <div>
+          <div style="font-size:18px;font-weight:700">${user.name}</div>
+          <div style="color:var(--color-text-secondary)">${user.email}</div>
+          <span class="chip chip-completed" style="margin-top:6px">${user.role}</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group"><label class="form-label">Full Name</label><input class="form-control" value="${user.name}"/></div>
+        <div class="form-group"><label class="form-label">Email</label><input class="form-control" value="${user.email}" type="email"/></div>
+      </div>
+      <button class="btn btn-primary">Save Changes</button>
+    </div>
+
+    <!-- App Owner Database -->
+    <div id="settings-database" class="card hidden">
+      <h3 style="font-weight:700;margin-bottom:8px">Central App Owner Database</h3>
+      <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:16px">
+        All procurement data is stored centrally in the master database created and owned by the App Owner, not in isolated per-user databases.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">DATABASE ID</div>
+          <div style="font-weight:700" class="font-mono">${dbMeta.databaseId || 'DB-PRC-APP-OWNER-MASTER-01'}</div>
+        </div>
+        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">APP OWNER</div>
+          <div style="font-weight:700">${dbMeta.creatorName || 'App Owner (Super Admin)'}</div>
+        </div>
+        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">DATABASE SCOPE</div>
+          <div style="font-weight:700">App Owner Master Database</div>
+        </div>
+        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
+          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">TOTAL PRCS RECORDED</div>
+          <div style="font-weight:700">${state.prcs.length} PRCs (${state.totalMaterials} Materials)</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px">
+        <button class="btn btn-primary" onclick="exportCreatorDatabase()">Export App Owner DB Backup</button>
+        <button class="btn btn-secondary" onclick="handleResetCreatorDB()">Reset to App Owner Default Seed</button>
+      </div>
+    </div>
+
+    <div id="settings-appearance" class="card hidden">
+      <h3 style="font-weight:700;margin-bottom:20px">Appearance</h3>
+      <div class="form-group">
+        <label class="form-label">Theme</label>
+        <div style="display:flex;gap:12px;margin-top:8px">
+          ${['dark','light','system'].map(t=>`
+            <button class="btn ${state.theme===t?'btn-primary':'btn-secondary'}" onclick="setTheme('${t}')" style="flex:1">${t==='dark'?'🌙 Dark':t==='light'?'☀️ Light':'💻 System'}</button>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div id="settings-users" class="card hidden">
+      <h3 style="font-weight:700;margin-bottom:20px">Users & Roles</h3>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr></thead>
+          <tbody>${state.users.map(u=>`
+            <tr>
+              <td style="display:flex;align-items:center;gap:8px"><span class="sidebar-avatar" style="width:28px;height:28px;font-size:11px;flex-shrink:0">${u.avatar}</span>${u.name}</td>
+              <td>${u.email}</td>
+              <td><span class="chip chip-${u.role==='Super Admin'?'completed':u.role.includes('Manager')?'partly':'awaiting'}">${u.role}</span></td>
+              <td><span class="chip chip-completed">Active</span></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div id="settings-firebase" class="card hidden">
+      <h3 style="font-weight:700;margin-bottom:8px">Firebase Cloud Database Setup</h3>
+      <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:16px">
+        Connect your App Owner Firebase project to enable live cloud Firestore database storage.
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group"><label class="form-label">Project ID</label><input id="fb-project-id" class="form-control font-mono" value="${FIREBASE_CONFIG.projectId==='YOUR_PROJECT_ID'?'':FIREBASE_CONFIG.projectId}" placeholder="e.g. procuretrack-prod-123"/></div>
+        <div class="form-group"><label class="form-label">API Key</label><input id="fb-api-key" class="form-control font-mono" value="${FIREBASE_CONFIG.apiKey==='YOUR_API_KEY'?'':FIREBASE_CONFIG.apiKey}" type="password" placeholder="AIzaSy..."/></div>
+        <div class="form-group"><label class="form-label">Auth Domain</label><input id="fb-auth-domain" class="form-control font-mono" value="${FIREBASE_CONFIG.authDomain.includes('YOUR_PROJECT_ID')?'':FIREBASE_CONFIG.authDomain}" placeholder="e.g. project.firebaseapp.com"/></div>
+        <div class="form-group"><label class="form-label">Storage Bucket</label><input id="fb-storage-bucket" class="form-control font-mono" value="${FIREBASE_CONFIG.storageBucket.includes('YOUR_PROJECT_ID')?'':FIREBASE_CONFIG.storageBucket}" placeholder="e.g. project.appspot.com"/></div>
+        <div class="form-group"><label class="form-label">Messaging Sender ID</label><input id="fb-sender-id" class="form-control font-mono" value="${FIREBASE_CONFIG.messagingSenderId==='YOUR_SENDER_ID'?'':FIREBASE_CONFIG.messagingSenderId}" placeholder="e.g. 1234567890"/></div>
+        <div class="form-group"><label class="form-label">App ID</label><input id="fb-app-id" class="form-control font-mono" value="${FIREBASE_CONFIG.appId==='YOUR_APP_ID'?'':FIREBASE_CONFIG.appId}" placeholder="e.g. 1:12345:web:abcdef"/></div>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label class="form-label">Gemini AI API Key</label>
+        <input id="fb-gemini-key" class="form-control font-mono" value="${GEMINI_API_KEY==='YOUR_GEMINI_API_KEY'?'':GEMINI_API_KEY}" placeholder="Paste Google Gemini API Key for AI Assistant"/>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:16px">
+        <button class="btn btn-primary" onclick="handleSaveFirebaseConfig()">Save Firebase Credentials</button>
+        <button class="btn btn-secondary" onclick="handleResetFirebaseConfig()">Clear Credentials</button>
+      </div>
+    </div>
+
+    <div id="settings-about" class="card hidden">
+      <h3 style="font-weight:700;margin-bottom:20px">About ProcureTrack</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        ${[['Version','1.0.0'],['Build','2026-08'],['Tech Stack','HTML5 + Firebase'],['AI Engine','Google Gemini'],['License','Enterprise'],['Support','support@procuretrack.io']].map(([k,v])=>`
+          <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
+            <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">${k}</div>
+            <div style="font-weight:700">${v}</div>
+          </div>`).join('')}
+      </div>
+    </div>
+  </div>
+</div>`;
+}
+
+window.showSettingsTab = function(id) {
+  document.querySelectorAll('#settings-content > div').forEach(el=>el.classList.add('hidden'));
+  document.getElementById('settings-'+id)?.classList.remove('hidden');
+};
+
+window.setTheme = function(t) {
+  document.documentElement.setAttribute('data-theme', t==='system'?(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):t);
+  localStorage.setItem('theme', t);
+  setState({theme:t});
+  renderSettings(document.getElementById('page-content'));
+};
+
+// ── GLOBAL EXPORTS for inline onclick handlers ─────────────
+window.exportCSV    = () => exportCSV();
+window.exportExcel  = (t,l) => exportExcel(t,l);
+window.exportPDF    = (t) => exportPDF(t);
+window.downloadSampleTemplate = downloadSampleTemplate;
+window.exportCreatorDatabase  = () => exportCreatorDatabase();
+window.handleResetCreatorDB   = async function() {
+  const confirmed = await confirmDialog("Are you sure you want to reset the Creator Database to default seed data?", "Reset Creator Database");
+  if (confirmed) {
+    await resetCreatorDatabase();
+    toast("Creator Database reset to default seed.", "success");
+    navigate("dashboard");
+  }
+};
+
+window.handleSaveFirebaseConfig = function() {
+  const config = {
+    projectId:         document.getElementById('fb-project-id')?.value?.trim() || "YOUR_PROJECT_ID",
+    apiKey:            document.getElementById('fb-api-key')?.value?.trim() || "YOUR_API_KEY",
+    authDomain:        document.getElementById('fb-auth-domain')?.value?.trim() || "",
+    storageBucket:     document.getElementById('fb-storage-bucket')?.value?.trim() || "",
+    messagingSenderId: document.getElementById('fb-sender-id')?.value?.trim() || "",
+    appId:             document.getElementById('fb-app-id')?.value?.trim() || ""
+  };
+  const geminiKey = document.getElementById('fb-gemini-key')?.value?.trim() || "";
+
+  saveFirebaseConfig(config);
+  saveGeminiKey(geminiKey);
+  toast("Firebase credentials saved successfully!", "success");
+  setTimeout(() => window.location.reload(), 1000);
+};
+
+window.handleResetFirebaseConfig = async function() {
+  const confirmed = await confirmDialog("Are you sure you want to clear saved Firebase credentials?", "Clear Credentials");
+  if (confirmed) {
+    resetFirebaseConfig();
+    saveGeminiKey("");
+    toast("Firebase credentials cleared.", "info");
+    setTimeout(() => window.location.reload(), 1000);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// DELETE PRC HANDLER
+// ═══════════════════════════════════════════════════════════
+window.handleDeletePRC = async function(id) {
+  const prc = getPRCById(id);
+  if (!prc) return;
+  const confirmed = await confirmDialog(`Delete PRC "${prc.prNumber}" and all its ${(prc.materials||[]).length} materials? This cannot be undone.`, 'Delete PRC');
+  if (!confirmed) return;
+
+  const result = deletePRC(id);
+  if (result.success) {
+    toast(`PRC ${prc.prNumber} deleted successfully`, 'success');
+    closePRCDetail();
+    if (getState().currentPage === 'prc-list') renderPRCTable();
+    const badge = document.getElementById('nav-prc-count');
+    if (badge) badge.textContent = getState().prcs.length;
+  } else {
+    toast(result.reason, 'error');
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: ALLOCATIONS
+// ═══════════════════════════════════════════════════════════
+function renderAllocationsPage(container) {
+  const state = getState();
+  const allocs = state.allocations || [];
+  const availablePrcs = getAvailablePRCsForAllocation();
+
+  container.innerHTML = `
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Allocation Management</h1>
+    <p class="page-subtitle">${availablePrcs.length} PRC(s) pending allocation • ${allocs.length} Allocation Document(s) created</p>
+  </div>
+  <div class="flex gap-2">
+    <button class="btn btn-primary" onclick="showCreateAllocationModal()">+ Create Allocation Document</button>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:20px;padding:16px">
+  <!-- Tab Navigation -->
+  <div style="display:flex;gap:12px;border-bottom:2px solid var(--color-border);padding-bottom:12px;margin-bottom:20px">
+    <button id="alloc-tab-btn-tree" class="btn btn-primary btn-sm" onclick="switchAllocPageTab('tree')">
+      🌳 Pending PRC Treeview (${availablePrcs.length})
+    </button>
+    <button id="alloc-tab-btn-docs" class="btn btn-secondary btn-sm" onclick="switchAllocPageTab('docs')">
+      📦 Created Allocation Documents (${allocs.length})
+    </button>
+  </div>
+
+  <!-- Tab 1: PRC Treeview for Pending Allocations -->
+  <div id="alloc-tab-content-tree">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:12px">
+      <div>
+        <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--color-primary);display:flex;align-items:center;gap:8px">
+          <span>🌳 PRCs Requiring Allocation</span>
+        </h3>
+        <p style="font-size:12px;color:var(--color-text-secondary);margin:4px 0 0 0">
+          Showing all PRCs and materials pending allocation (excluding already fully allocated PRCs). Select materials below to create an allocation document.
+        </p>
+      </div>
+      <div id="alloc-page-tree-summary" class="badge badge-primary" style="font-size:12px;padding:6px 14px;border-radius:var(--radius-full)">
+        0 materials selected from 0 PRCs
+      </div>
+    </div>
+
+    <!-- Treeview Toolbar -->
+    <div class="prc-tree-toolbar" style="margin-bottom:16px;background:var(--color-surface-2);padding:12px;border-radius:8px">
+      <div style="flex:1;min-width:240px;position:relative">
+        <input type="text" id="alloc-page-tree-search" class="form-control form-control-sm" placeholder="🔍 Search pending PRCs by Number, Dept, Job, Material Code, Description..." oninput="filterAllocPRCTree(this.value)"/>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllAllocPRCTree(true)">▶ Expand All</button>
+        <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllAllocPRCTree(false)">▼ Collapse All</button>
+        <button type="button" class="btn btn-primary btn-xs" onclick="selectAllAllocPRCTree(true)">☑ Select All Available</button>
+        <button type="button" class="btn btn-ghost btn-xs" onclick="selectAllAllocPRCTree(false)">☐ Deselect All</button>
+        <button type="button" class="btn btn-primary btn-xs" style="margin-left:6px" onclick="openAllocationModalWithSelected()">+ Create Allocation with Selected</button>
+      </div>
+    </div>
+
+    <!-- Treeview Container -->
+    <div id="alloc-tree-container" class="prc-tree">
+      ${renderAllocPRCTreeHTML(availablePrcs)}
+    </div>
+  </div>
+
+  <!-- Tab 2: Created Allocation Documents -->
+  <div id="alloc-tab-content-docs" style="display:none">
+    ${allocs.length ? `
+    <div class="table-wrapper" style="overflow:auto">
+      <table class="data-table">
+        <thead><tr>
+          <th>Allocation Number</th><th>Date</th><th>Buyer</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th>
+        </tr></thead>
+        <tbody>
+          ${allocs.map(a => `
+            <tr>
+              <td class="font-mono font-semibold">${a.allocationNumber}</td>
+              <td>${fmtDate(a.allocationDate)}</td>
+              <td>${a.buyerName || '—'}</td>
+              <td><span class="chip chip-pending">${a.items.length} items</span></td>
+              <td><span class="chip chip-completed">${a.status}</span></td>
+              <td>${fmtDate(a.createdAt)}</td>
+              <td>
+                <button class="btn btn-ghost btn-sm" onclick="viewAllocationDetail('${a.id}')">👁️ View</button>
+                <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleDeleteAllocation('${a.id}')">🗑️</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : `
+    <div class="empty-state" style="padding:48px">
+      <div class="empty-state-icon">📦</div>
+      <div class="empty-state-title">No Allocation Documents Created Yet</div>
+      <div class="empty-state-text">Select materials from the pending PRC treeview above to create your first allocation document.</div>
+    </div>`}
+  </div>
+</div>`;
+}
+
+window.switchAllocPageTab = function(tab) {
+  const treeTab = document.getElementById('alloc-tab-content-tree');
+  const docsTab = document.getElementById('alloc-tab-content-docs');
+  const treeBtn = document.getElementById('alloc-tab-btn-tree');
+  const docsBtn = document.getElementById('alloc-tab-btn-docs');
+
+  if (tab === 'tree') {
+    if (treeTab) treeTab.style.display = 'block';
+    if (docsTab) docsTab.style.display = 'none';
+    if (treeBtn) treeBtn.className = 'btn btn-primary btn-sm';
+    if (docsBtn) docsBtn.className = 'btn btn-secondary btn-sm';
+  } else {
+    if (treeTab) treeTab.style.display = 'none';
+    if (docsTab) docsTab.style.display = 'block';
+    if (treeBtn) treeBtn.className = 'btn btn-secondary btn-sm';
+    if (docsBtn) docsBtn.className = 'btn btn-primary btn-sm';
+  }
+};
+
+window.openAllocationModalWithSelected = function() {
+  const selectedMats = getSelectedAllocMaterials();
+  let selectedPrcId = null;
+  if (selectedMats.length > 0) {
+    selectedPrcId = selectedMats[0].prcId;
+  }
+  showCreateAllocationModal(selectedPrcId);
+};
+
+window.showCreateAllocationModal = function(preselectedPrcId = null) {
+  const prcs = getAvailablePRCsForAllocation();
+
+  const modalId = 'create-alloc-modal';
+  let modalEl = document.getElementById(modalId);
+  if (modalEl) modalEl.remove();
+
+  modalEl = document.createElement('div');
+  modalEl.id = modalId;
+  modalEl.className = 'modal-overlay open';
+
+  if (!prcs.length) {
+    modalEl.innerHTML = `
+      <div class="modal modal-lg fade-in-up" style="max-width:700px">
+        <div class="modal-header">
+          <h3 class="modal-title">📦 Create Allocation Document</h3>
+          <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+        </div>
+        <div class="modal-body" style="padding:36px;text-align:center">
+          <div class="empty-state">
+            <div class="empty-state-icon">✅</div>
+            <div class="empty-state-title">All PRCs are Already Allocated</div>
+            <div class="empty-state-text" style="max-width:480px;margin:8px auto">
+              There are no pending PRCs to be allocated. All PRCs in the database have already been allocated with Allocation Number, Allocation Date, and Buyer Name.
+            </div>
+            <div class="flex gap-3 justify-center" style="margin-top:20px">
+              <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button>
+              <button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();navigate('import')">📥 Import New PRCs</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modalEl);
+    return;
+  }
+
+  modalEl.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:1050px;width:95vw">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">📦 Create Allocation Document (Multi-PRC Tree)</h3>
+          <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Select materials from pending PRCs to allocate. Already allocated PRCs are automatically excluded.</div>
+        </div>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+      </div>
+      <div class="modal-body" style="padding:20px;max-height:75vh;overflow-y:auto">
+        <!-- 1. Allocation Details -->
+        <h4 style="font-size:13px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin-bottom:8px">1. Allocation Header Information</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;background:var(--color-surface-2);padding:14px;border-radius:8px">
+          <div>
+            <label class="form-label" style="display:flex;justify-content:space-between">
+              <span>Allocation Number *</span>
+              <span id="alloc-num-badge" class="badge" style="font-size:10px;display:none;color:var(--color-primary)">Fetched from PRC</span>
+            </label>
+            <input type="text" id="alloc-number" class="form-control" placeholder="e.g. ALLOC-2026-001"/>
+          </div>
+          <div>
+            <label class="form-label">Allocation Date * <span style="font-size:11px;color:var(--color-brand)">(Please Update)</span></label>
+            <input type="date" id="alloc-date" class="form-control" value="${new Date().toISOString().split('T')[0]}"/>
+          </div>
+          <div>
+            <label class="form-label" style="display:flex;justify-content:space-between">
+              <span>Buyer Name</span>
+              <span id="alloc-buyer-badge" class="badge" style="font-size:10px;display:none;color:var(--color-primary)">Fetched from PRC</span>
+            </label>
+            <input type="text" id="alloc-buyer" class="form-control" placeholder="Buyer name"/>
+          </div>
+        </div>
+
+        <!-- 2. PRC Tree View -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <h4 style="font-size:13px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin:0">2. Select Materials from Pending PRCs (${prcs.length} PRC(s) available)</h4>
+          <div id="alloc-tree-summary" style="font-size:12px;font-weight:600;color:var(--color-primary);background:var(--color-surface-2);padding:4px 10px;border-radius:var(--radius-full);border:1px solid var(--color-border)">
+            0 materials selected from 0 PRCs
+          </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="prc-tree-toolbar">
+          <div style="flex:1;min-width:240px;position:relative">
+            <input type="text" id="alloc-tree-search" class="form-control form-control-sm" placeholder="🔍 Search pending PRCs by Number, Dept, Job, Material Code, Description..." oninput="filterAllocPRCTree(this.value)"/>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllAllocPRCTree(true)">▶ Expand All</button>
+            <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllAllocPRCTree(false)">▼ Collapse All</button>
+            <button type="button" class="btn btn-primary btn-xs" onclick="selectAllAllocPRCTree(true)">☑ Select All Available</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="selectAllAllocPRCTree(false)">☐ Deselect All</button>
+          </div>
+        </div>
+
+        <div id="alloc-tree-container-modal" class="prc-tree">
+          ${renderAllocPRCTreeHTML(prcs, '', preselectedPrcId)}
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
+        <div id="alloc-footer-status" style="font-size:12px;color:var(--color-text-secondary)">Check materials across any pending PRCs to allocate.</div>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+          <button class="btn btn-primary" onclick="submitCreateAllocation()">Create Allocation</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modalEl);
+
+  if (preselectedPrcId) {
+    const preselectedPRC = getPRCById(preselectedPrcId);
+    if (preselectedPRC) {
+      if (preselectedPRC.allocationNumber) {
+        document.getElementById('alloc-number').value = preselectedPRC.allocationNumber;
+        document.getElementById('alloc-num-badge').style.display = 'inline';
+      }
+      if (preselectedPRC.buyerName || preselectedPRC.allocatedBy) {
+        document.getElementById('alloc-buyer').value = preselectedPRC.buyerName || preselectedPRC.allocatedBy;
+        document.getElementById('alloc-buyer-badge').style.display = 'inline';
+      }
+      if (preselectedPRC.allocationDate) {
+        document.getElementById('alloc-date').value = preselectedPRC.allocationDate;
+      }
+    }
+  }
+  updateAllocTreeSummary();
+};
+
+function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
+  const q = (query || '').toLowerCase().trim();
+
+  // Filter PRCs purely based on unallocated materials and search query (if any)
+  const filteredPrcs = prcs.filter(p => {
+    const unallocatedMats = (p.materials || []).filter(m => {
+      const allocd = getAllocatedQty(p.id, m.id);
+      const totalQty = parseFloat(m.quantity) || 0;
+      return allocd < totalQty || totalQty === 0;
+    });
+
+    if (!unallocatedMats.length) return false;
+    if (!q) return true;
+
+    const matchPRC = (p.prNumber || '').toLowerCase().includes(q) ||
+                     (p.department || '').toLowerCase().includes(q) ||
+                     (p.job || '').toLowerCase().includes(q) ||
+                     (p.allocationNumber || '').toLowerCase().includes(q) ||
+                     (p.buyerName || '').toLowerCase().includes(q);
+    const matchMat = unallocatedMats.some(m =>
+      (m.matCode || '').toLowerCase().includes(q) ||
+      (m.description || '').toLowerCase().includes(q)
+    );
+    return matchPRC || matchMat;
+  });
+
+  if (!filteredPrcs.length) {
+    return `<div class="empty-state" style="padding:32px"><div class="empty-state-icon">🔍</div><div class="empty-state-title">No pending PRCs match your criteria</div></div>`;
+  }
+
+  // Group PRCs by Department (e.g. Refrigeration, Process, East Area, West Area, Mechanical, etc.)
+  const deptMap = {};
+  filteredPrcs.forEach(p => {
+    const dept = (p.department || p.icDesc || p.categoryDesc || 'Procurement').trim();
+    if (!deptMap[dept]) deptMap[dept] = [];
+    deptMap[dept].push(p);
+  });
+
+  const deptEntries = Object.entries(deptMap);
+
+  return `
+    <div class="classic-tree" id="alloc-classic-tree">
+      <ul class="tree-root">
+        ${deptEntries.map(([deptName, prcList], deptIdx) => {
+          const deptId = `dept-node-${deptIdx}-${deptName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+          const totalDeptMats = prcList.reduce((sum, p) => {
+            const unalloc = (p.materials || []).filter(m => {
+              const allocd = getAllocatedQty(p.id, m.id);
+              const totalQty = parseFloat(m.quantity) || 0;
+              return allocd < totalQty || totalQty === 0;
+            });
+            return sum + unalloc.length;
+          }, 0);
+
+          return `
+            <li class="classic-tree-dept open" id="${deptId}">
+              <div class="tree-node-item" onclick="toggleTreeNode('${deptId}')">
+                <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${deptId}')">-</span>
+                <input type="checkbox" class="tree-dept-cb" data-dept="${deptId}" onclick="event.stopPropagation();onDeptTreeCheck('${deptId}', this.checked)"/>
+                <span class="tree-folder-icon">📁</span>
+                <span class="tree-label-dept">${deptName}</span>
+                <span class="tree-badge">(${prcList.length} PRCs, ${totalDeptMats} items)</span>
+              </div>
+              <ul class="tree-children">
+                ${prcList.map(p => {
+                  const unallocatedMats = (p.materials || []).filter(m => {
+                    const allocd = getAllocatedQty(p.id, m.id);
+                    const totalQty = parseFloat(m.quantity) || 0;
+                    return allocd < totalQty || totalQty === 0;
+                  });
+
+                  const prcNodeId = `prc-node-${p.id}`;
+                  const isPreselected = preselectedPrcId === p.id;
+                  const isOpen = isPreselected || !!q || prcList.length <= 5;
+
+                  return `
+                    <li class="classic-tree-prc ${isOpen ? 'open' : ''}" id="${prcNodeId}">
+                      <div class="tree-node-item ${isPreselected ? 'selected' : ''}" onclick="toggleTreeNode('${prcNodeId}')">
+                        <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${prcNodeId}')">${isOpen ? '-' : '+'}</span>
+                        <input type="checkbox" class="prc-tree-header-cb" data-prc="${p.id}" data-dept="${deptId}" ${isPreselected ? 'checked' : ''} onclick="event.stopPropagation();onPRCTreeHeaderCheck('${p.id}', this.checked)"/>
+                        <span class="tree-folder-icon">📁</span>
+                        <span class="tree-label-prc">${p.prNumber}</span>
+                        <button type="button" class="btn btn-ghost btn-xs tree-view-btn" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="event.stopPropagation();openPRCDetail('${p.id}')" title="View PRC Details">👁️ View</button>
+                        ${p.job ? `<span class="tree-sublabel">(${p.job})</span>` : ''}
+                        <span class="tree-badge">(${unallocatedMats.length} items)</span>
+                        <span class="chip ${getStatusChipClass(p.status)}" style="font-size:10px;padding:1px 6px;margin-left:8px">${p.status}</span>
+                      </div>
+                      <ul class="tree-children">
+                        ${unallocatedMats.map(m => {
+                          const isChecked = isPreselected;
+                          return `
+                            <li class="classic-tree-mat">
+                              <div class="tree-node-item" onclick="toggleMatItemCheck('${p.id}', '${m.id}')">
+                                <span class="tree-expander-spacer"></span>
+                                <input type="checkbox" class="alloc-tree-mat-cb" data-prc="${p.id}" data-dept="${deptId}" data-mat="${m.id}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onPRCTreeMatCheck('${p.id}', '${m.id}')"/>
+                                <span class="tree-file-icon">📄</span>
+                                <span class="tree-label-mat-code font-mono">${m.matCode}</span>
+                                <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
+                                <span class="tree-mat-qty">Qty: ${m.quantity} ${m.unit || ''}</span>
+                              </div>
+                            </li>`;
+                        }).join('')}
+                      </ul>
+                    </li>`;
+                }).join('')}
+              </ul>
+            </li>`;
+        }).join('')}
+      </ul>
+    </div>`;
+}
+
+window.toggleTreeNode = function(nodeId) {
+  const node = document.getElementById(nodeId);
+  if (node) {
+    node.classList.toggle('open');
+    const expander = node.querySelector(':scope > .tree-node-item > .tree-expander');
+    if (expander) {
+      expander.textContent = node.classList.contains('open') ? '-' : '+';
+    }
+  }
+};
+
+window.toggleMatItemCheck = function(prcId, matId) {
+  const cb = document.querySelector(`.alloc-tree-mat-cb[data-prc="${prcId}"][data-mat="${matId}"]`);
+  if (cb && !cb.disabled) {
+    cb.checked = !cb.checked;
+    onPRCTreeMatCheck(prcId, matId);
+  }
+};
+
+window.onDeptTreeCheck = function(deptId, isChecked) {
+  const prcCheckboxes = document.querySelectorAll(`.prc-tree-header-cb[data-dept="${deptId}"]:not(:disabled)`);
+  prcCheckboxes.forEach(cb => cb.checked = isChecked);
+
+  const matCheckboxes = document.querySelectorAll(`.alloc-tree-mat-cb[data-dept="${deptId}"]:not(:disabled)`);
+  matCheckboxes.forEach(cb => cb.checked = isChecked);
+
+  const deptNode = document.getElementById(deptId);
+  if (deptNode && isChecked) {
+    deptNode.classList.add('open');
+    const expander = deptNode.querySelector(':scope > .tree-node-item > .tree-expander');
+    if (expander) expander.textContent = '-';
+  }
+
+  if (isChecked && prcCheckboxes.length > 0) {
+    autoFetchFromPRC(prcCheckboxes[0].dataset.prc);
+  }
+
+  updateAllocTreeSummary();
+};
+
+window.onPRCTreeHeaderCheck = function(prcId, isChecked) {
+  const matCheckboxes = document.querySelectorAll(`.alloc-tree-mat-cb[data-prc="${prcId}"]:not(:disabled)`);
+  matCheckboxes.forEach(cb => cb.checked = isChecked);
+
+  const node = document.getElementById(`prc-node-${prcId}`);
+  if (node && isChecked) {
+    node.classList.add('open');
+    const expander = node.querySelector(':scope > .tree-node-item > .tree-expander');
+    if (expander) expander.textContent = '-';
+  }
+
+  if (matCheckboxes.length > 0) {
+    updateDeptCheckboxState(matCheckboxes[0].dataset.dept);
+  }
+
+  if (isChecked) {
+    autoFetchFromPRC(prcId);
+  }
+
+  updateAllocTreeSummary();
+};
+
+window.onPRCTreeMatCheck = function(prcId, matId) {
+  const prcCb = document.querySelector(`.prc-tree-header-cb[data-prc="${prcId}"]`);
+  const allMats = document.querySelectorAll(`.alloc-tree-mat-cb[data-prc="${prcId}"]:not(:disabled)`);
+  const checkedMats = document.querySelectorAll(`.alloc-tree-mat-cb[data-prc="${prcId}"]:checked:not(:disabled)`);
+
+  if (prcCb) {
+    prcCb.checked = allMats.length > 0 && checkedMats.length === allMats.length;
+    prcCb.indeterminate = checkedMats.length > 0 && checkedMats.length < allMats.length;
+  }
+
+  if (allMats.length > 0) {
+    updateDeptCheckboxState(allMats[0].dataset.dept);
+  }
+
+  if (checkedMats.length > 0) {
+    autoFetchFromPRC(prcId);
+  }
+
+  updateAllocTreeSummary();
+};
+
+function updateDeptCheckboxState(deptId) {
+  if (!deptId) return;
+  const deptCb = document.querySelector(`.tree-dept-cb[data-dept="${deptId}"]`);
+  if (!deptCb) return;
+
+  const allMats = document.querySelectorAll(`.alloc-tree-mat-cb[data-dept="${deptId}"]:not(:disabled)`);
+  const checkedMats = document.querySelectorAll(`.alloc-tree-mat-cb[data-dept="${deptId}"]:checked:not(:disabled)`);
+
+  deptCb.checked = allMats.length > 0 && checkedMats.length === allMats.length;
+  deptCb.indeterminate = checkedMats.length > 0 && checkedMats.length < allMats.length;
+}
+
+function autoFetchFromPRC(prcId) {
+  const prc = getPRCById(prcId);
+  if (!prc) return;
+
+  const mats = prc.materials || [];
+  const existingAllocNum = prc.allocationNumber || (mats.find(m => m.allocationNumber)?.allocationNumber) || '';
+  const existingBuyer = prc.buyerName || prc.allocatedBy || (mats.find(m => m.buyerName)?.buyerName) || (mats.find(m => m.allocatedBy)?.allocatedBy) || '';
+  const existingAllocDate = prc.allocationDate || (mats.find(m => m.allocationDate)?.allocationDate) || '';
+
+  const allocNumInput = document.getElementById('alloc-number');
+  const allocBuyerInput = document.getElementById('alloc-buyer');
+  const allocDateInput = document.getElementById('alloc-date');
+  const allocNumBadge = document.getElementById('alloc-num-badge');
+  const allocBuyerBadge = document.getElementById('alloc-buyer-badge');
+
+  if (allocNumInput && (!allocNumInput.value.trim() || allocNumInput.value === existingAllocNum)) {
+    if (existingAllocNum) {
+      allocNumInput.value = existingAllocNum;
+      if (allocNumBadge) allocNumBadge.style.display = 'inline';
+    }
+  }
+
+  if (allocBuyerInput && (!allocBuyerInput.value.trim() || allocBuyerInput.value === existingBuyer)) {
+    if (existingBuyer) {
+      allocBuyerInput.value = existingBuyer;
+      if (allocBuyerBadge) allocBuyerBadge.style.display = 'inline';
+    }
+  }
+
+  if (allocDateInput && !allocDateInput.value && existingAllocDate) {
+    allocDateInput.value = existingAllocDate;
+  }
+}
+
+window.filterAllocPRCTree = function(query) {
+  const prcs = getAvailablePRCsForAllocation();
+  const pageContainer = document.getElementById('alloc-tree-container');
+  const modalContainer = document.getElementById('alloc-tree-container-modal');
+  if (pageContainer) pageContainer.innerHTML = renderAllocPRCTreeHTML(prcs, query);
+  if (modalContainer) modalContainer.innerHTML = renderAllocPRCTreeHTML(prcs, query);
+  updateAllocTreeSummary();
+};
+
+window.expandAllAllocPRCTree = function(expand) {
+  document.querySelectorAll('.classic-tree li').forEach(node => {
+    if (expand) node.classList.add('open');
+    else node.classList.remove('open');
+    const expander = node.querySelector(':scope > .tree-node-item > .tree-expander');
+    if (expander) {
+      expander.textContent = expand ? '-' : '+';
+    }
+  });
+};
+
+window.getSelectedAllocMaterials = function() {
+  const modalContainer = document.getElementById('alloc-tree-container-modal');
+  const pageContainer = document.getElementById('alloc-tree-container');
+  // Prefer modal container if visible in DOM, otherwise page container
+  const container = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : pageContainer;
+  const scope = container || document;
+
+  const checkedBoxes = scope.querySelectorAll('.alloc-tree-mat-cb:checked:not(:disabled)');
+  const uniqueItemsMap = new Map();
+  checkedBoxes.forEach(cb => {
+    const prcId = cb.dataset.prc;
+    const matId = cb.dataset.mat;
+    if (prcId && matId) {
+      uniqueItemsMap.set(`${prcId}::${matId}`, { prcId, matId, cb });
+    }
+  });
+  return Array.from(uniqueItemsMap.values());
+};
+
+window.selectAllAllocPRCTree = function(select) {
+  const modalContainer = document.getElementById('alloc-tree-container-modal');
+  const pageContainer = document.getElementById('alloc-tree-container');
+  const container = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : pageContainer;
+  const scope = container || document;
+
+  scope.querySelectorAll('.alloc-tree-mat-cb:not(:disabled)').forEach(cb => {
+    cb.checked = select;
+  });
+  scope.querySelectorAll('.prc-tree-header-cb').forEach(cb => {
+    if (!cb.disabled) {
+      cb.checked = select;
+      cb.indeterminate = false;
+    }
+  });
+  scope.querySelectorAll('.tree-dept-cb').forEach(cb => {
+    if (!cb.disabled) {
+      cb.checked = select;
+      cb.indeterminate = false;
+    }
+  });
+
+  if (select) {
+    const prcs = getAvailablePRCsForAllocation();
+    if (prcs.length > 0) autoFetchFromPRC(prcs[0].id);
+  }
+
+  updateAllocTreeSummary();
+};
+
+window.updateAllocTreeSummary = function() {
+  const selectedMats = getSelectedAllocMaterials();
+  const prcSet = new Set(selectedMats.map(item => item.prcId));
+
+  const pageSummaryEl = document.getElementById('alloc-page-tree-summary');
+  const modalSummaryEl = document.getElementById('alloc-tree-summary');
+  const footerStatus = document.getElementById('alloc-footer-status');
+
+  const text = `${selectedMats.length} material(s) selected from ${prcSet.size} PRC(s)`;
+  if (pageSummaryEl) pageSummaryEl.textContent = text;
+  if (modalSummaryEl) modalSummaryEl.textContent = text;
+  if (footerStatus) {
+    footerStatus.textContent = selectedMats.length > 0
+      ? `✅ Ready to create Allocation with ${selectedMats.length} material(s) across ${prcSet.size} PRC(s)`
+      : 'Check materials across any PRCs in the tree to allocate.';
+  }
+};
+
+window.submitCreateAllocation = function() {
+  const allocNumber = document.getElementById('alloc-number')?.value.trim();
+  const allocDate = document.getElementById('alloc-date')?.value;
+  const buyerName = document.getElementById('alloc-buyer')?.value.trim();
+
+  if (!allocNumber) { toast('Allocation Number is required', 'warning'); return; }
+  if (!allocDate) { toast('Allocation Date is required', 'warning'); return; }
+
+  const selectedMats = getSelectedAllocMaterials();
+  if (!selectedMats.length) {
+    toast('Please select at least one material from the PRC tree', 'warning');
+    return;
+  }
+
+  const items = [];
+  const state = getState();
+
+  selectedMats.forEach(({ prcId, matId }) => {
+    const prc = getPRCById(prcId);
+    if (prc) {
+      const mat = (prc.materials || []).find(m => m.id === matId);
+      if (mat) {
+        items.push({
+          prcId,
+          materialId: matId,
+          quantity: parseFloat(mat.quantity) || 0,
+          matCode: mat.matCode,
+          description: mat.description,
+          unit: mat.unit || '',
+          prNumber: prc.prNumber
+        });
+      }
+    }
+  });
+
+  const prcCount = new Set(items.map(i => i.prcId)).size;
+  createAllocation({ allocationNumber: allocNumber, allocationDate: allocDate, buyerName, items });
+  document.getElementById('create-alloc-modal')?.remove();
+  toast(`Allocation ${allocNumber} created with ${items.length} materials across ${prcCount} PRCs!`, 'success');
+  navigate('allocations');
+  updateSidebarBadges();
+};
+
+window.viewAllocationDetail = function(id) {
+  const alloc = getAllocationById(id);
+  if (!alloc) return;
+  const modalId = 'alloc-detail-modal';
+  let el = document.getElementById(modalId);
+  if (el) el.remove();
+  el = document.createElement('div');
+  el.id = modalId;
+  el.className = 'modal-overlay open';
+  el.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:850px">
+      <div class="modal-header">
+        <div><h3 class="modal-title">📦 Allocation: ${alloc.allocationNumber}</h3>
+        <div style="font-size:13px;color:var(--color-text-secondary)">Date: ${fmtDate(alloc.allocationDate)} · Buyer: ${alloc.buyerName || '—'} · Created by ${alloc.createdBy}</div></div>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+      </div>
+      <div class="modal-body" style="padding:20px">
+        <table class="data-table" style="font-size:12px">
+          <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>Allocated Qty</th><th>Unit</th></tr></thead>
+          <tbody>${alloc.items.map(i => `<tr><td class="font-mono">${i.prNumber}</td><td class="font-mono">${i.matCode}</td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button></div>
+    </div>`;
+  document.body.appendChild(el);
+};
+
+window.handleDeleteAllocation = async function(id) {
+  const confirmed = await confirmDialog('Delete this allocation document?', 'Delete Allocation');
+  if (!confirmed) return;
+  const result = deleteAllocation(id);
+  if (result.success) { toast('Allocation deleted', 'success'); navigate('allocations'); updateSidebarBadges(); }
+  else toast(result.reason, 'error');
+};
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: RFQs
+// ═══════════════════════════════════════════════════════════
+function renderRFQsPage(container) {
+  const state = getState();
+  const rfqs = state.rfqs || [];
+
+  container.innerHTML = `
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Request for Quotation (RFQ)</h1>
+    <p class="page-subtitle">${rfqs.length} RFQ document(s) created</p>
+  </div>
+  <button class="btn btn-primary" onclick="showCreateRFQModal()">+ Create RFQ</button>
+</div>
+
+${rfqs.length ? `
+<div class="card" style="padding:0">
+  <div class="table-wrapper" style="overflow:auto">
+    <table class="data-table">
+      <thead><tr><th>RFQ Number</th><th>Date</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody>
+        ${rfqs.map(r => `
+          <tr>
+            <td class="font-mono font-semibold">${r.rfqNumber}</td>
+            <td>${fmtDate(r.rfqDate)}</td>
+            <td><span class="chip chip-pending">${r.items.length} items</span></td>
+            <td><span class="chip chip-completed">${r.status}</span></td>
+            <td>${fmtDate(r.createdAt)}</td>
+            <td>
+              <button class="btn btn-ghost btn-sm" onclick="viewRFQDetail('${r.id}')">👁️ View</button>
+              <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleDeleteRFQ('${r.id}')">🗑️</button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>` : `
+<div class="card"><div class="empty-state" style="padding:60px"><div class="empty-state-icon">📨</div><div class="empty-state-title">No RFQs Yet</div><div class="empty-state-text">Create allocations first, then create RFQs from allocated materials.</div></div></div>`}`;
+}
+
+window.showCreateRFQModal = function() {
+  const available = getAvailableForRFQ();
+  if (!available.length) { toast('No allocated materials available for RFQ. Create allocations first.', 'warning'); return; }
+
+  // Group by Allocation Number
+  const allocMap = {};
+  available.forEach((m, i) => {
+    const key = m.allocationNumber || m.allocationId;
+    if (!allocMap[key]) allocMap[key] = { allocationNumber: m.allocationNumber, allocationDate: m.allocationDate, buyerName: m.buyerName, items: [] };
+    allocMap[key].items.push({ ...m, _idx: i });
+  });
+  const allocEntries = Object.entries(allocMap);
+
+  const modalId = 'create-rfq-modal';
+  let el = document.getElementById(modalId);
+  if (el) el.remove();
+  el = document.createElement('div');
+  el.id = modalId;
+  el.className = 'modal-overlay open';
+  el.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:1050px;width:95vw">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">📨 Create RFQ — Select Materials from Allocations</h3>
+          <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Select materials from allocated items using the treeview below. Materials are grouped by Allocation Number.</div>
+        </div>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+      </div>
+      <div class="modal-body" style="padding:20px;max-height:75vh;overflow-y:auto">
+        <!-- RFQ Header -->
+        <h4 style="font-size:13px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin-bottom:8px">1. RFQ Header Information</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;background:var(--color-surface-2);padding:14px;border-radius:8px">
+          <div><label class="form-label">RFQ Number *</label><input type="text" id="rfq-number" class="form-control" placeholder="e.g. RFQ-2026-001"/></div>
+          <div><label class="form-label">RFQ Date *</label><input type="date" id="rfq-date" class="form-control" value="${new Date().toISOString().split('T')[0]}"/></div>
+        </div>
+
+        <!-- Treeview Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <h4 style="font-size:13px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin:0">2. Select Materials from Allocations (${available.length} items available)</h4>
+          <div id="rfq-tree-summary" style="font-size:12px;font-weight:600;color:var(--color-primary);background:var(--color-surface-2);padding:4px 10px;border-radius:var(--radius-full);border:1px solid var(--color-border)">
+            0 material(s) selected
+          </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="prc-tree-toolbar" style="margin-bottom:12px;background:var(--color-surface-2);padding:10px;border-radius:8px">
+          <div style="flex:1;min-width:200px">
+            <input type="text" id="rfq-tree-search" class="form-control form-control-sm" placeholder="🔍 Search by Allocation #, PR Number, Mat Code, Description..." oninput="filterRFQTree(this.value)"/>
+          </div>
+          <div class="flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllRFQTree(true)">▶ Expand All</button>
+            <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllRFQTree(false)">▼ Collapse All</button>
+            <button type="button" class="btn btn-primary btn-xs" onclick="selectAllRFQTree(true)">☑ Select All</button>
+            <button type="button" class="btn btn-ghost btn-xs" onclick="selectAllRFQTree(false)">☐ Deselect All</button>
+          </div>
+        </div>
+
+        <!-- Treeview Container -->
+        <div id="rfq-tree-container">
+          ${renderRFQTreeHTML(allocEntries)}
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
+        <div id="rfq-footer-status" style="font-size:12px;color:var(--color-text-secondary)">Select materials from allocations to create RFQ.</div>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+          <button class="btn btn-primary" onclick="submitCreateRFQ()">Create RFQ</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  window._rfqAvailable = available;
+  window._rfqAllocEntries = allocEntries;
+  updateRFQTreeSummary();
+};
+
+function renderRFQTreeHTML(allocEntries, query = '') {
+  const q = (query || '').toLowerCase().trim();
+
+  const filtered = allocEntries.map(([allocKey, data]) => {
+    const items = data.items.filter(m => {
+      if (!q) return true;
+      return (m.allocationNumber || '').toLowerCase().includes(q) ||
+             (m.prNumber || '').toLowerCase().includes(q) ||
+             (m.matCode || '').toLowerCase().includes(q) ||
+             (m.description || '').toLowerCase().includes(q);
+    });
+    return items.length ? [allocKey, { ...data, items }] : null;
+  }).filter(Boolean);
+
+  if (!filtered.length) {
+    return `<div class="empty-state" style="padding:32px"><div class="empty-state-icon">🔍</div><div class="empty-state-title">No materials match your search</div></div>`;
+  }
+
+  return `
+    <div class="classic-tree" id="rfq-classic-tree">
+      <ul class="tree-root">
+        ${filtered.map(([allocKey, data], allocIdx) => {
+          const allocNodeId = `rfq-alloc-node-${allocIdx}`;
+          const totalItems = data.items.length;
+
+          return `
+            <li class="open" id="${allocNodeId}">
+              <div class="tree-node-item" onclick="toggleTreeNode('${allocNodeId}')">
+                <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${allocNodeId}')">-</span>
+                <input type="checkbox" class="rfq-alloc-cb" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation();onRFQAllocCheck('${allocNodeId}', this.checked)"/>
+                <span class="tree-folder-icon">📁</span>
+                <span class="tree-label-dept">${data.allocationNumber || allocKey}</span>
+                <span class="tree-sublabel">Buyer: ${data.buyerName || '—'}</span>
+                <span class="tree-badge">(${totalItems} items)</span>
+              </div>
+              <ul class="tree-children">
+                ${data.items.map(m => `
+                  <li class="rfq-tree-mat">
+                    <div class="tree-node-item" onclick="toggleRFQMatCheck('${allocNodeId}', ${m._idx})">
+                      <span class="tree-expander-spacer"></span>
+                      <input type="checkbox" class="rfq-mat-cb" data-idx="${m._idx}" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation()" onchange="onRFQMatCheck('${allocNodeId}')"/>
+                      <span class="tree-file-icon">📄</span>
+                      <span class="tree-label-prc font-mono">${m.prNumber}</span>
+                      <span class="tree-label-mat-code font-mono">${m.matCode}</span>
+                      <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
+                      <span class="tree-mat-qty">Alloc: ${m.allocatedQty} ${m.unit || ''}</span>
+                      <span class="tree-mat-qty" style="background:rgba(16,185,129,0.15);border-color:rgba(16,185,129,0.3);color:var(--color-success)">Avail: ${m.availableQty}</span>
+                      <input type="number" class="form-control rfq-qty-input" data-idx="${m._idx}" min="0" max="${m.availableQty}" value="${m.availableQty}" style="width:75px;height:24px;font-size:11px;padding:2px 4px;margin-left:4px" onclick="event.stopPropagation()"/>
+                    </div>
+                  </li>`).join('')}
+              </ul>
+            </li>`;
+        }).join('')}
+      </ul>
+    </div>`;
+}
+
+window.filterRFQTree = function(query) {
+  const container = document.getElementById('rfq-tree-container');
+  if (container && window._rfqAllocEntries) {
+    container.innerHTML = renderRFQTreeHTML(window._rfqAllocEntries, query);
+    updateRFQTreeSummary();
+  }
+};
+
+window.expandAllRFQTree = function(expand) {
+  document.querySelectorAll('#rfq-tree-container .classic-tree li').forEach(node => {
+    if (expand) node.classList.add('open');
+    else node.classList.remove('open');
+    const expander = node.querySelector(':scope > .tree-node-item > .tree-expander');
+    if (expander) expander.textContent = expand ? '-' : '+';
+  });
+};
+
+window.selectAllRFQTree = function(select) {
+  document.querySelectorAll('#rfq-tree-container .rfq-mat-cb').forEach(cb => cb.checked = select);
+  document.querySelectorAll('#rfq-tree-container .rfq-alloc-cb').forEach(cb => {
+    cb.checked = select;
+    cb.indeterminate = false;
+  });
+  updateRFQTreeSummary();
+};
+
+window.toggleRFQMatCheck = function(allocNodeId, idx) {
+  const cb = document.querySelector(`.rfq-mat-cb[data-idx="${idx}"][data-alloc-node="${allocNodeId}"]`);
+  if (cb && !cb.disabled) {
+    cb.checked = !cb.checked;
+    onRFQMatCheck(allocNodeId);
+  }
+};
+
+window.onRFQAllocCheck = function(allocNodeId, isChecked) {
+  document.querySelectorAll(`.rfq-mat-cb[data-alloc-node="${allocNodeId}"]`).forEach(cb => cb.checked = isChecked);
+  const node = document.getElementById(allocNodeId);
+  if (node && isChecked) {
+    node.classList.add('open');
+    const expander = node.querySelector(':scope > .tree-node-item > .tree-expander');
+    if (expander) expander.textContent = '-';
+  }
+  updateRFQTreeSummary();
+};
+
+window.onRFQMatCheck = function(allocNodeId) {
+  const allocCb = document.querySelector(`.rfq-alloc-cb[data-alloc-node="${allocNodeId}"]`);
+  const allMats = document.querySelectorAll(`.rfq-mat-cb[data-alloc-node="${allocNodeId}"]`);
+  const checkedMats = document.querySelectorAll(`.rfq-mat-cb[data-alloc-node="${allocNodeId}"]:checked`);
+  if (allocCb) {
+    allocCb.checked = allMats.length > 0 && checkedMats.length === allMats.length;
+    allocCb.indeterminate = checkedMats.length > 0 && checkedMats.length < allMats.length;
+  }
+  updateRFQTreeSummary();
+};
+
+window.updateRFQTreeSummary = function() {
+  const checkedMats = document.querySelectorAll('#rfq-tree-container .rfq-mat-cb:checked');
+  const allocSet = new Set();
+  checkedMats.forEach(cb => allocSet.add(cb.dataset.allocNode));
+  const summaryEl = document.getElementById('rfq-tree-summary');
+  const footerStatus = document.getElementById('rfq-footer-status');
+  const text = `${checkedMats.length} material(s) selected from ${allocSet.size} allocation(s)`;
+  if (summaryEl) summaryEl.textContent = text;
+  if (footerStatus) {
+    footerStatus.textContent = checkedMats.length > 0
+      ? `✅ Ready to create RFQ with ${checkedMats.length} material(s) from ${allocSet.size} allocation(s)`
+      : 'Select materials from allocations to create RFQ.';
+  }
+};
+
+window.submitCreateRFQ = function() {
+  const rfqNumber = document.getElementById('rfq-number')?.value.trim();
+  const rfqDate = document.getElementById('rfq-date')?.value;
+  if (!rfqNumber) { toast('RFQ Number is required', 'warning'); return; }
+  if (!rfqDate) { toast('RFQ Date is required', 'warning'); return; }
+
+  const available = window._rfqAvailable || [];
+  const items = [];
+  document.querySelectorAll('.rfq-mat-cb:checked').forEach(cb => {
+    const idx = parseInt(cb.dataset.idx);
+    const m = available[idx];
+    if (!m) return;
+    const qtyInput = document.querySelector(`.rfq-qty-input[data-idx="${idx}"]`);
+    const qty = parseFloat(qtyInput?.value) || 0;
+    if (qty > 0 && qty <= m.availableQty) {
+      items.push({ allocationId: m.allocationId, prcId: m.prcId, materialId: m.materialId, quantity: qty, matCode: m.matCode, description: m.description, unit: m.unit, prNumber: m.prNumber });
+    }
+  });
+
+  if (!items.length) { toast('Select at least one material with valid quantity', 'warning'); return; }
+
+  createRFQ({ rfqNumber, rfqDate, items });
+  document.getElementById('create-rfq-modal')?.remove();
+  toast(`RFQ ${rfqNumber} created with ${items.length} materials!`, 'success');
+  navigate('rfqs');
+  updateSidebarBadges();
+};
+
+window.viewRFQDetail = function(id) {
+  const rfq = getRFQById(id);
+  if (!rfq) return;
+  const modalId = 'rfq-detail-modal';
+  let el = document.getElementById(modalId);
+  if (el) el.remove();
+  el = document.createElement('div');
+  el.id = modalId;
+  el.className = 'modal-overlay open';
+  el.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:850px">
+      <div class="modal-header">
+        <div><h3 class="modal-title">📨 RFQ: ${rfq.rfqNumber}</h3>
+        <div style="font-size:13px;color:var(--color-text-secondary)">Date: ${fmtDate(rfq.rfqDate)} · Created by ${rfq.createdBy}</div></div>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+      </div>
+      <div class="modal-body" style="padding:20px">
+        <table class="data-table" style="font-size:12px">
+          <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>RFQ Qty</th><th>Unit</th></tr></thead>
+          <tbody>${rfq.items.map(i => `<tr><td class="font-mono">${i.prNumber}</td><td class="font-mono">${i.matCode}</td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button></div>
+    </div>`;
+  document.body.appendChild(el);
+};
+
+window.handleDeleteRFQ = async function(id) {
+  const confirmed = await confirmDialog('Delete this RFQ document?', 'Delete RFQ');
+  if (!confirmed) return;
+  const result = deleteRFQ(id);
+  if (result.success) { toast('RFQ deleted', 'success'); navigate('rfqs'); updateSidebarBadges(); }
+  else toast(result.reason, 'error');
+};
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: TCDs (TECHNO-COMMERCIAL DOCUMENTS)
+// ═══════════════════════════════════════════════════════════
+function renderTCDsPage(container) {
+  const state = getState();
+  const tcds = state.tcds || [];
+
+  container.innerHTML = `
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Techno-Commercial Documents (TCD)</h1>
+    <p class="page-subtitle">${tcds.length} TCD document(s)</p>
+  </div>
+  <button class="btn btn-primary" onclick="showCreateTCDModal()">+ Create TCD</button>
+</div>
+
+${tcds.length ? `
+<div class="card" style="padding:0">
+  <div class="table-wrapper" style="overflow:auto">
+    <table class="data-table">
+      <thead><tr><th>TCD Number</th><th>Date</th><th>Vendors</th><th>Total Items</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody>
+        ${tcds.map(t => {
+          const totalItems = (t.vendorAllocations||[]).reduce((s,va) => s + va.items.length, 0);
+          const vendorCount = (t.vendorAllocations||[]).length;
+          return `<tr>
+            <td class="font-mono font-semibold">${t.tcdNumber}</td>
+            <td>${fmtDate(t.tcdDate)}</td>
+            <td><span class="chip chip-partly">${vendorCount} vendor(s)</span></td>
+            <td>${totalItems} items</td>
+            <td><span class="chip ${t.approved ? 'chip-completed' : 'chip-awaiting'}">${t.status}</span></td>
+            <td>${fmtDate(t.createdAt)}</td>
+            <td>
+              <button class="btn btn-ghost btn-sm" onclick="viewTCDDetail('${t.id}')">👁️ View</button>
+              ${!t.approved ? `<button class="btn btn-primary btn-sm" onclick="handleApproveTCD('${t.id}')">✅ Approve</button>` : ''}
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>` : `
+<div class="card"><div class="empty-state" style="padding:60px"><div class="empty-state-icon">📊</div><div class="empty-state-title">No TCDs Yet</div><div class="empty-state-text">Create RFQs first, then create TCDs by assigning materials to vendors.</div></div></div>`}`;
+}
+
+window.showCreateTCDModal = function() {
+  const available = getAvailableForTCD();
+  if (!available.length) { toast('No RFQ materials available for TCD. Create RFQs first.', 'warning'); return; }
+
+  const modalId = 'create-tcd-modal';
+  let el = document.getElementById(modalId);
+  if (el) el.remove();
+  el = document.createElement('div');
+  el.id = modalId;
+  el.className = 'modal-overlay open';
+  el.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:1000px">
+      <div class="modal-header">
+        <h3 class="modal-title">📊 Create TCD — Assign Materials to Vendors</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+      </div>
+      <div class="modal-body" style="padding:20px;max-height:70vh;overflow-y:auto">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+          <div><label class="form-label">TCD Number *</label><input type="text" id="tcd-number" class="form-control" placeholder="e.g. TCD-2026-001"/></div>
+          <div><label class="form-label">TCD Date *</label><input type="date" id="tcd-date" class="form-control" value="${new Date().toISOString().split('T')[0]}"/></div>
+        </div>
+
+        <div style="background:var(--color-surface-2);padding:12px;border-radius:8px;margin-bottom:16px">
+          <h4 style="font-size:13px;font-weight:700;color:var(--color-primary);margin-bottom:8px">Assign Vendor to Each Material</h4>
+          <p style="font-size:12px;color:var(--color-text-secondary)">Enter the vendor name and quantity for each material. Different materials can go to different vendors — the system will create one PO Document per vendor upon TCD approval.</p>
+        </div>
+
+        <div class="table-wrapper" style="overflow:auto;max-height:350px">
+          <table class="data-table" style="font-size:12px">
+            <thead><tr><th></th><th>RFQ</th><th>PR Number</th><th>Mat Code</th><th>Description</th><th>Available</th><th>TCD Qty</th><th>Vendor Name</th></tr></thead>
+            <tbody>
+              ${available.map((m, i) => `<tr>
+                <td><input type="checkbox" class="tcd-mat-cb" data-idx="${i}" checked/></td>
+                <td class="font-mono text-sm">${m.rfqNumber}</td>
+                <td class="font-mono">${m.prNumber}</td>
+                <td class="font-mono">${m.matCode}</td>
+                <td><strong>${m.description}</strong></td>
+                <td class="text-success font-semibold">${m.availableQty}</td>
+                <td><input type="number" class="form-control tcd-qty-input" data-idx="${i}" min="0" max="${m.availableQty}" value="${m.availableQty}" style="width:80px"/></td>
+                <td><input type="text" class="form-control tcd-vendor-input" data-idx="${i}" placeholder="Vendor name" style="width:160px"/></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitCreateTCD()">Create TCD</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  window._tcdAvailable = available;
+};
+
+window.submitCreateTCD = function() {
+  const tcdNumber = document.getElementById('tcd-number')?.value.trim();
+  const tcdDate = document.getElementById('tcd-date')?.value;
+  if (!tcdNumber) { toast('TCD Number is required', 'warning'); return; }
+  if (!tcdDate) { toast('TCD Date is required', 'warning'); return; }
+
+  const available = window._tcdAvailable || [];
+  // Group selected items by vendor
+  const vendorMap = {};
+  document.querySelectorAll('.tcd-mat-cb:checked').forEach(cb => {
+    const idx = parseInt(cb.dataset.idx);
+    const m = available[idx];
+    if (!m) return;
+    const qtyInput = document.querySelector(`.tcd-qty-input[data-idx="${idx}"]`);
+    const vendorInput = document.querySelector(`.tcd-vendor-input[data-idx="${idx}"]`);
+    const qty = parseFloat(qtyInput?.value) || 0;
+    const vendor = vendorInput?.value.trim() || '';
+    if (!vendor) { toast(`Please enter vendor name for ${m.matCode}`, 'warning'); return; }
+    if (qty <= 0 || qty > m.availableQty) return;
+
+    if (!vendorMap[vendor]) vendorMap[vendor] = [];
+    vendorMap[vendor].push({ rfqId: m.rfqId, prcId: m.prcId, materialId: m.materialId, quantity: qty, matCode: m.matCode, description: m.description, unit: m.unit, prNumber: m.prNumber });
+  });
+
+  const vendorAllocations = Object.entries(vendorMap).map(([vendorName, items]) => ({ vendorName, items }));
+  if (!vendorAllocations.length) { toast('Assign at least one material to a vendor', 'warning'); return; }
+
+  createTCD({ tcdNumber, tcdDate, vendorAllocations });
+  document.getElementById('create-tcd-modal')?.remove();
+  toast(`TCD ${tcdNumber} created with ${vendorAllocations.length} vendor(s)!`, 'success');
+  navigate('tcds');
+  updateSidebarBadges();
+};
+
+window.viewTCDDetail = function(id) {
+  const tcd = getTCDById(id);
+  if (!tcd) return;
+  const modalId = 'tcd-detail-modal';
+  let el = document.getElementById(modalId);
+  if (el) el.remove();
+  el = document.createElement('div');
+  el.id = modalId;
+  el.className = 'modal-overlay open';
+  el.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:900px">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">📊 TCD: ${tcd.tcdNumber}</h3>
+          <div style="font-size:13px;color:var(--color-text-secondary)">Date: ${fmtDate(tcd.tcdDate)} · Status: ${tcd.status}${tcd.approved ? ' · Approved by ' + tcd.approvedBy : ''}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="chip ${tcd.approved ? 'chip-completed' : 'chip-awaiting'}">${tcd.status}</span>
+          <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+        </div>
+      </div>
+      <div class="modal-body" style="padding:20px;max-height:70vh;overflow-y:auto">
+        ${(tcd.vendorAllocations || []).map(va => `
+          <div style="margin-bottom:20px">
+            <h4 style="font-size:14px;font-weight:700;color:var(--color-primary);margin-bottom:8px;display:flex;align-items:center;gap:8px">🏢 Vendor: ${va.vendorName} <span class="chip chip-pending" style="font-size:11px">${va.items.length} items</span></h4>
+            <table class="data-table" style="font-size:12px">
+              <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>TCD Qty</th><th>Unit</th></tr></thead>
+              <tbody>${va.items.map(i => `<tr><td class="font-mono">${i.prNumber}</td><td class="font-mono">${i.matCode}</td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
+            </table>
+          </div>`).join('')}
+      </div>
+      <div class="modal-footer">
+        ${!tcd.approved ? `<button class="btn btn-primary" onclick="handleApproveTCD('${tcd.id}');document.getElementById('${modalId}').remove()">✅ Approve TCD & Generate PO Documents</button>` : ''}
+        <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+};
+
+window.handleApproveTCD = async function(id) {
+  const tcd = getTCDById(id);
+  if (!tcd) return;
+  const vendorCount = (tcd.vendorAllocations || []).length;
+  const confirmed = await confirmDialog(`Approve TCD "${tcd.tcdNumber}"? This will generate ${vendorCount} Purchase Order Document(s) — one per vendor. PO Numbers will need to be entered manually.`, 'Approve TCD');
+  if (!confirmed) return;
+
+  const result = approveTCD(id);
+  if (result.success) {
+    toast(`TCD approved! ${result.pods.length} PO Document(s) generated. Enter PO Numbers in the Purchase Orders page.`, 'success');
+    navigate('pods');
+    updateSidebarBadges();
+  } else {
+    toast(result.reason, 'error');
+  }
+};
+
+// ═══════════════════════════════════════════════════════════
+// PAGE: PURCHASE ORDER DOCUMENTS (PODs)
+// ═══════════════════════════════════════════════════════════
+function renderPODsPage(container) {
+  const state = getState();
+  const pods = state.pods || [];
+
+  container.innerHTML = `
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Purchase Order Documents (POD)</h1>
+    <p class="page-subtitle">${pods.length} PO document(s) generated from approved TCDs</p>
+  </div>
+</div>
+
+${pods.length ? `
+<div class="card" style="padding:0">
+  <div class="table-wrapper" style="overflow:auto">
+    <table class="data-table">
+      <thead><tr><th>PO Number</th><th>PO Date</th><th>Vendor</th><th>TCD Ref</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+      <tbody>
+        ${pods.map(p => `
+          <tr>
+            <td class="font-mono font-semibold ${!p.poNumber ? 'text-warning' : 'text-brand'}">${p.poNumber || '⚠️ Not Set'}</td>
+            <td>${p.poDate ? fmtDate(p.poDate) : '—'}</td>
+            <td><strong>${p.vendorName}</strong></td>
+            <td class="font-mono text-sm">${p.tcdNumber}</td>
+            <td><span class="chip chip-pending">${p.items.length} items</span></td>
+            <td><span class="chip ${p.poNumber ? 'chip-completed' : 'chip-awaiting'}">${p.status}</span></td>
+            <td>${fmtDate(p.createdAt)}</td>
+            <td>
+              <button class="btn btn-ghost btn-sm" onclick="viewPODDetail('${p.id}')">👁️ View</button>
+              <button class="btn btn-primary btn-sm" onclick="openEditPODModal('${p.id}')">${p.poNumber ? '✏️ Edit' : '📝 Set PO Number'}</button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+</div>` : `
+<div class="card"><div class="empty-state" style="padding:60px"><div class="empty-state-icon">🛒</div><div class="empty-state-title">No Purchase Orders Yet</div><div class="empty-state-text">Approve a TCD to automatically generate PO Documents.</div></div></div>`}`;
+}
+
+window.viewPODDetail = function(id) {
+  const pod = getPODById(id);
+  if (!pod) return;
+  const modalId = 'pod-detail-modal';
+  let el = document.getElementById(modalId);
+  if (el) el.remove();
+  el = document.createElement('div');
+  el.id = modalId;
+  el.className = 'modal-overlay open';
+  el.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:850px">
+      <div class="modal-header">
+        <div><h3 class="modal-title">🛒 PO Document: ${pod.poNumber || 'PO Number Not Set'}</h3>
+        <div style="font-size:13px;color:var(--color-text-secondary)">Vendor: ${pod.vendorName} · TCD: ${pod.tcdNumber} · Date: ${pod.poDate ? fmtDate(pod.poDate) : 'Not Set'}</div></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="chip ${pod.poNumber ? 'chip-completed' : 'chip-awaiting'}">${pod.status}</span>
+          <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+        </div>
+      </div>
+      <div class="modal-body" style="padding:20px">
+        <table class="data-table" style="font-size:12px">
+          <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>PO Qty</th><th>Unit</th></tr></thead>
+          <tbody>${pod.items.map(i => `<tr><td class="font-mono">${i.prNumber}</td><td class="font-mono">${i.matCode}</td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();openEditPODModal('${pod.id}')">✏️ Edit PO Number</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+};
+
+window.openEditPODModal = function(id) {
+  const pod = getPODById(id);
+  if (!pod) return;
+
+  const modalId = 'edit-pod-modal';
+  let el = document.getElementById(modalId);
+  if (el) el.remove();
+  el = document.createElement('div');
+  el.id = modalId;
+  el.className = 'modal-overlay open';
+  el.innerHTML = `
+    <div class="modal fade-in-up" style="max-width:500px">
+      <div class="modal-header">
+        <h3 class="modal-title">📝 Update PO Document</h3>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+      </div>
+      <div class="modal-body" style="padding:20px">
+        <div style="background:var(--color-surface-2);padding:12px;border-radius:8px;margin-bottom:16px;font-size:13px">
+          <strong>Vendor:</strong> ${pod.vendorName}<br>
+          <strong>TCD Reference:</strong> ${pod.tcdNumber}<br>
+          <strong>Materials:</strong> ${pod.items.length} item(s)
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div><label class="form-label">PO Number *</label><input type="text" id="pod-po-number" class="form-control" value="${pod.poNumber || ''}" placeholder="Enter PO Number"/></div>
+          <div><label class="form-label">PO Date *</label><input type="date" id="pod-po-date" class="form-control" value="${pod.poDate || new Date().toISOString().split('T')[0]}"/></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitUpdatePOD('${pod.id}')">Save PO Details</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+};
+
+window.submitUpdatePOD = function(podId) {
+  const poNumber = document.getElementById('pod-po-number')?.value.trim();
+  const poDate = document.getElementById('pod-po-date')?.value;
+  if (!poNumber) { toast('PO Number is required', 'warning'); return; }
+  if (!poDate) { toast('PO Date is required', 'warning'); return; }
+
+  updatePOD(podId, { poNumber, poDate });
+  document.getElementById('edit-pod-modal')?.remove();
+  toast(`PO Number updated to ${poNumber}!`, 'success');
+  navigate('pods');
+  updateSidebarBadges();
+};
+
+// ═══════════════════════════════════════════════════════════
+// SIDEBAR BADGE UPDATES
+// ═══════════════════════════════════════════════════════════
+function updateSidebarBadges() {
+  const state = getState();
+  const setBadge = (id, count) => { const el = document.getElementById(id); if (el) el.textContent = count || ''; };
+  setBadge('nav-prc-count', state.prcs.length);
+  setBadge('nav-alloc-count', state.allocations.length);
+  setBadge('nav-rfq-count', state.rfqs.length);
+  setBadge('nav-tcd-count', state.tcds.length);
+  setBadge('nav-pod-count', state.pods.length);
+}
+
+// ── INIT ───────────────────────────────────────────────────
+async function init() {
+  await initDemoData();
+  enableTableHorizontalScroll();
+
+  // Sync sidebar user info
+  const user = getState().currentUser;
+  if(user) {
+    const avatarEl = document.getElementById('sidebar-avatar');
+    const nameEl = document.getElementById('sidebar-username');
+    const roleEl = document.getElementById('sidebar-role');
+    if(avatarEl) avatarEl.textContent = user.avatar || 'AO';
+    if(nameEl) nameEl.textContent = user.name || 'App Owner';
+    if(roleEl) roleEl.textContent = user.role || 'Super Admin';
+  }
+
+  // Update all sidebar badges
+  updateSidebarBadges();
+
+  // Update notification dot/badge
+  const unread = (getState().notifications||[]).filter(n=>n.unread).length;
+  const notifBadge = document.getElementById('nav-notif-count');
+  if(notifBadge) notifBadge.textContent = unread||'';
+  const dot = document.getElementById('notif-dot');
+  if(dot) dot.style.display = unread?'':'none';
+
+  // Route to page from hash or default
+  const hash = window.location.hash.slice(1) || 'dashboard';
+  navigate(PAGES[hash] ? hash : 'dashboard');
+}
+
+init();
+</script>
+</body>
+</html>

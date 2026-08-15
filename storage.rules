@@ -1,0 +1,43 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isProcurementEngineer() {
+      return request.auth.token.role in
+        ['Super Admin','Procurement Manager','Procurement Engineer'];
+    }
+
+    function isSuperAdmin() {
+      return request.auth.token.role == 'Super Admin';
+    }
+
+    function isValidFile() {
+      return request.resource.size < 25 * 1024 * 1024  // 25MB max
+        && request.resource.contentType.matches('application/pdf|image/.*|application/vnd\\..*|application/msword|text/.*');
+    }
+
+    // PRC Attachments
+    match /attachments/{prcId}/{allPaths=**} {
+      allow read:   if isAuthenticated();
+      allow create: if isProcurementEngineer() && isValidFile();
+      allow delete: if isSuperAdmin();
+      allow update: if false; // Attachments are immutable once uploaded
+    }
+
+    // Import files (temporary staging)
+    match /imports/{userId}/{filename} {
+      allow read, write: if request.auth.uid == userId && isValidFile();
+    }
+
+    // Report exports
+    match /reports/{filename} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only Cloud Functions write reports
+    }
+  }
+}
