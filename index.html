@@ -310,7 +310,7 @@
 // =========================================================
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, resetDatabase } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS } from './js/status-engine.js';
-import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll } from './js/utils.js';
+import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser } from './js/firebase-config.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
@@ -873,19 +873,19 @@ function renderPRCTable() {
         const pend = Math.max(0, tot - proc - cls);
 
         return `<tr onclick="openPRCDetail('${m.prcId}')" style="cursor:pointer">
-          <td><span class="font-mono text-sm font-semibold">${highlight(m.prNumber,q)}</span></td>
+          <td><span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(m.prNumber,q)}</span><span class="copy-icon">📋</span></span></td>
           <td>${m.serialNumber||'—'}</td>
-          <td><span class="font-mono text-sm font-semibold">${highlight(m.matCode,q)}</span></td>
+          <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono text-sm font-semibold">${highlight(m.matCode,q)}</span><span class="copy-icon">📋</span></span></td>
           <td><strong>${highlight(m.description,q)}</strong></td>
           <td class="font-semibold">${tot} ${m.unit||''}</td>
           <td><span class="text-brand font-semibold">${proc}</span></td>
           <td><span class="${pend>0?'text-warning font-semibold':'text-secondary'}">${pend}</span></td>
           <td><span class="${cls>0?'text-danger':'text-secondary'}">${cls}</span></td>
           <td><span class="chip ${getStatusChipClass(m.status)}"><span class="chip-dot"></span>${m.status}</span></td>
-          <td>${m.allocationNumber ? `<strong>${m.allocationNumber}</strong><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.allocationDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
-          <td>${m.rfqNumber ? `<strong>${highlight(m.rfqNumber,q)}</strong><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.rfqDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
-          <td>${m.tcdNumber ? `<strong>${m.tcdNumber}</strong><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.tcdDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
-          <td>${m.poNumber ? `<strong class="text-brand">${highlight(m.poNumber,q)}</strong><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.poDate)}${m.vendorName||m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${m.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><strong>${m.allocationNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.allocationDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${m.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><strong>${highlight(m.rfqNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.rfqDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${m.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><strong>${m.tcdNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.tcdDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${m.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.poNumber}','PO Number',event)" title="Click to copy PO Number"><strong class="text-brand">${highlight(m.poNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.poDate)}${m.vendorName||m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''}</span>` : '<span class="text-tertiary">—</span>'}</td>
           <td>${fmtDate(m.deliveryDate||m.deliveryEndDate)}</td>
           <td onclick="event.stopPropagation()">
             <button class="btn btn-primary btn-xs" style="padding:3px 8px;font-size:11px" onclick="openEditMaterialWorkflow('${m.prcId}','${m.id}')" title="Edit Material Item Record">✏️ Edit Material</button>
@@ -946,14 +946,14 @@ function renderPRCTable() {
         const age = getPRCAge(p);
         const ageClass = getAgeBadgeClass(age, 7);
         return `<tr onclick="openPRCDetail('${p.id}')" style="cursor:pointer">
-          <td><span class="font-mono text-sm font-semibold">${highlight(p.prNumber,q)}</span></td>
+          <td><span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(p.prNumber,q)}</span><span class="copy-icon">📋</span></span></td>
           <td>${highlight(p.department,q)}</td>
           <td><span class="chip ${priorityChipClass(p.priority)}">${p.priority}</span></td>
           <td><span class="chip ${getStatusChipClass(p.status)}"><span class="chip-dot"></span>${p.status}</span></td>
-          <td>${fmtDate(p.allocationDate)}<br><span style="font-size:11px;color:var(--color-text-tertiary)">${p.allocationNumber||'—'}</span></td>
-          <td>${p.rfqNumber ? `<span class="text-sm font-mono">${highlight(p.rfqNumber,q)}</span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.rfqDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
-          <td>${p.tcdNumber ? `<span class="text-sm font-mono">${p.tcdNumber}</span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.tcdDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
-          <td>${p.poNumber  ? `<span class="text-sm font-mono font-semibold text-brand">${highlight(p.poNumber,q)}</span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.poDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${fmtDate(p.allocationDate)}<br>${p.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number" style="font-size:11px">${p.allocationNumber}<span class="copy-icon">📋</span></span>` : '<span style="font-size:11px;color:var(--color-text-tertiary)">—</span>'}</td>
+          <td>${p.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="text-sm font-mono">${highlight(p.rfqNumber,q)}</span><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.rfqDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${p.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><span class="text-sm font-mono">${p.tcdNumber}</span><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.tcdDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${p.poNumber  ? `<span class="copy-badge" onclick="copyToClipboard('${p.poNumber}','PO Number',event)" title="Click to copy PO Number"><span class="text-sm font-mono font-semibold text-brand">${highlight(p.poNumber,q)}</span><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.poDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
           <td>${p.vendorName ? `<span class="text-sm">${highlight(p.vendorName,q)}</span>` : '<span class="text-tertiary">—</span>'}</td>
           <td><span class="${ageClass} text-sm">${age}d</span></td>
           <td onclick="event.stopPropagation()">
@@ -1132,17 +1132,17 @@ window.openPRCDetail = function(id) {
               <tr>
                 <td><input type="checkbox" class="mat-checkbox-${id}" value="${m.id}"/></td>
                 <td>${m.serialNumber||'—'}</td>
-                <td class="font-mono text-sm">${m.matCode}</td>
+                <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono text-sm">${m.matCode}</span><span class="copy-icon">📋</span></span></td>
                 <td><strong>${m.description}</strong></td>
                 <td class="font-semibold">${m.quantity} ${m.unit||''}</td>
                 <td class="text-brand font-semibold">${m.processedQty||0}</td>
                 <td class="${(m.pendingQty!==undefined?m.pendingQty:Math.max(0,(m.quantity||0)-(m.processedQty||0)-(m.closedQty||0)))>0?'text-warning font-semibold':''}">${m.pendingQty!==undefined?m.pendingQty:Math.max(0,(m.quantity||0)-(m.processedQty||0)-(m.closedQty||0))}</td>
                 <td class="${(m.closedQty||0)>0?'text-danger':''}">${m.closedQty||0}</td>
                 <td><span class="chip ${getStatusChipClass(m.status)}">${getStatusIcon(m.status)} ${m.status}</span></td>
-                <td>${m.allocationNumber ? `<strong>${m.allocationNumber}</strong> <span class="text-xs text-secondary">(${fmtDate(m.allocationDate)}${m.buyerName ? ' · ' + m.buyerName : ''})</span>` : '—'}</td>
-                <td>${m.rfqNumber ? `<strong>${m.rfqNumber}</strong> <span class="text-xs text-secondary">(${fmtDate(m.rfqDate)}${m.offersReceived ? ' · Offers In' : ''})</span>` : '—'}</td>
-                <td>${m.tcdNumber ? `<strong>${m.tcdNumber}</strong> <span class="text-xs text-secondary">(${fmtDate(m.tcdDate)}${m.tcdApproved ? ' · Approved' : ''})</span>` : '—'}</td>
-                <td>${m.poNumber ? `<strong>${m.poNumber}</strong> <span class="text-xs text-secondary">(${fmtDate(m.poDate)}${m.vendorName || m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''})</span>` : '—'}</td>
+                <td>${m.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><strong>${m.allocationNumber}</strong><span class="copy-icon">📋</span></span> <span class="text-xs text-secondary">(${fmtDate(m.allocationDate)}${m.buyerName ? ' · ' + m.buyerName : ''})</span>` : '—'}</td>
+                <td>${m.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><strong>${m.rfqNumber}</strong><span class="copy-icon">📋</span></span> <span class="text-xs text-secondary">(${fmtDate(m.rfqDate)}${m.offersReceived ? ' · Offers In' : ''})</span>` : '—'}</td>
+                <td>${m.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><strong>${m.tcdNumber}</strong><span class="copy-icon">📋</span></span> <span class="text-xs text-secondary">(${fmtDate(m.tcdDate)}${m.tcdApproved ? ' · Approved' : ''})</span>` : '—'}</td>
+                <td>${m.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.poNumber}','PO Number',event)" title="Click to copy PO Number"><strong>${m.poNumber}</strong><span class="copy-icon">📋</span></span> <span class="text-xs text-secondary">(${fmtDate(m.poDate)}${m.vendorName || m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''})</span>` : '—'}</td>
                 <td>${fmtDate(m.deliveryEndDate || m.deliveryDate)}</td>
                 <td>
                   <button class="btn btn-primary btn-xs" style="padding:3px 8px;font-size:11px" onclick="openEditMaterialWorkflow('${id}','${m.id}')">✏️ Edit Material</button>
@@ -2028,7 +2028,6 @@ function renderSettings(container) {
       {id:'database',   label:'🗄️ User Cloud Database'},
       {id:'appearance', label:'🎨 Appearance'},
       {id:'users',      label:'👥 Users & Roles'},
-      {id:'env-config', label:'⚙️ Environment (.env)'},
       {id:'about',      label:'ℹ️ About'}
     ].map(s=>`<button class="btn btn-ghost w-full" style="justify-content:flex-start;border-radius:8px" onclick="showSettingsTab('${s.id}')">${s.label}</button>`).join('')}
   </div>
@@ -2126,51 +2125,11 @@ function renderSettings(container) {
       </div>
     </div>
 
-    <!-- Environment Config Status -->
-    <div id="settings-env-config" class="card hidden">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div>
-          <h3 style="font-weight:700;margin-bottom:4px">Firebase Environment (.env) Status</h3>
-          <p style="color:var(--color-text-secondary);font-size:13px">
-            Firebase credentials and AI keys are securely loaded from the project <code>.env</code> file.
-          </p>
-        </div>
-        <span class="chip chip-${isFirebaseConfigured() ? 'completed' : 'awaiting'}" style="font-size:12px;font-weight:600">
-          ${isFirebaseConfigured() ? '🟢 Connected' : '🟡 Config Required'}
-        </span>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
-        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">FIREBASE PROJECT ID</div>
-          <div style="font-weight:700" class="font-mono">${FIREBASE_CONFIG.projectId || 'Not set in .env'}</div>
-        </div>
-        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">AUTH DOMAIN</div>
-          <div style="font-weight:700" class="font-mono">${FIREBASE_CONFIG.authDomain || 'Not set in .env'}</div>
-        </div>
-        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">STORAGE BUCKET</div>
-          <div style="font-weight:700" class="font-mono">${FIREBASE_CONFIG.storageBucket || 'Not set in .env'}</div>
-        </div>
-        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">GEMINI AI STATUS</div>
-          <div style="font-weight:700">${GEMINI_API_KEY && GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY' ? 'Active & Ready ✅' : 'Not set in .env'}</div>
-        </div>
-      </div>
-
-      <div style="background:var(--color-surface-2);border-left:3px solid var(--brand-500);padding:14px 16px;border-radius:0 8px 8px 0;font-size:13px;line-height:1.5">
-        <strong>💡 Managing Environment Variables:</strong><br/>
-        • <strong>Local Development:</strong> Edit the <code>.env</code> file in the repository root directory.<br/>
-        • <strong>Production Hosting (Vercel / Firebase Hosting):</strong> Configure environment variables in your project deployment settings.
-      </div>
-    </div>
-
     <!-- About -->
     <div id="settings-about" class="card hidden">
       <h3 style="font-weight:700;margin-bottom:20px">About ProcureTrack</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        ${[['Version','1.0.0'],['Build','2026-08'],['Database','Firebase Cloud Firestore'],['Config Mode','.env file'],['AI Engine','Google Gemini'],['License','Enterprise']].map(([k,v])=>`
+        ${[['Version','1.0.0'],['Build','2026-08'],['Database','Firebase Cloud Firestore'],['AI Engine','Google Gemini'],['License','Enterprise']].map(([k,v])=>`
           <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
             <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">${k}</div>
             <div style="font-weight:700">${v}</div>
@@ -2310,7 +2269,7 @@ function renderAllocationsPage(container) {
         <tbody>
           ${allocs.map(a => `
             <tr>
-              <td class="font-mono font-semibold">${a.allocationNumber}</td>
+              <td><span class="copy-badge" onclick="copyToClipboard('${a.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><span class="font-mono font-semibold">${a.allocationNumber}</span><span class="copy-icon">📋</span></span></td>
               <td>${fmtDate(a.allocationDate)}</td>
               <td>${a.buyerName || '—'}</td>
               <td><span class="chip chip-pending">${a.items.length} items</span></td>
@@ -2565,7 +2524,7 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
                         <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${prcNodeId}')">${isOpen ? '-' : '+'}</span>
                         <input type="checkbox" class="prc-tree-header-cb" data-prc="${p.id}" data-dept="${deptId}" ${isPreselected ? 'checked' : ''} onclick="event.stopPropagation();onPRCTreeHeaderCheck('${p.id}', this.checked)"/>
                         <span class="tree-folder-icon">📁</span>
-                        <span class="tree-label-prc">${p.prNumber}</span>
+                        <span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="tree-label-prc">${p.prNumber}</span><span class="copy-icon">📋</span></span>
                         <button type="button" class="btn btn-ghost btn-xs tree-view-btn" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="event.stopPropagation();openPRCDetail('${p.id}')" title="View PRC Details">👁️ View</button>
                         ${p.job ? `<span class="tree-sublabel">(${p.job})</span>` : ''}
                         <span class="tree-badge">(${unallocatedMats.length} items)</span>
@@ -2580,7 +2539,7 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
                                 <span class="tree-expander-spacer"></span>
                                 <input type="checkbox" class="alloc-tree-mat-cb" data-prc="${p.id}" data-dept="${deptId}" data-mat="${m.id}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onPRCTreeMatCheck('${p.id}', '${m.id}')"/>
                                 <span class="tree-file-icon">📄</span>
-                                <span class="tree-label-mat-code font-mono">${m.matCode}</span>
+                                <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="tree-label-mat-code font-mono">${m.matCode}</span><span class="copy-icon">📋</span></span>
                                 <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
                                 <span class="tree-mat-qty">Qty: ${m.quantity} ${m.unit || ''}</span>
                               </div>
@@ -2867,14 +2826,14 @@ window.viewAllocationDetail = function(id) {
   el.innerHTML = `
     <div class="modal modal-lg fade-in-up" style="max-width:850px">
       <div class="modal-header">
-        <div><h3 class="modal-title">📦 Allocation: ${alloc.allocationNumber}</h3>
+        <div><h3 class="modal-title">📦 Allocation: <span class="copy-badge" onclick="copyToClipboard('${alloc.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><span class="font-mono font-bold">${alloc.allocationNumber}</span><span class="copy-icon">📋</span></span></h3>
         <div style="font-size:13px;color:var(--color-text-secondary)">Date: ${fmtDate(alloc.allocationDate)} · Buyer: ${alloc.buyerName || '—'} · Created by ${alloc.createdBy}</div></div>
         <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
       </div>
       <div class="modal-body" style="padding:20px">
         <table class="data-table" style="font-size:12px">
           <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>Allocated Qty</th><th>Unit</th></tr></thead>
-          <tbody>${alloc.items.map(i => `<tr><td class="font-mono">${i.prNumber}</td><td class="font-mono">${i.matCode}</td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
+          <tbody>${alloc.items.map(i => `<tr><td><span class="copy-badge" onclick="copyToClipboard('${i.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono">${i.prNumber}</span><span class="copy-icon">📋</span></span></td><td><span class="copy-badge" onclick="copyToClipboard('${i.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${i.matCode}</span><span class="copy-icon">📋</span></span></td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
         </table>
       </div>
       <div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button></div>
@@ -2914,7 +2873,7 @@ ${rfqs.length ? `
       <tbody>
         ${rfqs.map(r => `
           <tr>
-            <td class="font-mono font-semibold">${r.rfqNumber}</td>
+            <td><span class="copy-badge" onclick="copyToClipboard('${r.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="font-mono font-semibold">${r.rfqNumber}</span><span class="copy-icon">📋</span></span></td>
             <td>${fmtDate(r.rfqDate)}</td>
             <td><span class="chip chip-pending">${r.items.length} items</span></td>
             <td><span class="chip chip-completed">${r.status}</span></td>
@@ -3038,7 +2997,7 @@ function renderRFQTreeHTML(allocEntries, query = '') {
                 <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${allocNodeId}')">-</span>
                 <input type="checkbox" class="rfq-alloc-cb" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation();onRFQAllocCheck('${allocNodeId}', this.checked)"/>
                 <span class="tree-folder-icon">📁</span>
-                <span class="tree-label-dept">${data.allocationNumber || allocKey}</span>
+                <span class="copy-badge" onclick="copyToClipboard('${data.allocationNumber || allocKey}','Allocation Number',event)" title="Click to copy Allocation Number"><span class="tree-label-dept">${data.allocationNumber || allocKey}</span><span class="copy-icon">📋</span></span>
                 <span class="tree-sublabel">Buyer: ${data.buyerName || '—'}</span>
                 <span class="tree-badge">(${totalItems} items)</span>
               </div>
@@ -3046,11 +3005,11 @@ function renderRFQTreeHTML(allocEntries, query = '') {
                 ${data.items.map(m => `
                   <li class="rfq-tree-mat">
                     <div class="tree-node-item" onclick="toggleRFQMatCheck('${allocNodeId}', ${m._idx})">
-                      <span class="tree-expander-spacer"></span>
+                       <span class="tree-expander-spacer"></span>
                       <input type="checkbox" class="rfq-mat-cb" data-idx="${m._idx}" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation()" onchange="onRFQMatCheck('${allocNodeId}')"/>
                       <span class="tree-file-icon">📄</span>
-                      <span class="tree-label-prc font-mono">${m.prNumber}</span>
-                      <span class="tree-label-mat-code font-mono">${m.matCode}</span>
+                      <span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="tree-label-prc font-mono">${m.prNumber}</span><span class="copy-icon">📋</span></span>
+                      <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="tree-label-mat-code font-mono">${m.matCode}</span><span class="copy-icon">📋</span></span>
                       <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
                       <span class="tree-mat-qty">Alloc: ${m.allocatedQty} ${m.unit || ''}</span>
                       <span class="tree-mat-qty" style="background:rgba(16,185,129,0.15);border-color:rgba(16,185,129,0.3);color:var(--color-success)">Avail: ${m.availableQty}</span>
@@ -3175,14 +3134,14 @@ window.viewRFQDetail = function(id) {
   el.innerHTML = `
     <div class="modal modal-lg fade-in-up" style="max-width:850px">
       <div class="modal-header">
-        <div><h3 class="modal-title">📨 RFQ: ${rfq.rfqNumber}</h3>
+        <div><h3 class="modal-title">📨 RFQ: <span class="copy-badge" onclick="copyToClipboard('${rfq.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="font-mono font-bold">${rfq.rfqNumber}</span><span class="copy-icon">📋</span></span></h3>
         <div style="font-size:13px;color:var(--color-text-secondary)">Date: ${fmtDate(rfq.rfqDate)} · Created by ${rfq.createdBy}</div></div>
         <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
       </div>
       <div class="modal-body" style="padding:20px">
         <table class="data-table" style="font-size:12px">
           <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>RFQ Qty</th><th>Unit</th></tr></thead>
-          <tbody>${rfq.items.map(i => `<tr><td class="font-mono">${i.prNumber}</td><td class="font-mono">${i.matCode}</td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
+          <tbody>${rfq.items.map(i => `<tr><td><span class="copy-badge" onclick="copyToClipboard('${i.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono">${i.prNumber}</span><span class="copy-icon">📋</span></span></td><td><span class="copy-badge" onclick="copyToClipboard('${i.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${i.matCode}</span><span class="copy-icon">📋</span></span></td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
         </table>
       </div>
       <div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button></div>
@@ -3224,7 +3183,7 @@ ${tcds.length ? `
           const totalItems = (t.vendorAllocations||[]).reduce((s,va) => s + va.items.length, 0);
           const vendorCount = (t.vendorAllocations||[]).length;
           return `<tr>
-            <td class="font-mono font-semibold">${t.tcdNumber}</td>
+            <td><span class="copy-badge" onclick="copyToClipboard('${t.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><span class="font-mono font-semibold">${t.tcdNumber}</span><span class="copy-icon">📋</span></span></td>
             <td>${fmtDate(t.tcdDate)}</td>
             <td><span class="chip chip-partly">${vendorCount} vendor(s)</span></td>
             <td>${totalItems} items</td>
@@ -3276,9 +3235,9 @@ window.showCreateTCDModal = function() {
             <tbody>
               ${available.map((m, i) => `<tr>
                 <td><input type="checkbox" class="tcd-mat-cb" data-idx="${i}" checked/></td>
-                <td class="font-mono text-sm">${m.rfqNumber}</td>
-                <td class="font-mono">${m.prNumber}</td>
-                <td class="font-mono">${m.matCode}</td>
+                <td><span class="copy-badge" onclick="copyToClipboard('${m.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="font-mono text-sm">${m.rfqNumber}</span><span class="copy-icon">📋</span></span></td>
+                <td><span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono">${m.prNumber}</span><span class="copy-icon">📋</span></span></td>
+                <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${m.matCode}</span><span class="copy-icon">📋</span></span></td>
                 <td><strong>${m.description}</strong></td>
                 <td class="text-success font-semibold">${m.availableQty}</td>
                 <td><input type="number" class="form-control tcd-qty-input" data-idx="${i}" min="0" max="${m.availableQty}" value="${m.availableQty}" style="width:80px"/></td>
@@ -3344,7 +3303,7 @@ window.viewTCDDetail = function(id) {
     <div class="modal modal-lg fade-in-up" style="max-width:900px">
       <div class="modal-header">
         <div>
-          <h3 class="modal-title">📊 TCD: ${tcd.tcdNumber}</h3>
+          <h3 class="modal-title">📊 TCD: <span class="copy-badge" onclick="copyToClipboard('${tcd.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><span class="font-mono font-bold">${tcd.tcdNumber}</span><span class="copy-icon">📋</span></span></h3>
           <div style="font-size:13px;color:var(--color-text-secondary)">Date: ${fmtDate(tcd.tcdDate)} · Status: ${tcd.status}${tcd.approved ? ' · Approved by ' + tcd.approvedBy : ''}</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
@@ -3358,7 +3317,7 @@ window.viewTCDDetail = function(id) {
             <h4 style="font-size:14px;font-weight:700;color:var(--color-primary);margin-bottom:8px;display:flex;align-items:center;gap:8px">🏢 Vendor: ${va.vendorName} <span class="chip chip-pending" style="font-size:11px">${va.items.length} items</span></h4>
             <table class="data-table" style="font-size:12px">
               <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>TCD Qty</th><th>Unit</th></tr></thead>
-              <tbody>${va.items.map(i => `<tr><td class="font-mono">${i.prNumber}</td><td class="font-mono">${i.matCode}</td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
+              <tbody>${va.items.map(i => `<tr><td><span class="copy-badge" onclick="copyToClipboard('${i.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono">${i.prNumber}</span><span class="copy-icon">📋</span></span></td><td><span class="copy-badge" onclick="copyToClipboard('${i.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${i.matCode}</span><span class="copy-icon">📋</span></span></td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
             </table>
           </div>`).join('')}
       </div>
@@ -3410,10 +3369,10 @@ ${pods.length ? `
       <tbody>
         ${pods.map(p => `
           <tr>
-            <td class="font-mono font-semibold ${!p.poNumber ? 'text-warning' : 'text-brand'}">${p.poNumber || '⚠️ Not Set'}</td>
+            <td>${p.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.poNumber}','PO Number',event)" title="Click to copy PO Number"><span class="font-mono font-semibold text-brand">${p.poNumber}</span><span class="copy-icon">📋</span></span>` : '<span class="text-warning font-mono">⚠️ Not Set</span>'}</td>
             <td>${p.poDate ? fmtDate(p.poDate) : '—'}</td>
             <td><strong>${p.vendorName}</strong></td>
-            <td class="font-mono text-sm">${p.tcdNumber}</td>
+            <td><span class="copy-badge" onclick="copyToClipboard('${p.tcdNumber}','TCD Reference Number',event)" title="Click to copy TCD Reference Number"><span class="font-mono text-sm">${p.tcdNumber}</span><span class="copy-icon">📋</span></span></td>
             <td><span class="chip chip-pending">${p.items.length} items</span></td>
             <td><span class="chip ${p.poNumber ? 'chip-completed' : 'chip-awaiting'}">${p.status}</span></td>
             <td>${fmtDate(p.createdAt)}</td>
@@ -3441,8 +3400,8 @@ window.viewPODDetail = function(id) {
   el.innerHTML = `
     <div class="modal modal-lg fade-in-up" style="max-width:850px">
       <div class="modal-header">
-        <div><h3 class="modal-title">🛒 PO Document: ${pod.poNumber || 'PO Number Not Set'}</h3>
-        <div style="font-size:13px;color:var(--color-text-secondary)">Vendor: ${pod.vendorName} · TCD: ${pod.tcdNumber} · Date: ${pod.poDate ? fmtDate(pod.poDate) : 'Not Set'}</div></div>
+        <div><h3 class="modal-title">🛒 PO Document: ${pod.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${pod.poNumber}','PO Number',event)" title="Click to copy PO Number"><span class="font-mono font-bold">${pod.poNumber}</span><span class="copy-icon">📋</span></span>` : 'PO Number Not Set'}</h3>
+        <div style="font-size:13px;color:var(--color-text-secondary)">Vendor: ${pod.vendorName} · TCD: <span class="copy-badge" onclick="copyToClipboard('${pod.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><span class="font-mono">${pod.tcdNumber}</span><span class="copy-icon">📋</span></span> · Date: ${pod.poDate ? fmtDate(pod.poDate) : 'Not Set'}</div></div>
         <div style="display:flex;gap:8px;align-items:center">
           <span class="chip ${pod.poNumber ? 'chip-completed' : 'chip-awaiting'}">${pod.status}</span>
           <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
@@ -3451,7 +3410,7 @@ window.viewPODDetail = function(id) {
       <div class="modal-body" style="padding:20px">
         <table class="data-table" style="font-size:12px">
           <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>PO Qty</th><th>Unit</th></tr></thead>
-          <tbody>${pod.items.map(i => `<tr><td class="font-mono">${i.prNumber}</td><td class="font-mono">${i.matCode}</td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
+          <tbody>${pod.items.map(i => `<tr><td><span class="copy-badge" onclick="copyToClipboard('${i.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono">${i.prNumber}</span><span class="copy-icon">📋</span></span></td><td><span class="copy-badge" onclick="copyToClipboard('${i.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${i.matCode}</span><span class="copy-icon">📋</span></span></td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
         </table>
       </div>
       <div class="modal-footer">

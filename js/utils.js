@@ -229,3 +229,36 @@ export function enableTableHorizontalScroll() {
   }, { passive: false });
 }
 
+/** Copy text to clipboard and display toast feedback */
+export async function copyToClipboard(text, label = 'Reference Number', e = null) {
+  if (e) {
+    e.stopPropagation();
+    e.preventDefault();
+  }
+  if (!text || text === '—' || text === 'null' || text === 'undefined') return;
+
+  const cleanText = String(text).trim();
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(cleanText);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = cleanText;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+    }
+    toast(`📋 Copied ${label}: ${cleanText}`, 'success', 2000);
+  } catch (err) {
+    console.error('Failed to copy to clipboard:', err);
+    toast('Failed to copy to clipboard', 'error');
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.copyToClipboard = copyToClipboard;
+}
+

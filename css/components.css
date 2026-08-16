@@ -1266,4 +1266,69 @@ textarea.form-control { resize: vertical; min-height: 80px; }
   color: var(--color-text-secondary);
 }
 
+/* ── INTERACTIVE CLICK-TO-COPY BADGES ─────────────────────── */
+.copy-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 4px);
+  background: var(--color-surface-2, rgba(255,255,255,0.05));
+  border: 1px solid var(--color-border, rgba(255,255,255,0.1));
+  transition: all var(--transition-fast, 0.15s ease);
+  user-select: all;
+  font-family: inherit;
+  vertical-align: middle;
+  position: relative;
+}
+
+.copy-badge:hover {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: var(--color-primary, #3b82f6);
+  color: var(--color-primary, #3b82f6);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.copy-badge:active {
+  transform: translateY(0);
+  background: rgba(59, 130, 246, 0.25);
+}
+
+.copy-badge .copy-icon {
+  font-size: 10px;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  line-height: 1;
+}
+
+.copy-badge:hover .copy-icon {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.copy-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  opacity: 0.6;
+  transition: all 0.15s ease;
+  color: inherit;
+}
+
+.copy-btn-icon:hover {
+  opacity: 1;
+  background: rgba(59, 130, 246, 0.18);
+  color: var(--color-primary, #3b82f6);
+  transform: scale(1.1);
+}
+
 
