@@ -389,6 +389,12 @@
 .chip-pr-not .chip-dot    { background: var(--status-pr-not); }
 .chip-system      { background: var(--status-system-bg);     color: var(--status-system);     }
 .chip-system .chip-dot    { background: var(--status-system); }
+.chip-authorised  { background: rgba(16, 185, 129, 0.15);   color: #10b981; }
+.chip-authorised .chip-dot { background: #10b981; }
+.chip-draft       { background: rgba(156, 163, 175, 0.15);  color: #9ca3af; }
+.chip-draft .chip-dot      { background: #9ca3af; }
+.chip-rejected    { background: rgba(239, 68, 68, 0.15);    color: #ef4444; }
+.chip-rejected .chip-dot   { background: #ef4444; }
 
 /* Priority chips */
 .chip-critical{ background: #fef2f2; color: #dc2626; }

@@ -361,7 +361,13 @@ export function getFilteredPRCs() {
   }
 
   const f = state.filters;
-  if (f.status)     list = list.filter(p => p.status === f.status);
+  if (f.status) {
+    if (f.status === 'Authorised' || f.status === 'Authorized') {
+      list = list.filter(p => isPRCAuthorised(p) || p.status === 'Authorised' || p.prStatus === 'Authorised');
+    } else {
+      list = list.filter(p => p.status === f.status || p.prStatus === f.status);
+    }
+  }
   if (f.department) list = list.filter(p => p.department === f.department);
   if (f.priority)   list = list.filter(p => p.priority === f.priority);
   if (f.engineer)   list = list.filter(p => p.engineer === f.engineer);
@@ -611,8 +617,18 @@ export function getAllocatedQty(prcId, materialId) {
   }, 0);
 }
 
+export function isPRCAuthorised(p) {
+  if (!p) return false;
+  if (p.isPRNotApproved || p.isWrongPRC) return false;
+  const s = String(p.prStatus || p.status || '').trim().toLowerCase();
+  return s === 'authorised' || s === 'authorized' || s === 'approved';
+}
+
 export function getAvailablePRCsForAllocation() {
   return (state.prcs || []).filter(p => {
+    // Only PRCs in Authorised status are eligible for allocation
+    if (!isPRCAuthorised(p)) return false;
+
     const mats = p.materials || [];
     if (!mats.length) return false;
 

@@ -17,6 +17,7 @@
  */
 
 export const STATUS = {
+  AUTHORISED:      'Authorised',
   WRONG_PRC:       'Wrong PRC',
   PR_NOT_APPROVED: 'PR Not Approved',
   FUTURE_PRC:      'Future PRC',
@@ -25,10 +26,13 @@ export const STATUS = {
   AWAITING_OFFER:  'Awaiting Offer',
   PARTLY_COMPLETED:'Partly Completed',
   COMPLETED:       'Process Completed',
-  PENDING:         'Pending'
+  PENDING:         'Pending',
+  DRAFT:           'Draft',
+  REJECTED:        'Rejected'
 };
 
 export const STATUS_CHIP = {
+  [STATUS.AUTHORISED]:      'chip-authorised',
   [STATUS.WRONG_PRC]:       'chip-wrong',
   [STATUS.PR_NOT_APPROVED]: 'chip-pr-not',
   [STATUS.FUTURE_PRC]:      'chip-future',
@@ -37,10 +41,13 @@ export const STATUS_CHIP = {
   [STATUS.AWAITING_OFFER]:  'chip-awaiting',
   [STATUS.PARTLY_COMPLETED]:'chip-partly',
   [STATUS.COMPLETED]:       'chip-completed',
-  [STATUS.PENDING]:         'chip-pending'
+  [STATUS.PENDING]:         'chip-pending',
+  [STATUS.DRAFT]:           'chip-draft',
+  [STATUS.REJECTED]:        'chip-rejected'
 };
 
 export const STATUS_ICON = {
+  [STATUS.AUTHORISED]:      '✅',
   [STATUS.WRONG_PRC]:       '❌',
   [STATUS.PR_NOT_APPROVED]: '🚫',
   [STATUS.FUTURE_PRC]:      '🔮',
@@ -49,7 +56,9 @@ export const STATUS_ICON = {
   [STATUS.AWAITING_OFFER]:  '⏳',
   [STATUS.PARTLY_COMPLETED]:'🔶',
   [STATUS.COMPLETED]:       '✅',
-  [STATUS.PENDING]:         '🕐'
+  [STATUS.PENDING]:         '🕐',
+  [STATUS.DRAFT]:           '📝',
+  [STATUS.REJECTED]:        '❌'
 };
 
 /**

@@ -308,7 +308,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, resetDatabase } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, resetDatabase } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
@@ -920,7 +920,7 @@ function renderPRCTable() {
         <th onclick="sortTable('prNumber')">PR Number <span class="sort-icon">↕</span></th>
         <th onclick="sortTable('department')">Department <span class="sort-icon">↕</span></th>
         <th onclick="sortTable('priority')">Priority <span class="sort-icon">↕</span></th>
-        <th onclick="sortTable('status')">Status <span class="sort-icon">↕</span></th>
+        <th onclick="sortTable('status')">PRC Status <span class="sort-icon">↕</span></th>
         <th onclick="sortTable('allocationDate')">Allocated <span class="sort-icon">↕</span></th>
         <th onclick="sortTable('rfqNumber')">RFQ <span class="sort-icon">↕</span></th>
         <th onclick="sortTable('tcdNumber')">TCD <span class="sort-icon">↕</span></th>
@@ -945,11 +945,30 @@ function renderPRCTable() {
       tbody.innerHTML = items.map(p => {
         const age = getPRCAge(p);
         const ageClass = getAgeBadgeClass(age, 7);
+        const isAuth = isPRCAuthorised(p);
+        const currentPrStatus = p.prStatus || (isAuth ? 'Authorised' : p.status);
         return `<tr onclick="openPRCDetail('${p.id}')" style="cursor:pointer">
           <td><span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(p.prNumber,q)}</span><span class="copy-icon">📋</span></span></td>
           <td>${highlight(p.department,q)}</td>
           <td><span class="chip ${priorityChipClass(p.priority)}">${p.priority}</span></td>
-          <td><span class="chip ${getStatusChipClass(p.status)}"><span class="chip-dot"></span>${p.status}</span></td>
+          <td onclick="event.stopPropagation()">
+            <div style="display:flex;align-items:center;gap:6px">
+              <select class="form-control form-control-xs font-semibold"
+                      style="padding:3px 6px;font-size:11px;border-radius:12px;cursor:pointer;background:var(--color-surface-2);border:1px solid var(--color-border);width:auto"
+                      onchange="handlePRCStatusChange('${p.id}', this.value)"
+                      title="Click to Change PRC Status">
+                <option value="Authorised" ${(isAuth||currentPrStatus==='Authorised'||currentPrStatus==='Approved')?'selected':''}>✅ Authorised</option>
+                <option value="Pending" ${(!isAuth&&currentPrStatus==='Pending')?'selected':''}>🕐 Pending</option>
+                <option value="In Review" ${currentPrStatus==='In Review'?'selected':''}>🔍 In Review</option>
+                <option value="Draft" ${currentPrStatus==='Draft'?'selected':''}>📝 Draft</option>
+                <option value="Rejected" ${currentPrStatus==='Rejected'?'selected':''}>❌ Rejected</option>
+                <option value="PR Not Approved" ${(p.isPRNotApproved||currentPrStatus==='PR Not Approved')?'selected':''}>🚫 PR Not Approved</option>
+                <option value="Wrong PRC" ${(p.isWrongPRC||currentPrStatus==='Wrong PRC')?'selected':''}>❌ Wrong PRC</option>
+                <option value="Future PRC" ${(p.isFuturePRC||currentPrStatus==='Future PRC')?'selected':''}>🔮 Future PRC</option>
+                <option value="System Issue" ${(p.isSystemIssue||currentPrStatus==='System Issue')?'selected':''}>⚙️ System Issue</option>
+              </select>
+            </div>
+          </td>
           <td>${fmtDate(p.allocationDate)}<br>${p.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number" style="font-size:11px">${p.allocationNumber}<span class="copy-icon">📋</span></span>` : '<span style="font-size:11px;color:var(--color-text-tertiary)">—</span>'}</td>
           <td>${p.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="text-sm font-mono">${highlight(p.rfqNumber,q)}</span><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.rfqDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
           <td>${p.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><span class="text-sm font-mono">${p.tcdNumber}</span><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.tcdDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
@@ -998,11 +1017,27 @@ window.openPRCDetail = function(id) {
   const prc = getPRCById(id);
   if(!prc) return;
 
+  const isAuth = isPRCAuthorised(prc);
+  const currentPrStatus = prc.prStatus || (isAuth ? 'Authorised' : prc.status);
+
   document.getElementById('prc-detail-title').textContent = prc.prNumber;
   document.getElementById('prc-detail-meta').innerHTML =
     `${prc.department} · ${prc.job||'—'} · Engineer: ${prc.engineer||'—'} · Created: ${fmtDate(prc.createdAt)}`;
-  document.getElementById('prc-detail-status-chip').innerHTML =
-    `<span class="chip ${getStatusChipClass(prc.status)}">${getStatusIcon(prc.status)} ${prc.status}</span>`;
+  document.getElementById('prc-detail-status-chip').innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="chip ${getStatusChipClass(prc.status)}">${getStatusIcon(prc.status)} ${prc.status}</span>
+      <select class="form-control form-control-xs font-semibold" style="padding:2px 8px;font-size:11px;border-radius:12px;cursor:pointer;background:var(--color-surface-1);border:1px solid var(--color-border)" onchange="handlePRCStatusChange('${prc.id}', this.value)" title="Change PRC Status">
+        <option value="Authorised" ${(isAuth||currentPrStatus==='Authorised'||currentPrStatus==='Approved')?'selected':''}>✅ Authorised</option>
+        <option value="Pending" ${(!isAuth&&currentPrStatus==='Pending')?'selected':''}>🕐 Pending</option>
+        <option value="In Review" ${currentPrStatus==='In Review'?'selected':''}>🔍 In Review</option>
+        <option value="Draft" ${currentPrStatus==='Draft'?'selected':''}>📝 Draft</option>
+        <option value="Rejected" ${currentPrStatus==='Rejected'?'selected':''}>❌ Rejected</option>
+        <option value="PR Not Approved" ${(prc.isPRNotApproved||currentPrStatus==='PR Not Approved')?'selected':''}>🚫 PR Not Approved</option>
+        <option value="Wrong PRC" ${(prc.isWrongPRC||currentPrStatus==='Wrong PRC')?'selected':''}>❌ Wrong PRC</option>
+        <option value="Future PRC" ${(prc.isFuturePRC||currentPrStatus==='Future PRC')?'selected':''}>🔮 Future PRC</option>
+        <option value="System Issue" ${(prc.isSystemIssue||currentPrStatus==='System Issue')?'selected':''}>⚙️ System Issue</option>
+      </select>
+    </div>`;
 
   const timeline = buildTimeline(prc);
   const mats     = prc.materials||[];
@@ -1075,7 +1110,20 @@ window.openPRCDetail = function(id) {
           <div><strong>From Job Code:</strong> ${prc.fromJobCode || '—'}</div>
           <div><strong>Warehouse:</strong> ${prc.warehouseCode ? prc.warehouseCode + ' - ' + (prc.warehouseDesc||'') : (prc.warehouseDesc || '—')}</div>
           <div><strong>PR Type:</strong> ${prc.prType || '—'}</div>
-          <div><strong>PR Status:</strong> ${prc.prStatus || prc.status || '—'}</div>
+          <div>
+            <strong>PR Status:</strong>
+            <select class="form-control form-control-sm" style="margin-top:4px;font-weight:600" onchange="handlePRCStatusChange('${id}', this.value)">
+              <option value="Authorised" ${(isAuth||currentPrStatus==='Authorised'||currentPrStatus==='Approved')?'selected':''}>✅ Authorised</option>
+              <option value="Pending" ${(!isAuth&&currentPrStatus==='Pending')?'selected':''}>🕐 Pending</option>
+              <option value="In Review" ${currentPrStatus==='In Review'?'selected':''}>🔍 In Review</option>
+              <option value="Draft" ${currentPrStatus==='Draft'?'selected':''}>📝 Draft</option>
+              <option value="Rejected" ${currentPrStatus==='Rejected'?'selected':''}>❌ Rejected</option>
+              <option value="PR Not Approved" ${(prc.isPRNotApproved||currentPrStatus==='PR Not Approved')?'selected':''}>🚫 PR Not Approved</option>
+              <option value="Wrong PRC" ${(prc.isWrongPRC||currentPrStatus==='Wrong PRC')?'selected':''}>❌ Wrong PRC</option>
+              <option value="Future PRC" ${(prc.isFuturePRC||currentPrStatus==='Future PRC')?'selected':''}>🔮 Future PRC</option>
+              <option value="System Issue" ${(prc.isSystemIssue||currentPrStatus==='System Issue')?'selected':''}>⚙️ System Issue</option>
+            </select>
+          </div>
           <div><strong>CP Code / Desc:</strong> ${prc.cpCode ? prc.cpCode + ' (' + (prc.cpDesc||'') + ')' : '—'}</div>
           <div><strong>WBS Code / Desc:</strong> ${prc.wbsCode ? prc.wbsCode + ' (' + (prc.wbsDesc||'') + ')' : '—'}</div>
           <div><strong>Budget Reference:</strong> ${prc.budgetReference || '—'}</div>
@@ -1459,6 +1507,47 @@ window.setFlag = function(id, flag, value) {
     if(chip) chip.innerHTML = `<span class="chip ${getStatusChipClass(prc.status)}">${getStatusIcon(prc.status)} ${prc.status}</span>`;
   }
   toast(`Flag updated`, 'success', 2000);
+};
+
+window.handlePRCStatusChange = function(id, newStatus) {
+  const prc = getPRCById(id);
+  if (!prc) return;
+
+  const patch = { prStatus: newStatus };
+  if (newStatus === 'Authorised' || newStatus === 'Approved') {
+    patch.isPRNotApproved = false;
+    patch.isWrongPRC = false;
+    patch.prStatus = 'Authorised';
+    patch.authorizedBy = prc.authorizedBy || getState().currentUser?.name || 'App Owner';
+    patch.authorizedOn = prc.authorizedOn || new Date().toISOString().split('T')[0];
+  } else if (newStatus === 'PR Not Approved') {
+    patch.isPRNotApproved = true;
+    patch.isWrongPRC = false;
+  } else if (newStatus === 'Wrong PRC') {
+    patch.isWrongPRC = true;
+    patch.isPRNotApproved = false;
+  } else if (newStatus === 'Future PRC') {
+    patch.isFuturePRC = true;
+  } else if (newStatus === 'System Issue') {
+    patch.isSystemIssue = true;
+  } else {
+    patch.isPRNotApproved = false;
+    patch.isWrongPRC = false;
+  }
+
+  updatePRC(id, patch);
+  toast(`PRC ${prc.prNumber} status changed to "${newStatus}"`, 'success', 2500);
+
+  if (getState().currentPage === 'prc-list') {
+    renderPRCTable();
+  }
+  if (getState().currentPage === 'allocations') {
+    renderAllocationsPage(document.getElementById('page-content'));
+  }
+  const modal = document.getElementById('prc-detail-modal');
+  if (modal && modal.classList.contains('open')) {
+    openPRCDetail(id);
+  }
 };
 
 window.closePRCDetail = function() {
@@ -2025,7 +2114,6 @@ function renderSettings(container) {
   <div class="card" style="padding:8px;height:fit-content">
     ${[
       {id:'profile',    label:'👤 Profile'},
-      {id:'database',   label:'🗄️ User Cloud Database'},
       {id:'appearance', label:'🎨 Appearance'},
       {id:'users',      label:'👥 Users & Roles'},
       {id:'about',      label:'ℹ️ About'}
@@ -2048,37 +2136,6 @@ function renderSettings(container) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="form-group"><label class="form-label">Full Name</label><input class="form-control" value="${user.name}" readonly/></div>
         <div class="form-group"><label class="form-label">Email</label><input class="form-control" value="${user.email || ''}" type="email" readonly/></div>
-      </div>
-    </div>
-
-    <!-- User Database & Storage -->
-    <div id="settings-database" class="card hidden">
-      <h3 style="font-weight:700;margin-bottom:8px">Firebase Cloud Database & User Workspace</h3>
-      <p style="color:var(--color-text-secondary);font-size:13px;margin-bottom:16px">
-        Your procurement data is saved directly in Firebase Cloud Firestore under your isolated user workspace (<code>users/${user.uid || 'guest'}/...</code>).
-      </p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
-        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">DATABASE ENGINE</div>
-          <div style="font-weight:700">${isFirebaseConfigured() ? '🔥 Firebase Firestore (default)' : '📦 Local Storage (Offline Mode)'}</div>
-        </div>
-        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">USER ACCOUNT</div>
-          <div style="font-weight:700">${user.name} (${user.email || 'Guest'})</div>
-        </div>
-        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">USER DATABASE UID</div>
-          <div style="font-weight:700" class="font-mono">${user.uid || 'Offline Mode'}</div>
-        </div>
-        <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
-          <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">TOTAL USER RECORDS</div>
-          <div style="font-weight:700">${state.prcs.length} PRCs (${state.totalMaterials} Materials)</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="exportDatabaseBackup()">Export Database Backup (JSON)</button>
-        <button class="btn btn-secondary" onclick="handleResetUserDB()">Reset User Database</button>
-        <button class="btn btn-ghost" onclick="handleAuthAction()">Switch Account / Logout</button>
       </div>
     </div>
 
@@ -2129,7 +2186,7 @@ function renderSettings(container) {
     <div id="settings-about" class="card hidden">
       <h3 style="font-weight:700;margin-bottom:20px">About ProcureTrack</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        ${[['Version','1.0.0'],['Build','2026-08'],['Database','Firebase Cloud Firestore'],['AI Engine','Google Gemini'],['License','Enterprise']].map(([k,v])=>`
+        ${[['Version','1.0.0'],['Build','2026-08'],['Platform','Enterprise Web Application'],['AI Engine','Google Gemini'],['License','Enterprise']].map(([k,v])=>`
           <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
             <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">${k}</div>
             <div style="font-weight:700">${v}</div>
@@ -2204,7 +2261,7 @@ function renderAllocationsPage(container) {
 <div class="page-header">
   <div>
     <h1 class="page-title">Allocation Management</h1>
-    <p class="page-subtitle">${availablePrcs.length} PRC(s) pending allocation • ${allocs.length} Allocation Document(s) created</p>
+    <p class="page-subtitle">${availablePrcs.length} Authorised PRC(s) pending allocation • ${allocs.length} Allocation Document(s) created</p>
   </div>
   <div class="flex gap-2">
     <button class="btn btn-primary" onclick="showCreateAllocationModal()">+ Create Allocation Document</button>
@@ -2215,7 +2272,7 @@ function renderAllocationsPage(container) {
   <!-- Tab Navigation -->
   <div style="display:flex;gap:12px;border-bottom:2px solid var(--color-border);padding-bottom:12px;margin-bottom:20px">
     <button id="alloc-tab-btn-tree" class="btn btn-primary btn-sm" onclick="switchAllocPageTab('tree')">
-      🌳 Pending PRC Treeview (${availablePrcs.length})
+      🌳 Authorised Pending PRCs (${availablePrcs.length})
     </button>
     <button id="alloc-tab-btn-docs" class="btn btn-secondary btn-sm" onclick="switchAllocPageTab('docs')">
       📦 Created Allocation Documents (${allocs.length})
@@ -2227,10 +2284,10 @@ function renderAllocationsPage(container) {
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:12px">
       <div>
         <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--color-primary);display:flex;align-items:center;gap:8px">
-          <span>🌳 PRCs Requiring Allocation</span>
+          <span>🌳 Authorised PRCs Requiring Allocation</span>
         </h3>
         <p style="font-size:12px;color:var(--color-text-secondary);margin:4px 0 0 0">
-          Showing all PRCs and materials pending allocation (excluding already fully allocated PRCs). Select materials below to create an allocation document.
+          Showing only <strong>Authorised</strong> PRCs and materials pending allocation (excluding unapproved or already fully allocated PRCs). Select materials below to create an allocation document.
         </p>
       </div>
       <div id="alloc-page-tree-summary" class="badge badge-primary" style="font-size:12px;padding:6px 14px;border-radius:var(--radius-full)">
@@ -2340,14 +2397,14 @@ window.showCreateAllocationModal = function(preselectedPrcId = null) {
         </div>
         <div class="modal-body" style="padding:36px;text-align:center">
           <div class="empty-state">
-            <div class="empty-state-icon">✅</div>
-            <div class="empty-state-title">All PRCs are Already Allocated</div>
+            <div class="empty-state-icon">📋</div>
+            <div class="empty-state-title">No Authorised PRCs Available for Allocation</div>
             <div class="empty-state-text" style="max-width:480px;margin:8px auto">
-              There are no pending PRCs to be allocated. All PRCs in the database have already been allocated with Allocation Number, Allocation Date, and Buyer Name.
+              There are no pending PRCs with <strong>Authorised</strong> status to be allocated. Only PRCs in Authorised status appear here. You can authorize PRCs on the <a href="javascript:document.getElementById('${modalId}').remove();navigate('prc-list')" style="color:var(--color-primary);text-decoration:underline;font-weight:600">PRC Records</a> page, or import new PRCs.
             </div>
             <div class="flex gap-3 justify-center" style="margin-top:20px">
               <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button>
-              <button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();navigate('import')">📥 Import New PRCs</button>
+              <button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();navigate('prc-list')">📋 View PRC Records</button>
             </div>
           </div>
         </div>
@@ -2361,7 +2418,7 @@ window.showCreateAllocationModal = function(preselectedPrcId = null) {
       <div class="modal-header">
         <div>
           <h3 class="modal-title">📦 Create Allocation Document (Multi-PRC Tree)</h3>
-          <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Select materials from pending PRCs to allocate. Already allocated PRCs are automatically excluded.</div>
+          <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Select materials from pending Authorised PRCs to allocate. Already allocated PRCs are automatically excluded.</div>
         </div>
         <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
       </div>
@@ -2382,7 +2439,7 @@ window.showCreateAllocationModal = function(preselectedPrcId = null) {
           </div>
           <div>
             <label class="form-label" style="display:flex;justify-content:space-between">
-              <span>Buyer Name</span>
+              <span>Buyer Name *</span>
               <span id="alloc-buyer-badge" class="badge" style="font-size:10px;display:none;color:var(--color-primary)">Fetched from PRC</span>
             </label>
             <input type="text" id="alloc-buyer" class="form-control" placeholder="Buyer name"/>
@@ -2391,7 +2448,7 @@ window.showCreateAllocationModal = function(preselectedPrcId = null) {
 
         <!-- 2. PRC Tree View -->
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-          <h4 style="font-size:13px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin:0">2. Select Materials from Pending PRCs (${prcs.length} PRC(s) available)</h4>
+          <h4 style="font-size:13px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin:0">2. Select Materials from Authorised PRCs (${prcs.length} PRC(s) available)</h4>
           <div id="alloc-tree-summary" style="font-size:12px;font-weight:600;color:var(--color-primary);background:var(--color-surface-2);padding:4px 10px;border-radius:var(--radius-full);border:1px solid var(--color-border)">
             0 materials selected from 0 PRCs
           </div>
@@ -2415,7 +2472,7 @@ window.showCreateAllocationModal = function(preselectedPrcId = null) {
         </div>
       </div>
       <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
-        <div id="alloc-footer-status" style="font-size:12px;color:var(--color-text-secondary)">Check materials across any pending PRCs to allocate.</div>
+        <div id="alloc-footer-status" style="font-size:12px;color:var(--color-text-secondary)">Check materials across any Authorised PRCs to allocate.</div>
         <div class="flex gap-2">
           <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
           <button class="btn btn-primary" onclick="submitCreateAllocation()">Create Allocation</button>
@@ -2446,8 +2503,10 @@ window.showCreateAllocationModal = function(preselectedPrcId = null) {
 function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
   const q = (query || '').toLowerCase().trim();
 
-  // Filter PRCs purely based on unallocated materials and search query (if any)
+  // Filter PRCs purely based on Authorised status, unallocated materials and search query (if any)
   const filteredPrcs = prcs.filter(p => {
+    if (!isPRCAuthorised(p)) return false;
+
     const unallocatedMats = (p.materials || []).filter(m => {
       const allocd = getAllocatedQty(p.id, m.id);
       const totalQty = parseFloat(m.quantity) || 0;
@@ -2470,7 +2529,13 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
   });
 
   if (!filteredPrcs.length) {
-    return `<div class="empty-state" style="padding:32px"><div class="empty-state-icon">🔍</div><div class="empty-state-title">No pending PRCs match your criteria</div></div>`;
+    return `<div class="empty-state" style="padding:32px">
+      <div class="empty-state-icon">🔍</div>
+      <div class="empty-state-title">No Authorised PRCs pending allocation</div>
+      <div class="empty-state-text" style="max-width:420px;margin:6px auto">
+        Only PRCs in <strong>Authorised</strong> status are listed in this allocation treeview. You can check or change PRC status on the <a href="javascript:navigate('prc-list')" style="color:var(--color-primary);text-decoration:underline;font-weight:600">PRC Records</a> page.
+      </div>
+    </div>`;
   }
 
   // Group PRCs by Department (e.g. Refrigeration, Process, East Area, West Area, Mechanical, etc.)
