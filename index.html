@@ -2564,76 +2564,92 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
   });
 
   const deptEntries = Object.entries(deptMap);
+  const totalPRCs = filteredPrcs.length;
+  const totalMats = filteredPrcs.reduce((acc, p) => acc + (p.materials || []).length, 0);
 
   return `
-    <div class="classic-tree" id="alloc-classic-tree">
-      <ul class="tree-root">
-        ${deptEntries.map(([deptName, prcList], deptIdx) => {
-          const deptId = `dept-node-${deptIdx}-${deptName.replace(/[^a-zA-Z0-9]/g, '_')}`;
-          const totalDeptMats = prcList.reduce((sum, p) => {
-            const unalloc = (p.materials || []).filter(m => {
-              const allocd = getAllocatedQty(p.id, m.id);
-              const totalQty = parseFloat(m.quantity) || 0;
-              return allocd < totalQty || totalQty === 0;
-            });
-            return sum + unalloc.length;
-          }, 0);
+    <div class="explorer-frame">
+      <div class="explorer-address-bar">
+        <span>📍 Location:</span>
+        <span class="explorer-address-pill">📁 Procurement</span>
+        <span>›</span>
+        <span class="explorer-address-pill">📂 Authorised PRCs (${totalPRCs})</span>
+        <span>›</span>
+        <span class="explorer-address-pill">📦 Materials (${totalMats})</span>
+      </div>
+      <div class="classic-tree explorer-tree" id="alloc-classic-tree">
+        <ul class="tree-root">
+          ${deptEntries.map(([deptName, prcList], deptIdx) => {
+            const deptId = `dept-node-${deptIdx}-${deptName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+            const totalDeptMats = prcList.reduce((sum, p) => {
+              const unalloc = (p.materials || []).filter(m => {
+                const allocd = getAllocatedQty(p.id, m.id);
+                const totalQty = parseFloat(m.quantity) || 0;
+                return allocd < totalQty || totalQty === 0;
+              });
+              return sum + unalloc.length;
+            }, 0);
 
-          return `
-            <li class="classic-tree-dept open" id="${deptId}">
-              <div class="tree-node-item" onclick="toggleTreeNode('${deptId}')">
-                <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${deptId}')">-</span>
-                <input type="checkbox" class="tree-dept-cb" data-dept="${deptId}" onclick="event.stopPropagation();onDeptTreeCheck('${deptId}', this.checked)"/>
-                <span class="tree-folder-icon">📁</span>
-                <span class="tree-label-dept">${deptName}</span>
-                <span class="tree-badge">(${prcList.length} PRCs, ${totalDeptMats} items)</span>
-              </div>
-              <ul class="tree-children">
-                ${prcList.map(p => {
-                  const unallocatedMats = (p.materials || []).filter(m => {
-                    const allocd = getAllocatedQty(p.id, m.id);
-                    const totalQty = parseFloat(m.quantity) || 0;
-                    return allocd < totalQty || totalQty === 0;
-                  });
+            return `
+              <li class="classic-tree-dept open" id="${deptId}">
+                <div class="tree-node-item" onclick="toggleTreeNode('${deptId}')">
+                  <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${deptId}')">-</span>
+                  <input type="checkbox" class="tree-dept-cb" data-dept="${deptId}" onclick="event.stopPropagation();onDeptTreeCheck('${deptId}', this.checked)"/>
+                  <span class="tree-folder-icon">📁</span>
+                  <span class="tree-label-dept">${deptName}</span>
+                  <span class="tree-badge">(${prcList.length} PRCs, ${totalDeptMats} items)</span>
+                </div>
+                <ul class="tree-children">
+                  ${prcList.map(p => {
+                    const unallocatedMats = (p.materials || []).filter(m => {
+                      const allocd = getAllocatedQty(p.id, m.id);
+                      const totalQty = parseFloat(m.quantity) || 0;
+                      return allocd < totalQty || totalQty === 0;
+                    });
 
-                  const prcNodeId = `prc-node-${p.id}`;
-                  const isPreselected = preselectedPrcId === p.id;
-                  const isOpen = isPreselected || !!q || prcList.length <= 5;
+                    const prcNodeId = `prc-node-${p.id}`;
+                    const isPreselected = preselectedPrcId === p.id;
+                    const isOpen = isPreselected || !!q || prcList.length <= 5;
 
-                  return `
-                    <li class="classic-tree-prc ${isOpen ? 'open' : ''}" id="${prcNodeId}">
-                      <div class="tree-node-item ${isPreselected ? 'selected' : ''}" onclick="toggleTreeNode('${prcNodeId}')">
-                        <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${prcNodeId}')">${isOpen ? '-' : '+'}</span>
-                        <input type="checkbox" class="prc-tree-header-cb" data-prc="${p.id}" data-dept="${deptId}" ${isPreselected ? 'checked' : ''} onclick="event.stopPropagation();onPRCTreeHeaderCheck('${p.id}', this.checked)"/>
-                        <span class="tree-folder-icon">📁</span>
-                        <span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="tree-label-prc">${p.prNumber}</span><span class="copy-icon">📋</span></span>
-                        <button type="button" class="btn btn-ghost btn-xs tree-view-btn" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="event.stopPropagation();openPRCDetail('${p.id}')" title="View PRC Details">👁️ View</button>
-                        ${p.job ? `<span class="tree-sublabel">(${p.job})</span>` : ''}
-                        <span class="tree-badge">(${unallocatedMats.length} items)</span>
-                        <span class="chip ${getStatusChipClass(p.status)}" style="font-size:10px;padding:1px 6px;margin-left:8px">${p.status}</span>
-                      </div>
-                      <ul class="tree-children">
-                        ${unallocatedMats.map(m => {
-                          const isChecked = isPreselected;
-                          return `
-                            <li class="classic-tree-mat">
-                              <div class="tree-node-item" onclick="toggleMatItemCheck('${p.id}', '${m.id}')">
-                                <span class="tree-expander-spacer"></span>
-                                <input type="checkbox" class="alloc-tree-mat-cb" data-prc="${p.id}" data-dept="${deptId}" data-mat="${m.id}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onPRCTreeMatCheck('${p.id}', '${m.id}')"/>
-                                <span class="tree-file-icon">📄</span>
-                                <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="tree-label-mat-code font-mono">${m.matCode}</span><span class="copy-icon">📋</span></span>
-                                <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
-                                <span class="tree-mat-qty">Qty: ${m.quantity} ${m.unit || ''}</span>
-                              </div>
-                            </li>`;
-                        }).join('')}
-                      </ul>
-                    </li>`;
-                }).join('')}
-              </ul>
-            </li>`;
-        }).join('')}
-      </ul>
+                    return `
+                      <li class="classic-tree-prc ${isOpen ? 'open' : ''}" id="${prcNodeId}">
+                        <div class="tree-node-item ${isPreselected ? 'selected' : ''}" onclick="toggleTreeNode('${prcNodeId}')">
+                          <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${prcNodeId}')">${isOpen ? '-' : '+'}</span>
+                          <input type="checkbox" class="prc-tree-header-cb" data-prc="${p.id}" data-dept="${deptId}" ${isPreselected ? 'checked' : ''} onclick="event.stopPropagation();onPRCTreeHeaderCheck('${p.id}', this.checked)"/>
+                          <span class="tree-folder-icon">📁</span>
+                          <span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="tree-label-prc">${p.prNumber}</span><span class="copy-icon">📋</span></span>
+                          <button type="button" class="btn btn-ghost btn-xs tree-view-btn" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="event.stopPropagation();openPRCDetail('${p.id}')" title="View PRC Details">👁️ View</button>
+                          ${p.job ? `<span class="tree-sublabel">(${p.job})</span>` : ''}
+                          <span class="tree-badge">(${unallocatedMats.length} items)</span>
+                          <span class="chip ${getStatusChipClass(p.status)}" style="font-size:10px;padding:1px 6px;margin-left:8px">${p.status}</span>
+                        </div>
+                        <ul class="tree-children">
+                          ${unallocatedMats.map(m => {
+                            const isChecked = isPreselected;
+                            return `
+                              <li class="classic-tree-mat">
+                                <div class="tree-node-item" onclick="toggleMatItemCheck('${p.id}', '${m.id}')">
+                                  <span class="tree-expander-spacer"></span>
+                                  <input type="checkbox" class="alloc-tree-mat-cb" data-prc="${p.id}" data-dept="${deptId}" data-mat="${m.id}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onPRCTreeMatCheck('${p.id}', '${m.id}')"/>
+                                  <span class="tree-file-icon">📄</span>
+                                  <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="tree-label-mat-code font-mono">${m.matCode}</span><span class="copy-icon">📋</span></span>
+                                  <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
+                                  <span class="tree-mat-qty">Qty: ${m.quantity} ${m.unit || ''}</span>
+                                </div>
+                              </li>`;
+                          }).join('')}
+                        </ul>
+                      </li>`;
+                  }).join('')}
+                </ul>
+              </li>`;
+          }).join('')}
+        </ul>
+      </div>
+      <div class="explorer-status-bar">
+        <span>📊 ${deptEntries.length} Department(s) • ${totalPRCs} Authorised PRC(s) • ${totalMats} Total Material(s)</span>
+        <span>💡 Click folder/items to expand or select</span>
+      </div>
     </div>`;
 }
 
@@ -2937,40 +2953,125 @@ window.handleDeleteAllocation = async function(id) {
 function renderRFQsPage(container) {
   const state = getState();
   const rfqs = state.rfqs || [];
+  const available = getAvailableForRFQ();
+
+  // Group by Allocation Number
+  const allocMap = {};
+  available.forEach((m, i) => {
+    const key = m.allocationNumber || m.allocationId;
+    if (!allocMap[key]) allocMap[key] = { allocationNumber: m.allocationNumber, allocationDate: m.allocationDate, buyerName: m.buyerName, items: [] };
+    allocMap[key].items.push({ ...m, _idx: i });
+  });
+  const allocEntries = Object.entries(allocMap);
+  window._rfqAvailable = available;
+  window._rfqAllocEntries = allocEntries;
 
   container.innerHTML = `
 <div class="page-header">
   <div>
     <h1 class="page-title">Request for Quotation (RFQ)</h1>
-    <p class="page-subtitle">${rfqs.length} RFQ document(s) created</p>
+    <p class="page-subtitle">${available.length} Allocated Material(s) available • ${rfqs.length} RFQ document(s) created</p>
   </div>
-  <button class="btn btn-primary" onclick="showCreateRFQModal()">+ Create RFQ</button>
+  <div class="flex gap-2">
+    <button class="btn btn-primary" onclick="showCreateRFQModal()">+ Create RFQ Document</button>
+  </div>
 </div>
 
-${rfqs.length ? `
-<div class="card" style="padding:0">
-  <div class="table-wrapper" style="overflow:auto">
-    <table class="data-table">
-      <thead><tr><th>RFQ Number</th><th>Date</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-      <tbody>
-        ${rfqs.map(r => `
-          <tr>
-            <td><span class="copy-badge" onclick="copyToClipboard('${r.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="font-mono font-semibold">${r.rfqNumber}</span><span class="copy-icon">📋</span></span></td>
-            <td>${fmtDate(r.rfqDate)}</td>
-            <td><span class="chip chip-pending">${r.items.length} items</span></td>
-            <td><span class="chip chip-completed">${r.status}</span></td>
-            <td>${fmtDate(r.createdAt)}</td>
-            <td>
-              <button class="btn btn-ghost btn-sm" onclick="viewRFQDetail('${r.id}')">👁️ View</button>
-              <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleDeleteRFQ('${r.id}')">🗑️</button>
-            </td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
+<div class="card" style="margin-bottom:20px;padding:16px">
+  <!-- Tab Navigation -->
+  <div style="display:flex;gap:12px;border-bottom:2px solid var(--color-border);padding-bottom:12px;margin-bottom:20px">
+    <button id="rfq-tab-btn-tree" class="btn btn-primary btn-sm" onclick="switchRFQPageTab('tree')">
+      🌳 Allocated Materials Explorer (${available.length})
+    </button>
+    <button id="rfq-tab-btn-docs" class="btn btn-secondary btn-sm" onclick="switchRFQPageTab('docs')">
+      📨 Created RFQ Documents (${rfqs.length})
+    </button>
   </div>
-</div>` : `
-<div class="card"><div class="empty-state" style="padding:60px"><div class="empty-state-icon">📨</div><div class="empty-state-title">No RFQs Yet</div><div class="empty-state-text">Create allocations first, then create RFQs from allocated materials.</div></div></div>`}`;
+
+  <!-- Tab 1: Explorer View -->
+  <div id="rfq-tab-content-tree">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:12px">
+      <div>
+        <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--color-primary);display:flex;align-items:center;gap:8px">
+          <span>🌳 Allocated Materials Pending RFQ</span>
+        </h3>
+        <p style="font-size:12px;color:var(--color-text-secondary);margin:4px 0 0 0">
+          Showing allocated materials grouped by Allocation Number. Select items in the Explorer below to generate RFQs.
+        </p>
+      </div>
+      <div id="rfq-page-tree-summary" class="badge badge-primary" style="font-size:12px;padding:6px 14px;border-radius:var(--radius-full)">
+        0 material(s) selected
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="prc-tree-toolbar" style="margin-bottom:16px;background:var(--color-surface-2);padding:12px;border-radius:8px">
+      <div style="flex:1;min-width:240px;position:relative">
+        <input type="text" id="rfq-page-tree-search" class="form-control form-control-sm" placeholder="🔍 Search by Allocation #, PR Number, Mat Code, Description..." oninput="filterRFQTree(this.value)"/>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllRFQTree(true)">▶ Expand All</button>
+        <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllRFQTree(false)">▼ Collapse All</button>
+        <button type="button" class="btn btn-primary btn-xs" onclick="selectAllRFQTree(true)">☑ Select All</button>
+        <button type="button" class="btn btn-ghost btn-xs" onclick="selectAllRFQTree(false)">☐ Deselect All</button>
+        <button type="button" class="btn btn-primary btn-xs" style="margin-left:6px" onclick="showCreateRFQModal()">+ Create RFQ with Selected</button>
+      </div>
+    </div>
+
+    <!-- Treeview Container -->
+    <div id="rfq-tree-container" class="prc-tree">
+      ${renderRFQTreeHTML(allocEntries)}
+    </div>
+  </div>
+
+  <!-- Tab 2: Created RFQ Documents -->
+  <div id="rfq-tab-content-docs" style="display:none">
+    ${rfqs.length ? `
+    <div class="table-wrapper" style="overflow:auto">
+      <table class="data-table">
+        <thead><tr><th>RFQ Number</th><th>Date</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${rfqs.map(r => `
+            <tr>
+              <td><span class="copy-badge" onclick="copyToClipboard('${r.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="font-mono font-semibold">${r.rfqNumber}</span><span class="copy-icon">📋</span></span></td>
+              <td>${fmtDate(r.rfqDate)}</td>
+              <td><span class="chip chip-pending">${r.items.length} items</span></td>
+              <td><span class="chip chip-completed">${r.status}</span></td>
+              <td>${fmtDate(r.createdAt)}</td>
+              <td>
+                <button class="btn btn-ghost btn-sm" onclick="viewRFQDetail('${r.id}')">👁️ View</button>
+                <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleDeleteRFQ('${r.id}')">🗑️</button>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : `
+    <div class="empty-state" style="padding:48px">
+      <div class="empty-state-icon">📨</div>
+      <div class="empty-state-title">No RFQs Yet</div>
+      <div class="empty-state-text">Create allocations first, then create RFQs from allocated materials.</div>
+    </div>`}
+  </div>
+</div>`;
 }
+
+window.switchRFQPageTab = function(tab) {
+  const treeTab = document.getElementById('rfq-tab-content-tree');
+  const docsTab = document.getElementById('rfq-tab-content-docs');
+  const btnTree = document.getElementById('rfq-tab-btn-tree');
+  const btnDocs = document.getElementById('rfq-tab-btn-docs');
+  if (tab === 'tree') {
+    if (treeTab) treeTab.style.display = 'block';
+    if (docsTab) docsTab.style.display = 'none';
+    btnTree?.classList.replace('btn-secondary', 'btn-primary');
+    btnDocs?.classList.replace('btn-primary', 'btn-secondary');
+  } else {
+    if (treeTab) treeTab.style.display = 'none';
+    if (docsTab) docsTab.style.display = 'block';
+    btnDocs?.classList.replace('btn-secondary', 'btn-primary');
+    btnTree?.classList.replace('btn-primary', 'btn-secondary');
+  }
+};
 
 window.showCreateRFQModal = function() {
   const available = getAvailableForRFQ();
@@ -2992,15 +3093,15 @@ window.showCreateRFQModal = function() {
   el.id = modalId;
   el.className = 'modal-overlay open';
   el.innerHTML = `
-    <div class="modal modal-lg fade-in-up" style="max-width:1050px;width:95vw">
+    <div class="modal modal-lg fade-in-up" style="max-width:1150px;width:96vw">
       <div class="modal-header">
         <div>
           <h3 class="modal-title">📨 Create RFQ — Select Materials from Allocations</h3>
-          <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Select materials from allocated items using the treeview below. Materials are grouped by Allocation Number.</div>
+          <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Select materials from allocated items using the Explorer treeview below. Materials are grouped by Allocation Number.</div>
         </div>
         <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
       </div>
-      <div class="modal-body" style="padding:20px;max-height:75vh;overflow-y:auto">
+      <div class="modal-body" style="padding:20px;max-height:78vh;overflow-y:auto">
         <!-- RFQ Header -->
         <h4 style="font-size:13px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin-bottom:8px">1. RFQ Header Information</h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;background:var(--color-surface-2);padding:14px;border-radius:8px">
@@ -3030,7 +3131,7 @@ window.showCreateRFQModal = function() {
         </div>
 
         <!-- Treeview Container -->
-        <div id="rfq-tree-container">
+        <div id="rfq-tree-container-modal">
           ${renderRFQTreeHTML(allocEntries)}
         </div>
       </div>
@@ -3066,55 +3167,76 @@ function renderRFQTreeHTML(allocEntries, query = '') {
     return `<div class="empty-state" style="padding:32px"><div class="empty-state-icon">🔍</div><div class="empty-state-title">No materials match your search</div></div>`;
   }
 
-  return `
-    <div class="classic-tree" id="rfq-classic-tree">
-      <ul class="tree-root">
-        ${filtered.map(([allocKey, data], allocIdx) => {
-          const allocNodeId = `rfq-alloc-node-${allocIdx}`;
-          const totalItems = data.items.length;
+  const totalAllocs = filtered.length;
+  const totalItems = filtered.reduce((s, [_, d]) => s + d.items.length, 0);
 
-          return `
-            <li class="open" id="${allocNodeId}">
-              <div class="tree-node-item" onclick="toggleTreeNode('${allocNodeId}')">
-                <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${allocNodeId}')">-</span>
-                <input type="checkbox" class="rfq-alloc-cb" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation();onRFQAllocCheck('${allocNodeId}', this.checked)"/>
-                <span class="tree-folder-icon">📁</span>
-                <span class="copy-badge" onclick="copyToClipboard('${data.allocationNumber || allocKey}','Allocation Number',event)" title="Click to copy Allocation Number"><span class="tree-label-dept">${data.allocationNumber || allocKey}</span><span class="copy-icon">📋</span></span>
-                <span class="tree-sublabel">Buyer: ${data.buyerName || '—'}</span>
-                <span class="tree-badge">(${totalItems} items)</span>
-              </div>
-              <ul class="tree-children">
-                ${data.items.map(m => `
-                  <li class="rfq-tree-mat">
-                    <div class="tree-node-item" onclick="toggleRFQMatCheck('${allocNodeId}', ${m._idx})">
-                       <span class="tree-expander-spacer"></span>
-                      <input type="checkbox" class="rfq-mat-cb" data-idx="${m._idx}" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation()" onchange="onRFQMatCheck('${allocNodeId}')"/>
-                      <span class="tree-file-icon">📄</span>
-                      <span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="tree-label-prc font-mono">${m.prNumber}</span><span class="copy-icon">📋</span></span>
-                      <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="tree-label-mat-code font-mono">${m.matCode}</span><span class="copy-icon">📋</span></span>
-                      <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
-                      <span class="tree-mat-qty">Alloc: ${m.allocatedQty} ${m.unit || ''}</span>
-                      <span class="tree-mat-qty" style="background:rgba(16,185,129,0.15);border-color:rgba(16,185,129,0.3);color:var(--color-success)">Avail: ${m.availableQty}</span>
-                      <input type="number" class="form-control rfq-qty-input" data-idx="${m._idx}" min="0" max="${m.availableQty}" value="${m.availableQty}" style="width:75px;height:24px;font-size:11px;padding:2px 4px;margin-left:4px" onclick="event.stopPropagation()"/>
-                    </div>
-                  </li>`).join('')}
-              </ul>
-            </li>`;
-        }).join('')}
-      </ul>
+  return `
+    <div class="explorer-frame">
+      <div class="explorer-address-bar">
+        <span>📍 Location:</span>
+        <span class="explorer-address-pill">📁 Procurement</span>
+        <span>›</span>
+        <span class="explorer-address-pill">📂 Allocated Documents (${totalAllocs})</span>
+        <span>›</span>
+        <span class="explorer-address-pill">📨 Materials (${totalItems})</span>
+      </div>
+      <div class="classic-tree explorer-tree" id="rfq-classic-tree">
+        <ul class="tree-root">
+          ${filtered.map(([allocKey, data], allocIdx) => {
+            const allocNodeId = `rfq-alloc-node-${allocIdx}`;
+            const totalItems = data.items.length;
+
+            return `
+              <li class="open" id="${allocNodeId}">
+                <div class="tree-node-item" onclick="toggleTreeNode('${allocNodeId}')">
+                  <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${allocNodeId}')">-</span>
+                  <input type="checkbox" class="rfq-alloc-cb" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation();onRFQAllocCheck('${allocNodeId}', this.checked)"/>
+                  <span class="tree-folder-icon">📁</span>
+                  <span class="copy-badge" onclick="copyToClipboard('${data.allocationNumber || allocKey}','Allocation Number',event)" title="Click to copy Allocation Number"><span class="tree-label-dept font-mono">${data.allocationNumber || allocKey}</span><span class="copy-icon">📋</span></span>
+                  <span class="tree-sublabel">Buyer: ${data.buyerName || '—'}</span>
+                  <span class="tree-badge">(${totalItems} items)</span>
+                </div>
+                <ul class="tree-children">
+                  ${data.items.map(m => `
+                    <li class="rfq-tree-mat">
+                      <div class="tree-node-item" onclick="toggleRFQMatCheck('${allocNodeId}', ${m._idx})">
+                         <span class="tree-expander-spacer"></span>
+                        <input type="checkbox" class="rfq-mat-cb" data-idx="${m._idx}" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation()" onchange="onRFQMatCheck('${allocNodeId}')"/>
+                        <span class="tree-file-icon">📄</span>
+                        <span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="tree-label-prc font-mono">${m.prNumber}</span><span class="copy-icon">📋</span></span>
+                        <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="tree-label-mat-code font-mono">${m.matCode}</span><span class="copy-icon">📋</span></span>
+                        <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
+                        <span class="tree-mat-qty">Alloc: ${m.allocatedQty} ${m.unit || ''}</span>
+                        <span class="tree-mat-qty" style="background:rgba(16,185,129,0.15);border-color:rgba(16,185,129,0.3);color:var(--color-success)">Avail: ${m.availableQty}</span>
+                        <input type="number" class="form-control rfq-qty-input" data-idx="${m._idx}" min="0" max="${m.availableQty}" value="${m.availableQty}" style="width:75px;height:24px;font-size:11px;padding:2px 4px;margin-left:4px" onclick="event.stopPropagation()"/>
+                      </div>
+                    </li>`).join('')}
+                </ul>
+              </li>`;
+          }).join('')}
+        </ul>
+      </div>
+      <div class="explorer-status-bar">
+        <span>📊 ${totalAllocs} Allocation Document(s) • ${totalItems} Total Material Item(s)</span>
+        <span>💡 Select materials and enter RFQ quantities</span>
+      </div>
     </div>`;
 }
 
 window.filterRFQTree = function(query) {
-  const container = document.getElementById('rfq-tree-container');
-  if (container && window._rfqAllocEntries) {
-    container.innerHTML = renderRFQTreeHTML(window._rfqAllocEntries, query);
-    updateRFQTreeSummary();
+  const pageContainer = document.getElementById('rfq-tree-container');
+  const modalContainer = document.getElementById('rfq-tree-container-modal');
+  if (pageContainer && window._rfqAllocEntries) {
+    pageContainer.innerHTML = renderRFQTreeHTML(window._rfqAllocEntries, query);
   }
+  if (modalContainer && window._rfqAllocEntries) {
+    modalContainer.innerHTML = renderRFQTreeHTML(window._rfqAllocEntries, query);
+  }
+  updateRFQTreeSummary();
 };
 
 window.expandAllRFQTree = function(expand) {
-  document.querySelectorAll('#rfq-tree-container .classic-tree li').forEach(node => {
+  document.querySelectorAll('#rfq-tree-container .classic-tree li, #rfq-tree-container-modal .classic-tree li').forEach(node => {
     if (expand) node.classList.add('open');
     else node.classList.remove('open');
     const expander = node.querySelector(':scope > .tree-node-item > .tree-expander');
@@ -3123,8 +3245,10 @@ window.expandAllRFQTree = function(expand) {
 };
 
 window.selectAllRFQTree = function(select) {
-  document.querySelectorAll('#rfq-tree-container .rfq-mat-cb').forEach(cb => cb.checked = select);
-  document.querySelectorAll('#rfq-tree-container .rfq-alloc-cb').forEach(cb => {
+  const modalContainer = document.getElementById('create-rfq-modal');
+  const scope = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : document;
+  scope.querySelectorAll('.rfq-mat-cb').forEach(cb => cb.checked = select);
+  scope.querySelectorAll('.rfq-alloc-cb').forEach(cb => {
     cb.checked = select;
     cb.indeterminate = false;
   });
@@ -3162,13 +3286,17 @@ window.onRFQMatCheck = function(allocNodeId) {
 };
 
 window.updateRFQTreeSummary = function() {
-  const checkedMats = document.querySelectorAll('#rfq-tree-container .rfq-mat-cb:checked');
+  const modalContainer = document.getElementById('create-rfq-modal');
+  const scope = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : document;
+  const checkedMats = scope.querySelectorAll('.rfq-mat-cb:checked');
   const allocSet = new Set();
   checkedMats.forEach(cb => allocSet.add(cb.dataset.allocNode));
   const summaryEl = document.getElementById('rfq-tree-summary');
+  const pageSummaryEl = document.getElementById('rfq-page-tree-summary');
   const footerStatus = document.getElementById('rfq-footer-status');
   const text = `${checkedMats.length} material(s) selected from ${allocSet.size} allocation(s)`;
   if (summaryEl) summaryEl.textContent = text;
+  if (pageSummaryEl) pageSummaryEl.textContent = text;
   if (footerStatus) {
     footerStatus.textContent = checkedMats.length > 0
       ? `✅ Ready to create RFQ with ${checkedMats.length} material(s) from ${allocSet.size} allocation(s)`
@@ -3183,12 +3311,17 @@ window.submitCreateRFQ = function() {
   if (!rfqDate) { toast('RFQ Date is required', 'warning'); return; }
 
   const available = window._rfqAvailable || [];
+  const modalContainer = document.getElementById('create-rfq-modal');
+  const scope = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : document;
+  const checkedCbs = scope.querySelectorAll('.rfq-mat-cb:checked');
+  if (!checkedCbs.length) { toast('Please select at least one material from the allocation tree', 'warning'); return; }
+
   const items = [];
-  document.querySelectorAll('.rfq-mat-cb:checked').forEach(cb => {
+  checkedCbs.forEach(cb => {
     const idx = parseInt(cb.dataset.idx);
     const m = available[idx];
     if (!m) return;
-    const qtyInput = document.querySelector(`.rfq-qty-input[data-idx="${idx}"]`);
+    const qtyInput = scope.querySelector(`.rfq-qty-input[data-idx="${idx}"]`);
     const qty = parseFloat(qtyInput?.value) || 0;
     if (qty > 0 && qty <= m.availableQty) {
       items.push({ allocationId: m.allocationId, prcId: m.prcId, materialId: m.materialId, quantity: qty, matCode: m.matCode, description: m.description, unit: m.unit, prNumber: m.prNumber });
@@ -3237,52 +3370,135 @@ window.handleDeleteRFQ = async function(id) {
   const result = deleteRFQ(id);
   if (result.success) { toast('RFQ deleted', 'success'); navigate('rfqs'); updateSidebarBadges(); }
   else toast(result.reason, 'error');
-};
-
-// ═══════════════════════════════════════════════════════════
+};// ═══════════════════════════════════════════════════════════
 // PAGE: TCDs (TECHNO-COMMERCIAL DOCUMENTS)
 // ═══════════════════════════════════════════════════════════
 function renderTCDsPage(container) {
   const state = getState();
   const tcds = state.tcds || [];
+  const available = getAvailableForTCD();
+
+  // Group by RFQ Number
+  const rfqMap = {};
+  available.forEach((m, i) => {
+    const key = m.rfqNumber || m.rfqId;
+    if (!rfqMap[key]) rfqMap[key] = { rfqNumber: m.rfqNumber, rfqDate: m.rfqDate, items: [] };
+    rfqMap[key].items.push({ ...m, _idx: i });
+  });
+  const rfqEntries = Object.entries(rfqMap);
+  window._tcdAvailable = available;
+  window._tcdRFQEntries = rfqEntries;
 
   container.innerHTML = `
 <div class="page-header">
   <div>
     <h1 class="page-title">Techno-Commercial Documents (TCD)</h1>
-    <p class="page-subtitle">${tcds.length} TCD document(s)</p>
+    <p class="page-subtitle">${available.length} RFQ Material(s) available • ${tcds.length} TCD document(s) created</p>
   </div>
-  <button class="btn btn-primary" onclick="showCreateTCDModal()">+ Create TCD</button>
+  <div class="flex gap-2">
+    <button class="btn btn-primary" onclick="showCreateTCDModal()">+ Create TCD Document</button>
+  </div>
 </div>
 
-${tcds.length ? `
-<div class="card" style="padding:0">
-  <div class="table-wrapper" style="overflow:auto">
-    <table class="data-table">
-      <thead><tr><th>TCD Number</th><th>Date</th><th>Vendors</th><th>Total Items</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-      <tbody>
-        ${tcds.map(t => {
-          const totalItems = (t.vendorAllocations||[]).reduce((s,va) => s + va.items.length, 0);
-          const vendorCount = (t.vendorAllocations||[]).length;
-          return `<tr>
-            <td><span class="copy-badge" onclick="copyToClipboard('${t.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><span class="font-mono font-semibold">${t.tcdNumber}</span><span class="copy-icon">📋</span></span></td>
-            <td>${fmtDate(t.tcdDate)}</td>
-            <td><span class="chip chip-partly">${vendorCount} vendor(s)</span></td>
-            <td>${totalItems} items</td>
-            <td><span class="chip ${t.approved ? 'chip-completed' : 'chip-awaiting'}">${t.status}</span></td>
-            <td>${fmtDate(t.createdAt)}</td>
-            <td>
-              <button class="btn btn-ghost btn-sm" onclick="viewTCDDetail('${t.id}')">👁️ View</button>
-              ${!t.approved ? `<button class="btn btn-primary btn-sm" onclick="handleApproveTCD('${t.id}')">✅ Approve</button>` : ''}
-            </td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
+<div class="card" style="margin-bottom:20px;padding:16px">
+  <!-- Tab Navigation -->
+  <div style="display:flex;gap:12px;border-bottom:2px solid var(--color-border);padding-bottom:12px;margin-bottom:20px">
+    <button id="tcd-tab-btn-tree" class="btn btn-primary btn-sm" onclick="switchTCDPageTab('tree')">
+      🌳 RFQ Materials Explorer (${available.length})
+    </button>
+    <button id="tcd-tab-btn-docs" class="btn btn-secondary btn-sm" onclick="switchTCDPageTab('docs')">
+      📊 Created TCD Documents (${tcds.length})
+    </button>
   </div>
-</div>` : `
-<div class="card"><div class="empty-state" style="padding:60px"><div class="empty-state-icon">📊</div><div class="empty-state-title">No TCDs Yet</div><div class="empty-state-text">Create RFQs first, then create TCDs by assigning materials to vendors.</div></div></div>`}`;
+
+  <!-- Tab 1: Explorer View -->
+  <div id="tcd-tab-content-tree">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:12px">
+      <div>
+        <h3 style="font-size:15px;font-weight:700;margin:0;color:var(--color-primary);display:flex;align-items:center;gap:8px">
+          <span>🌳 RFQ Materials Pending TCD</span>
+        </h3>
+        <p style="font-size:12px;color:var(--color-text-secondary);margin:4px 0 0 0">
+          Showing materials from RFQ documents. Select materials in the Explorer below to create a TCD and assign vendors.
+        </p>
+      </div>
+      <div id="tcd-page-tree-summary" class="badge badge-primary" style="font-size:12px;padding:6px 14px;border-radius:var(--radius-full)">
+        0 material(s) selected
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="prc-tree-toolbar" style="margin-bottom:16px;background:var(--color-surface-2);padding:12px;border-radius:8px">
+      <div style="flex:1;min-width:240px;position:relative">
+        <input type="text" id="tcd-page-tree-search" class="form-control form-control-sm" placeholder="🔍 Search by RFQ #, PR Number, Mat Code, Description..." oninput="filterTCDTree(this.value)"/>
+      </div>
+      <div class="flex gap-2 flex-wrap">
+        <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllTCDTree(true)">▶ Expand All</button>
+        <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllTCDTree(false)">▼ Collapse All</button>
+        <button type="button" class="btn btn-primary btn-xs" onclick="selectAllTCDTree(true)">☑ Select All</button>
+        <button type="button" class="btn btn-ghost btn-xs" onclick="selectAllTCDTree(false)">☐ Deselect All</button>
+        <button type="button" class="btn btn-primary btn-xs" style="margin-left:6px" onclick="showCreateTCDModal()">+ Create TCD with Selected</button>
+      </div>
+    </div>
+
+    <!-- Treeview Container -->
+    <div id="tcd-tree-container" class="prc-tree">
+      ${renderTCDTreeHTML(rfqEntries)}
+    </div>
+  </div>
+
+  <!-- Tab 2: Created TCD Documents -->
+  <div id="tcd-tab-content-docs" style="display:none">
+    ${tcds.length ? `
+    <div class="table-wrapper" style="overflow:auto">
+      <table class="data-table">
+        <thead><tr><th>TCD Number</th><th>Date</th><th>Vendors</th><th>Total Items</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${tcds.map(t => {
+            const totalItems = (t.vendorAllocations||[]).reduce((s,va) => s + va.items.length, 0);
+            const vendorCount = (t.vendorAllocations||[]).length;
+            return `<tr>
+              <td><span class="copy-badge" onclick="copyToClipboard('${t.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><span class="font-mono font-semibold">${t.tcdNumber}</span><span class="copy-icon">📋</span></span></td>
+              <td>${fmtDate(t.tcdDate)}</td>
+              <td><span class="chip chip-partly">${vendorCount} vendor(s)</span></td>
+              <td>${totalItems} items</td>
+              <td><span class="chip ${t.approved ? 'chip-completed' : 'chip-awaiting'}">${t.status}</span></td>
+              <td>${fmtDate(t.createdAt)}</td>
+              <td>
+                <button class="btn btn-ghost btn-sm" onclick="viewTCDDetail('${t.id}')">👁️ View</button>
+                ${!t.approved ? `<button class="btn btn-primary btn-sm" onclick="handleApproveTCD('${t.id}')">✅ Approve</button>` : ''}
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>` : `
+    <div class="empty-state" style="padding:48px">
+      <div class="empty-state-icon">📊</div>
+      <div class="empty-state-title">No TCDs Yet</div>
+      <div class="empty-state-text">Create RFQs first, then create TCDs by assigning materials to vendors.</div>
+    </div>`}
+  </div>
+</div>`;
 }
+
+window.switchTCDPageTab = function(tab) {
+  const treeTab = document.getElementById('tcd-tab-content-tree');
+  const docsTab = document.getElementById('tcd-tab-content-docs');
+  const btnTree = document.getElementById('tcd-tab-btn-tree');
+  const btnDocs = document.getElementById('tcd-tab-btn-docs');
+  if (tab === 'tree') {
+    if (treeTab) treeTab.style.display = 'block';
+    if (docsTab) docsTab.style.display = 'none';
+    btnTree?.classList.replace('btn-secondary', 'btn-primary');
+    btnDocs?.classList.replace('btn-primary', 'btn-secondary');
+  } else {
+    if (treeTab) treeTab.style.display = 'none';
+    if (docsTab) docsTab.style.display = 'block';
+    btnDocs?.classList.replace('btn-secondary', 'btn-primary');
+    btnTree?.classList.replace('btn-primary', 'btn-secondary');
+  }
+};
 
 window.showCreateTCDModal = function() {
   const available = getAvailableForTCD();
@@ -3304,15 +3520,15 @@ window.showCreateTCDModal = function() {
   el.id = modalId;
   el.className = 'modal-overlay open';
   el.innerHTML = `
-    <div class="modal modal-lg fade-in-up" style="max-width:1100px;width:95vw">
+    <div class="modal modal-lg fade-in-up" style="max-width:1150px;width:96vw">
       <div class="modal-header">
         <div>
           <h3 class="modal-title">📊 Create TCD — Select Materials from RFQs & Assign Vendors</h3>
-          <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Select materials from RFQ documents using the treeview below, grouped by RFQ Number, and specify quantities and vendors.</div>
+          <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">Select materials from RFQ documents using the Explorer treeview below, grouped by RFQ Number, and specify quantities and vendors.</div>
         </div>
         <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
       </div>
-      <div class="modal-body" style="padding:20px;max-height:75vh;overflow-y:auto">
+      <div class="modal-body" style="padding:20px;max-height:78vh;overflow-y:auto">
         <!-- TCD Header -->
         <h4 style="font-size:13px;font-weight:700;text-transform:uppercase;color:var(--color-primary);margin-bottom:8px">1. TCD Header Information</h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;background:var(--color-surface-2);padding:14px;border-radius:8px">
@@ -3342,7 +3558,7 @@ window.showCreateTCDModal = function() {
         </div>
 
         <!-- Treeview Container -->
-        <div id="tcd-tree-container">
+        <div id="tcd-tree-container-modal">
           ${renderTCDTreeHTML(rfqEntries)}
         </div>
       </div>
@@ -3378,62 +3594,83 @@ function renderTCDTreeHTML(rfqEntries, query = '') {
     return `<div class="empty-state" style="padding:32px"><div class="empty-state-icon">🔍</div><div class="empty-state-title">No materials match your search</div></div>`;
   }
 
-  return `
-    <div class="classic-tree" id="tcd-classic-tree">
-      <ul class="tree-root">
-        ${filtered.map(([rfqKey, data], rfqIdx) => {
-          const rfqNodeId = `tcd-rfq-node-${rfqIdx}`;
-          const totalItems = data.items.length;
+  const totalRFQs = filtered.length;
+  const totalItems = filtered.reduce((s, [_, d]) => s + d.items.length, 0);
 
-          return `
-            <li class="open" id="${rfqNodeId}">
-              <div class="tree-node-item" onclick="toggleTreeNode('${rfqNodeId}')">
-                <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${rfqNodeId}')">-</span>
-                <input type="checkbox" class="tcd-rfq-cb" data-rfq-node="${rfqNodeId}" onclick="event.stopPropagation();onTCDRFQCheck('${rfqNodeId}', this.checked)"/>
-                <span class="tree-folder-icon">📨</span>
-                <span class="copy-badge" onclick="copyToClipboard('${data.rfqNumber || rfqKey}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="tree-label-dept font-mono">${data.rfqNumber || rfqKey}</span><span class="copy-icon">📋</span></span>
-                <span class="tree-sublabel">Date: ${fmtDate(data.rfqDate)}</span>
-                <span class="tree-badge">(${totalItems} items)</span>
-              </div>
-              <ul class="tree-children">
-                ${data.items.map(m => `
-                  <li class="tcd-tree-mat">
-                    <div class="tree-node-item" onclick="toggleTCDMatCheck('${rfqNodeId}', ${m._idx})">
-                      <span class="tree-expander-spacer"></span>
-                      <input type="checkbox" class="tcd-mat-cb" data-idx="${m._idx}" data-rfq-node="${rfqNodeId}" onclick="event.stopPropagation()" onchange="onTCDMatCheck('${rfqNodeId}')"/>
-                      <span class="tree-file-icon">📄</span>
-                      <span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="tree-label-prc font-mono">${m.prNumber}</span><span class="copy-icon">📋</span></span>
-                      <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="tree-label-mat-code font-mono">${m.matCode}</span><span class="copy-icon">📋</span></span>
-                      <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
-                      <span class="tree-mat-qty">RFQ: ${m.rfqdQty} ${m.unit || ''}</span>
-                      <span class="tree-mat-qty" style="background:rgba(16,185,129,0.15);border-color:rgba(16,185,129,0.3);color:var(--color-success)">Avail: ${m.availableQty}</span>
-                      <span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px" onclick="event.stopPropagation()">
-                        <span style="font-size:11px;font-weight:600;color:var(--color-text-secondary)">Qty:</span>
-                        <input type="number" class="form-control tcd-qty-input" data-idx="${m._idx}" min="0" max="${m.availableQty}" value="${m.availableQty}" style="width:75px;height:24px;font-size:11px;padding:2px 4px"/>
-                      </span>
-                      <span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px" onclick="event.stopPropagation()">
-                        <span style="font-size:11px;font-weight:600;color:var(--color-text-secondary)">Vendor *:</span>
-                        <input type="text" class="form-control tcd-vendor-input" data-idx="${m._idx}" placeholder="Vendor name" style="width:160px;height:24px;font-size:11px;padding:2px 6px"/>
-                      </span>
-                    </div>
-                  </li>`).join('')}
-              </ul>
-            </li>`;
-        }).join('')}
-      </ul>
+  return `
+    <div class="explorer-frame">
+      <div class="explorer-address-bar">
+        <span>📍 Location:</span>
+        <span class="explorer-address-pill">📁 Procurement</span>
+        <span>›</span>
+        <span class="explorer-address-pill">📂 RFQ Documents (${totalRFQs})</span>
+        <span>›</span>
+        <span class="explorer-address-pill">📊 Materials (${totalItems})</span>
+      </div>
+      <div class="classic-tree explorer-tree" id="tcd-classic-tree">
+        <ul class="tree-root">
+          ${filtered.map(([rfqKey, data], rfqIdx) => {
+            const rfqNodeId = `tcd-rfq-node-${rfqIdx}`;
+            const totalItems = data.items.length;
+
+            return `
+              <li class="open" id="${rfqNodeId}">
+                <div class="tree-node-item" onclick="toggleTreeNode('${rfqNodeId}')">
+                  <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${rfqNodeId}')">-</span>
+                  <input type="checkbox" class="tcd-rfq-cb" data-rfq-node="${rfqNodeId}" onclick="event.stopPropagation();onTCDRFQCheck('${rfqNodeId}', this.checked)"/>
+                  <span class="tree-folder-icon">📨</span>
+                  <span class="copy-badge" onclick="copyToClipboard('${data.rfqNumber || rfqKey}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="tree-label-dept font-mono">${data.rfqNumber || rfqKey}</span><span class="copy-icon">📋</span></span>
+                  <span class="tree-sublabel">Date: ${fmtDate(data.rfqDate)}</span>
+                  <span class="tree-badge">(${totalItems} items)</span>
+                </div>
+                <ul class="tree-children">
+                  ${data.items.map(m => `
+                    <li class="tcd-tree-mat">
+                      <div class="tree-node-item" onclick="toggleTCDMatCheck('${rfqNodeId}', ${m._idx})">
+                        <span class="tree-expander-spacer"></span>
+                        <input type="checkbox" class="tcd-mat-cb" data-idx="${m._idx}" data-rfq-node="${rfqNodeId}" onclick="event.stopPropagation()" onchange="onTCDMatCheck('${rfqNodeId}')"/>
+                        <span class="tree-file-icon">📄</span>
+                        <span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="tree-label-prc font-mono">${m.prNumber}</span><span class="copy-icon">📋</span></span>
+                        <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="tree-label-mat-code font-mono">${m.matCode}</span><span class="copy-icon">📋</span></span>
+                        <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
+                        <span class="tree-mat-qty">RFQ: ${m.rfqdQty} ${m.unit || ''}</span>
+                        <span class="tree-mat-qty" style="background:rgba(16,185,129,0.15);border-color:rgba(16,185,129,0.3);color:var(--color-success)">Avail: ${m.availableQty}</span>
+                        <span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px" onclick="event.stopPropagation()">
+                          <span style="font-size:11px;font-weight:600;color:var(--color-text-secondary)">Qty:</span>
+                          <input type="number" class="form-control tcd-qty-input" data-idx="${m._idx}" min="0" max="${m.availableQty}" value="${m.availableQty}" style="width:75px;height:24px;font-size:11px;padding:2px 4px"/>
+                        </span>
+                        <span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px" onclick="event.stopPropagation()">
+                          <span style="font-size:11px;font-weight:600;color:var(--color-text-secondary)">Vendor *:</span>
+                          <input type="text" class="form-control tcd-vendor-input" data-idx="${m._idx}" placeholder="Vendor name" style="width:160px;height:24px;font-size:11px;padding:2px 6px"/>
+                        </span>
+                      </div>
+                    </li>`).join('')}
+                </ul>
+              </li>`;
+          }).join('')}
+        </ul>
+      </div>
+      <div class="explorer-status-bar">
+        <span>📊 ${totalRFQs} RFQ Document(s) • ${totalItems} Total Material Item(s)</span>
+        <span>💡 Select materials, assign vendor names & set TCD quantities</span>
+      </div>
     </div>`;
 }
 
 window.filterTCDTree = function(query) {
-  const container = document.getElementById('tcd-tree-container');
-  if (container && window._tcdRFQEntries) {
-    container.innerHTML = renderTCDTreeHTML(window._tcdRFQEntries, query);
-    updateTCDTreeSummary();
+  const pageContainer = document.getElementById('tcd-tree-container');
+  const modalContainer = document.getElementById('tcd-tree-container-modal');
+  if (pageContainer && window._tcdRFQEntries) {
+    pageContainer.innerHTML = renderTCDTreeHTML(window._tcdRFQEntries, query);
   }
+  if (modalContainer && window._tcdRFQEntries) {
+    modalContainer.innerHTML = renderTCDTreeHTML(window._tcdRFQEntries, query);
+  }
+  updateTCDTreeSummary();
 };
 
 window.expandAllTCDTree = function(expand) {
-  document.querySelectorAll('#tcd-tree-container .classic-tree li').forEach(node => {
+  document.querySelectorAll('#tcd-tree-container .classic-tree li, #tcd-tree-container-modal .classic-tree li').forEach(node => {
     if (expand) node.classList.add('open');
     else node.classList.remove('open');
     const expander = node.querySelector(':scope > .tree-node-item > .tree-expander');
@@ -3442,8 +3679,10 @@ window.expandAllTCDTree = function(expand) {
 };
 
 window.selectAllTCDTree = function(select) {
-  document.querySelectorAll('#tcd-tree-container .tcd-mat-cb').forEach(cb => cb.checked = select);
-  document.querySelectorAll('#tcd-tree-container .tcd-rfq-cb').forEach(cb => {
+  const modalContainer = document.getElementById('create-tcd-modal');
+  const scope = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : document;
+  scope.querySelectorAll('.tcd-mat-cb').forEach(cb => cb.checked = select);
+  scope.querySelectorAll('.tcd-rfq-cb').forEach(cb => {
     cb.checked = select;
     cb.indeterminate = false;
   });
@@ -3481,13 +3720,17 @@ window.onTCDMatCheck = function(rfqNodeId) {
 };
 
 window.updateTCDTreeSummary = function() {
-  const checkedMats = document.querySelectorAll('#tcd-tree-container .tcd-mat-cb:checked');
+  const modalContainer = document.getElementById('create-tcd-modal');
+  const scope = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : document;
+  const checkedMats = scope.querySelectorAll('.tcd-mat-cb:checked');
   const rfqSet = new Set();
   checkedMats.forEach(cb => rfqSet.add(cb.dataset.rfqNode));
   const summaryEl = document.getElementById('tcd-tree-summary');
+  const pageSummaryEl = document.getElementById('tcd-page-tree-summary');
   const footerStatus = document.getElementById('tcd-footer-status');
   const text = `${checkedMats.length} material(s) selected from ${rfqSet.size} RFQ(s)`;
   if (summaryEl) summaryEl.textContent = text;
+  if (pageSummaryEl) pageSummaryEl.textContent = text;
   if (footerStatus) {
     footerStatus.textContent = checkedMats.length > 0
       ? `✅ Ready to create TCD with ${checkedMats.length} material(s) from ${rfqSet.size} RFQ(s)`
@@ -3502,7 +3745,9 @@ window.submitCreateTCD = function() {
   if (!tcdDate) { toast('TCD Date is required', 'warning'); return; }
 
   const available = window._tcdAvailable || [];
-  const checkedCbs = document.querySelectorAll('#tcd-tree-container .tcd-mat-cb:checked');
+  const modalContainer = document.getElementById('create-tcd-modal');
+  const scope = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : document;
+  const checkedCbs = scope.querySelectorAll('.tcd-mat-cb:checked');
   if (!checkedCbs.length) { toast('Please select at least one material from the RFQ tree', 'warning'); return; }
 
   // Group selected items by vendor
@@ -3514,8 +3759,8 @@ window.submitCreateTCD = function() {
     const idx = parseInt(cb.dataset.idx);
     const m = available[idx];
     if (!m) return;
-    const qtyInput = document.querySelector(`.tcd-qty-input[data-idx="${idx}"]`);
-    const vendorInput = document.querySelector(`.tcd-vendor-input[data-idx="${idx}"]`);
+    const qtyInput = scope.querySelector(`.tcd-qty-input[data-idx="${idx}"]`);
+    const vendorInput = scope.querySelector(`.tcd-vendor-input[data-idx="${idx}"]`);
     const qty = parseFloat(qtyInput?.value) || 0;
     const vendor = vendorInput?.value.trim() || '';
 
