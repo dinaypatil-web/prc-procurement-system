@@ -143,22 +143,20 @@ export async function loadAllUserData(uid, forceServer = false) {
     const result = {};
 
     for (const colName of COLLECTIONS) {
-      // 1. Try shared workspace collection first
-      const sharedColRef = fs.collection(db, `workspaces/default/${colName}`);
-      let snapshot;
-      try {
-        snapshot = (forceServer && fs.getDocsFromServer)
-          ? await fs.getDocsFromServer(sharedColRef)
-          : await fs.getDocs(sharedColRef);
-      } catch (e) {
-        snapshot = await fs.getDocs(sharedColRef);
-      }
+      let items = [];
 
-      let items = snapshot.docs.map(doc => {
-        const data = doc.data();
-        const rawId = data.id || _decodeDocId(doc.id);
-        return { ...data, id: rawId };
-      });
+      // 1. Try shared workspace collection first
+      try {
+        const sharedColRef = fs.collection(db, `workspaces/default/${colName}`);
+        const snapshot = await fs.getDocs(sharedColRef);
+        items = snapshot.docs.map(doc => {
+          const data = doc.data();
+          const rawId = data.id || _decodeDocId(doc.id);
+          return { ...data, id: rawId };
+        });
+      } catch (colErr) {
+        console.warn(`Could not read shared collection ${colName}:`, colErr);
+      }
 
       // 2. Fallback to user-scoped collection if shared workspace collection is empty and uid is provided
       if (items.length === 0 && uid) {
@@ -185,7 +183,7 @@ export async function loadAllUserData(uid, forceServer = false) {
       } catch(e) {}
     }
 
-    console.info(`🔥 Loaded data directly from Firebase Firestore (PRCs: ${result.prcs?.length || 0})`);
+    console.info(`🔥 Loaded data from Firebase Firestore (PRCs: ${result.prcs?.length || 0})`);
     return result;
   } catch (err) {
     console.error('Failed to load user data from Firestore:', err);
