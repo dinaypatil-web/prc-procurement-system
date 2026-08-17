@@ -263,6 +263,44 @@ function _friendlyAuthError(code) {
   return map[code] || `Authentication error (${code || 'unknown'})`;
 }
 
+/**
+ * Ensure an authenticated session exists (signs in anonymously or uses existing session)
+ */
+export async function ensureFirebaseAuth() {
+  if (!_auth || !_authModule) {
+    await initFirebase();
+  }
+  if (!_auth || !_authModule) return null;
+
+  if (_auth.currentUser) {
+    return _serializeUser(_auth.currentUser);
+  }
+
+  // Auto sign in anonymously so the user is never blocked
+  try {
+    const cred = await _authModule.signInAnonymously(_auth);
+    console.info("🔑 Auto-authenticated session created for guest user:", cred.user.uid);
+    return _serializeUser(cred.user, 'Procurement Engineer');
+  } catch (anonErr) {
+    console.warn("Anonymous authentication fallback:", anonErr);
+    // If anonymous sign-in is disabled in Firebase console, return a stable guest user UID
+    let guestUid = localStorage.getItem('PRC_GUEST_UID');
+    if (!guestUid) {
+      guestUid = 'guest_' + Math.random().toString(36).substring(2, 11);
+      localStorage.setItem('PRC_GUEST_UID', guestUid);
+    }
+    return {
+      uid: guestUid,
+      email: 'guest@procuretrack.local',
+      name: 'Procurement Guest',
+      displayName: 'Procurement Guest',
+      avatar: 'PG',
+      role: 'Procurement Engineer',
+      isAnonymous: true
+    };
+  }
+}
+
 export {
   FIREBASE_CONFIG, GEMINI_API_KEY, GEMINI_MODEL, APP_CONFIG,
   isFirebaseConfigured, initFirebase,

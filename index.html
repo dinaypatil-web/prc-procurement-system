@@ -2296,12 +2296,6 @@ window.showSettingsTab = function(id) {
 };
 
 window.handlePushLocalToCloud = async function() {
-  const state = getState();
-  if (!state.isAuthenticated || !state.firebaseUser?.uid) {
-    toast('Please sign in to your user account first.', 'warning');
-    window.showAuthModal('signin');
-    return;
-  }
   const btn = document.getElementById('btn-push-local-cloud');
   if (btn) {
     btn.disabled = true;
@@ -2316,10 +2310,7 @@ window.handlePushLocalToCloud = async function() {
       updateUserUI();
       updateSidebarBadges();
     } else {
-      toast(`Upload failed: ${res.reason || 'Please verify authentication.'}`, 'error');
-      if (res.reason && res.reason.includes('sign in')) {
-        window.showAuthModal('signin');
-      }
+      toast(`Upload error: ${res.reason || 'Failed to push to Cloud Firestore.'}`, 'error');
     }
   } catch (err) {
     toast(`Upload error: ${err.message}`, 'error');

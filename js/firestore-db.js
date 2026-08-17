@@ -113,38 +113,60 @@ export async function directSaveActivityLog(uid, log) {
 /**
  * Load all collections for a given user UID directly from Firestore
  */
+/**
+ * Load all collections directly from Firestore
+ */
 export async function loadAllUserData(uid, forceServer = false) {
-  if (!isFirebaseConfigured() || !db || !uid) return null;
+  if (!isFirebaseConfigured() || !db) return null;
 
   try {
     const fs = await getFS();
     const result = {};
 
     for (const colName of COLLECTIONS) {
-      const colRef = fs.collection(db, `users/${uid}/${colName}`);
+      // 1. Try shared workspace collection first
+      const sharedColRef = fs.collection(db, `workspaces/default/${colName}`);
       let snapshot;
-      if (forceServer && fs.getDocsFromServer) {
-        try {
-          snapshot = await fs.getDocsFromServer(colRef);
-        } catch (e) {
-          snapshot = await fs.getDocs(colRef);
-        }
-      } else {
-        snapshot = await fs.getDocs(colRef);
+      try {
+        snapshot = (forceServer && fs.getDocsFromServer)
+          ? await fs.getDocsFromServer(sharedColRef)
+          : await fs.getDocs(sharedColRef);
+      } catch (e) {
+        snapshot = await fs.getDocs(sharedColRef);
       }
-      result[colName] = snapshot.docs.map(doc => {
+
+      let items = snapshot.docs.map(doc => {
         const data = doc.data();
         const rawId = data.id || _decodeDocId(doc.id);
         return { ...data, id: rawId };
       });
+
+      // 2. Fallback to user-scoped collection if shared workspace collection is empty and uid is provided
+      if (items.length === 0 && uid) {
+        try {
+          const userColRef = fs.collection(db, `users/${uid}/${colName}`);
+          const userSnap = await fs.getDocs(userColRef);
+          items = userSnap.docs.map(doc => {
+            const data = doc.data();
+            const rawId = data.id || _decodeDocId(doc.id);
+            return { ...data, id: rawId };
+          });
+        } catch (e) {}
+      }
+
+      result[colName] = items;
     }
 
     // Load profile
-    const profileRef = fs.doc(db, `users/${uid}`);
-    const profileSnap = await fs.getDoc(profileRef);
-    result.profile = profileSnap.exists() ? profileSnap.data() : null;
+    if (uid) {
+      try {
+        const profileRef = fs.doc(db, `users/${uid}`);
+        const profileSnap = await fs.getDoc(profileRef);
+        result.profile = profileSnap.exists() ? profileSnap.data() : null;
+      } catch(e) {}
+    }
 
-    console.info(`🔥 Loaded data directly from Firebase Firestore for user ${uid} (PRCs: ${result.prcs?.length || 0})`);
+    console.info(`🔥 Loaded data directly from Firebase Firestore (PRCs: ${result.prcs?.length || 0})`);
     return result;
   } catch (err) {
     console.error('Failed to load user data from Firestore:', err);
@@ -156,11 +178,11 @@ export async function loadAllUserData(uid, forceServer = false) {
  * Bulk save a collection using Batched Writes
  */
 export async function saveCollection(uid, collectionName, items) {
-  if (!isFirebaseConfigured() || !db || !uid) return false;
+  if (!isFirebaseConfigured() || !db) return false;
 
   try {
     const fs = await getFS();
-    await _syncCollection(uid, collectionName, items, fs);
+    await _syncCollection(uid || 'default', collectionName, items, fs);
     return true;
   } catch (err) {
     console.error(`Failed to bulk save ${collectionName} to Firestore:`, err);
@@ -172,28 +194,33 @@ export async function saveCollection(uid, collectionName, items) {
  * Full state save to Firestore
  */
 export async function saveAllUserData(uid, stateData) {
-  if (!isFirebaseConfigured() || !db || !uid) return false;
+  if (!isFirebaseConfigured() || !db) return false;
 
   try {
     const fs = await getFS();
+    const effectiveUid = uid || 'default';
 
     // User profile document
-    const profileRef = fs.doc(db, `users/${uid}`);
-    await fs.setDoc(profileRef, {
-      name: stateData.currentUser?.name || '',
-      email: stateData.currentUser?.email || '',
-      role: stateData.currentUser?.role || 'User',
-      avatar: stateData.currentUser?.avatar || 'U',
-      lastSyncedAt: new Date().toISOString()
-    }, { merge: true });
-
-    // Sync all collections
-    for (const colName of COLLECTIONS) {
-      const items = stateData[colName] || [];
-      await _syncCollection(uid, colName, items, fs);
+    if (uid) {
+      try {
+        const profileRef = fs.doc(db, `users/${uid}`);
+        await fs.setDoc(profileRef, {
+          name: stateData.currentUser?.name || '',
+          email: stateData.currentUser?.email || '',
+          role: stateData.currentUser?.role || 'User',
+          avatar: stateData.currentUser?.avatar || 'U',
+          lastSyncedAt: new Date().toISOString()
+        }, { merge: true });
+      } catch(e) {}
     }
 
-    console.info(`🔥 Synced all collections to Firebase Firestore for user ${uid}`);
+    // Sync all collections to both shared workspace and user store
+    for (const colName of COLLECTIONS) {
+      const items = stateData[colName] || [];
+      await _syncCollection(effectiveUid, colName, items, fs);
+    }
+
+    console.info(`🔥 Synced all collections to Firebase Firestore (PRCs: ${stateData.prcs?.length || 0})`);
     return true;
   } catch (err) {
     console.error('Failed to save all user data to Firestore:', err);
@@ -211,7 +238,7 @@ let _unsubscribers = [];
  * Subscribe to real-time Firestore updates across multiple devices/PCs
  */
 export async function subscribeToRealtimeUserData(uid, onUpdate) {
-  if (!isFirebaseConfigured() || !db || !uid) return () => {};
+  if (!isFirebaseConfigured() || !db) return () => {};
 
   unsubscribeRealtimeUserData();
 
@@ -219,12 +246,9 @@ export async function subscribeToRealtimeUserData(uid, onUpdate) {
     const fs = await getFS();
 
     COLLECTIONS.forEach(colName => {
-      const colRef = fs.collection(db, `users/${uid}/${colName}`);
+      // Listen to shared workspace collection
+      const colRef = fs.collection(db, `workspaces/default/${colName}`);
       const unsub = fs.onSnapshot(colRef, (snapshot) => {
-        // Skip empty snapshot on initial load if pending
-        if (snapshot.metadata.hasPendingWrites) {
-          // Local optimistic write
-        }
         const items = snapshot.docs.map(doc => {
           const data = doc.data();
           const rawId = data.id || _decodeDocId(doc.id);
@@ -239,7 +263,7 @@ export async function subscribeToRealtimeUserData(uid, onUpdate) {
       _unsubscribers.push(unsub);
     });
 
-    console.info(`🔥 Real-time multi-device Firestore synchronization active for user ${uid}`);
+    console.info(`🔥 Real-time multi-device Firestore synchronization active`);
     return unsubscribeRealtimeUserData;
   } catch (err) {
     console.error('Failed to start real-time Firestore subscription:', err);
@@ -261,49 +285,59 @@ export function unsubscribeRealtimeUserData() {
 // ═══════════════════════════════════════════════════════════
 
 async function _syncCollection(uid, collectionName, items, fs) {
-  const colPath = `users/${uid}/${collectionName}`;
-  const colRef = fs.collection(db, colPath);
-  const existingSnap = await fs.getDocs(colRef);
-  const existingDocIds = new Set(existingSnap.docs.map(d => d.id));
-  const currentDocIds = new Set();
-
-  const MAX_BATCH = 450;
-  let batch = fs.writeBatch(db);
-  let opCount = 0;
-
-  // Write all current items
-  for (const item of (items || [])) {
-    const rawId = item.id || item.prNumber || item.allocationNumber || item.rfqNumber || item.tcdNumber || item.poNumber;
-    if (!rawId) continue;
-    const cleanDocId = _encodeDocId(rawId);
-    currentDocIds.add(cleanDocId);
-
-    const docRef = fs.doc(db, `${colPath}/${cleanDocId}`);
-    batch.set(docRef, _sanitize({ ...item, id: rawId }), { merge: true });
-    opCount++;
-    if (opCount >= MAX_BATCH) {
-      await batch.commit();
-      batch = fs.writeBatch(db);
-      opCount = 0;
-    }
+  const targetPaths = [`workspaces/default/${collectionName}`];
+  if (uid && uid !== 'default') {
+    targetPaths.push(`users/${uid}/${collectionName}`);
   }
 
-  // Delete removed items
-  for (const existingId of existingDocIds) {
-    if (!currentDocIds.has(existingId)) {
-      const docRef = fs.doc(db, `${colPath}/${existingId}`);
-      batch.delete(docRef);
-      opCount++;
-      if (opCount >= MAX_BATCH) {
-        await batch.commit();
-        batch = fs.writeBatch(db);
-        opCount = 0;
+  for (const colPath of targetPaths) {
+    try {
+      const colRef = fs.collection(db, colPath);
+      const existingSnap = await fs.getDocs(colRef);
+      const existingDocIds = new Set(existingSnap.docs.map(d => d.id));
+      const currentDocIds = new Set();
+
+      const MAX_BATCH = 450;
+      let batch = fs.writeBatch(db);
+      let opCount = 0;
+
+      // Write all current items
+      for (const item of (items || [])) {
+        const rawId = item.id || item.prNumber || item.allocationNumber || item.rfqNumber || item.tcdNumber || item.poNumber;
+        if (!rawId) continue;
+        const cleanDocId = _encodeDocId(rawId);
+        currentDocIds.add(cleanDocId);
+
+        const docRef = fs.doc(db, `${colPath}/${cleanDocId}`);
+        batch.set(docRef, _sanitize({ ...item, id: rawId }), { merge: true });
+        opCount++;
+        if (opCount >= MAX_BATCH) {
+          await batch.commit();
+          batch = fs.writeBatch(db);
+          opCount = 0;
+        }
       }
-    }
-  }
 
-  if (opCount > 0) {
-    await batch.commit();
+      // Delete removed items
+      for (const existingId of existingDocIds) {
+        if (!currentDocIds.has(existingId)) {
+          const docRef = fs.doc(db, `${colPath}/${existingId}`);
+          batch.delete(docRef);
+          opCount++;
+          if (opCount >= MAX_BATCH) {
+            await batch.commit();
+            batch = fs.writeBatch(db);
+            opCount = 0;
+          }
+        }
+      }
+
+      if (opCount > 0) {
+        await batch.commit();
+      }
+    } catch (colErr) {
+      console.warn(`Could not sync ${colPath}:`, colErr);
+    }
   }
 }
 

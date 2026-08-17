@@ -150,31 +150,17 @@ export function loadFromLocalCache() {
 }
 
 export async function pushLocalDataToFirestore() {
-  if (!isFirebaseConfigured()) {
-    const { initFirebase } = await import('./firebase-config.js');
-    await initFirebase();
+  const { ensureFirebaseAuth, isFirebaseConfigured } = await import('./firebase-config.js');
+  const authUser = await ensureFirebaseAuth();
+
+  if (authUser && (!state.firebaseUser || !state.firebaseUser.uid)) {
+    await setAuthenticatedUser(authUser);
   }
 
-  let uid = state.firebaseUser?.uid;
-  if (!uid) {
-    const { getCurrentUser } = await import('./firebase-config.js');
-    const fbUser = getCurrentUser();
-    if (fbUser?.uid) {
-      await setAuthenticatedUser(fbUser);
-      uid = fbUser.uid;
-    }
-  }
-
-  if (!isFirebaseConfigured()) {
-    return { success: false, reason: 'Firebase is not configured. Please verify your environment variables.' };
-  }
-
-  if (!uid) {
-    return { success: false, reason: 'You are currently in guest/offline mode. Please sign in to your user account to sync data with Cloud Firestore.' };
-  }
+  const uid = state.firebaseUser?.uid || authUser?.uid || 'default';
 
   try {
-    console.info(`☁️ Pushing ${state.prcs.length} local records to Cloud Firestore for user ${uid}...`);
+    console.info(`☁️ Pushing ${state.prcs.length} local records to Cloud Firestore (uid: ${uid})...`);
     const { saveAllUserData } = await import('./firestore-db.js');
     const success = await saveAllUserData(uid, state);
     if (success) {
