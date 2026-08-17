@@ -301,6 +301,10 @@ export async function ensureFirebaseAuth() {
   }
 }
 
+export function getDB() { return _db; }
+export function getAuthInstance() { return _auth; }
+export function getStorageInstance() { return _storage; }
+
 export {
   FIREBASE_CONFIG, GEMINI_API_KEY, GEMINI_MODEL, APP_CONFIG,
   isFirebaseConfigured, initFirebase,

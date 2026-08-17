@@ -440,9 +440,15 @@ function handleRealtimeUpdate(colName, items) {
 }
 
 export async function forceSyncWithFirestore() {
-  if (!isFirebaseConfigured() || !state.firebaseUser?.uid) return false;
+  const { ensureFirebaseAuth, isFirebaseConfigured } = await import('./firebase-config.js');
+  const authUser = await ensureFirebaseAuth();
+  if (authUser && (!state.firebaseUser || !state.firebaseUser.uid)) {
+    await setAuthenticatedUser(authUser);
+  }
+  const uid = state.firebaseUser?.uid || authUser?.uid || 'default';
+
   try {
-    const firestoreData = await loadAllUserData(state.firebaseUser.uid, true);
+    const firestoreData = await loadAllUserData(uid, true);
     if (firestoreData) {
       state.prcs = firestoreData.prcs || [];
       state.allocations = firestoreData.allocations || [];

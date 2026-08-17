@@ -1,10 +1,4 @@
-// =========================================================
-// FIRESTORE DATA LAYER — DIRECT USER-SCOPED PERSISTENCE
-// Data is saved directly in Firebase Cloud Firestore under users/{uid}/...
-// Supports Real-Time Multi-Device Synchronization & Safe ID Escaping
-// =========================================================
-
-import { db, isFirebaseConfigured } from './firebase-config.js';
+import { isFirebaseConfigured, getDB, initFirebase } from './firebase-config.js';
 
 let _firestoreMod = null;
 
@@ -13,6 +7,16 @@ async function getFS() {
     _firestoreMod = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
   }
   return _firestoreMod;
+}
+
+async function getDBInstance() {
+  if (!isFirebaseConfigured()) return null;
+  let dbInst = getDB();
+  if (!dbInst) {
+    await initFirebase();
+    dbInst = getDB();
+  }
+  return dbInst;
 }
 
 const COLLECTIONS = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'users', 'notifications', 'activityLogs'];
@@ -37,12 +41,19 @@ function _decodeDocId(encodedId) {
  * Save / Update a single document directly to Firestore
  */
 export async function directSaveDoc(uid, collectionName, docId, docData) {
-  if (!isFirebaseConfigured() || !db || !uid || !docId) return false;
+  if (!docId) return false;
+  const db = await getDBInstance();
+  if (!db) return false;
   try {
     const fs = await getFS();
     const cleanDocId = _encodeDocId(docId);
-    const docRef = fs.doc(db, `users/${uid}/${collectionName}/${cleanDocId}`);
-    await fs.setDoc(docRef, _sanitize({ ...docData, id: docId }), { merge: true });
+    const targetPaths = [`workspaces/default/${collectionName}/${cleanDocId}`];
+    if (uid && uid !== 'default') targetPaths.push(`users/${uid}/${collectionName}/${cleanDocId}`);
+    
+    for (const path of targetPaths) {
+      const docRef = fs.doc(db, path);
+      await fs.setDoc(docRef, _sanitize({ ...docData, id: docId }), { merge: true });
+    }
     return true;
   } catch (err) {
     console.error(`Direct Firestore write error (${collectionName}/${docId}):`, err);
@@ -54,12 +65,19 @@ export async function directSaveDoc(uid, collectionName, docId, docData) {
  * Delete a single document directly from Firestore
  */
 export async function directDeleteDoc(uid, collectionName, docId) {
-  if (!isFirebaseConfigured() || !db || !uid || !docId) return false;
+  if (!docId) return false;
+  const db = await getDBInstance();
+  if (!db) return false;
   try {
     const fs = await getFS();
     const cleanDocId = _encodeDocId(docId);
-    const docRef = fs.doc(db, `users/${uid}/${collectionName}/${cleanDocId}`);
-    await fs.deleteDoc(docRef);
+    const targetPaths = [`workspaces/default/${collectionName}/${cleanDocId}`];
+    if (uid && uid !== 'default') targetPaths.push(`users/${uid}/${collectionName}/${cleanDocId}`);
+
+    for (const path of targetPaths) {
+      const docRef = fs.doc(db, path);
+      await fs.deleteDoc(docRef);
+    }
     return true;
   } catch (err) {
     console.error(`Direct Firestore delete error (${collectionName}/${docId}):`, err);
@@ -117,7 +135,8 @@ export async function directSaveActivityLog(uid, log) {
  * Load all collections directly from Firestore
  */
 export async function loadAllUserData(uid, forceServer = false) {
-  if (!isFirebaseConfigured() || !db) return null;
+  const db = await getDBInstance();
+  if (!db) return null;
 
   try {
     const fs = await getFS();
@@ -178,7 +197,8 @@ export async function loadAllUserData(uid, forceServer = false) {
  * Bulk save a collection using Batched Writes
  */
 export async function saveCollection(uid, collectionName, items) {
-  if (!isFirebaseConfigured() || !db) return false;
+  const db = await getDBInstance();
+  if (!db) return false;
 
   try {
     const fs = await getFS();
@@ -194,7 +214,8 @@ export async function saveCollection(uid, collectionName, items) {
  * Full state save to Firestore
  */
 export async function saveAllUserData(uid, stateData) {
-  if (!isFirebaseConfigured() || !db) return false;
+  const db = await getDBInstance();
+  if (!db) return false;
 
   try {
     const fs = await getFS();
@@ -238,7 +259,8 @@ let _unsubscribers = [];
  * Subscribe to real-time Firestore updates across multiple devices/PCs
  */
 export async function subscribeToRealtimeUserData(uid, onUpdate) {
-  if (!isFirebaseConfigured() || !db) return () => {};
+  const db = await getDBInstance();
+  if (!db) return () => {};
 
   unsubscribeRealtimeUserData();
 
@@ -285,6 +307,9 @@ export function unsubscribeRealtimeUserData() {
 // ═══════════════════════════════════════════════════════════
 
 async function _syncCollection(uid, collectionName, items, fs) {
+  const db = await getDBInstance();
+  if (!db) return;
+
   const targetPaths = [`workspaces/default/${collectionName}`];
   if (uid && uid !== 'default') {
     targetPaths.push(`users/${uid}/${collectionName}`);
