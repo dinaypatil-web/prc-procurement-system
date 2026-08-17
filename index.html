@@ -2573,12 +2573,15 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
   return `
     <div class="explorer-frame">
       <div class="explorer-address-bar">
-        <span>📍 Location:</span>
-        <span class="explorer-address-pill">📁 Procurement</span>
-        <span>›</span>
-        <span class="explorer-address-pill">📂 Authorised PRCs (${totalPRCs})</span>
-        <span>›</span>
-        <span class="explorer-address-pill">📦 Materials (${totalMats})</span>
+        <span style="font-weight:700;color:var(--color-primary);display:inline-flex;align-items:center;gap:4px">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Hierarchy:
+        </span>
+        <span class="explorer-address-pill">🏢 Procurement</span>
+        <span style="color:var(--color-text-tertiary)">›</span>
+        <span class="explorer-address-pill">📂 Authorised PRCs <span class="tree-meta-count">${totalPRCs}</span></span>
+        <span style="color:var(--color-text-tertiary)">›</span>
+        <span class="explorer-address-pill">📦 Materials <span class="tree-meta-count">${totalMats}</span></span>
       </div>
       <div class="classic-tree explorer-tree" id="alloc-classic-tree">
         <ul class="tree-root">
@@ -2596,11 +2599,20 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
             return `
               <li class="classic-tree-dept open" id="${deptId}">
                 <div class="tree-node-item" onclick="toggleTreeNode('${deptId}')">
-                  <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${deptId}')">-</span>
-                  <input type="checkbox" class="tree-dept-cb" data-dept="${deptId}" onclick="event.stopPropagation();onDeptTreeCheck('${deptId}', this.checked)"/>
-                  <span class="tree-folder-icon">📁</span>
-                  <span class="tree-label-dept">${deptName}</span>
-                  <span class="tree-badge">(${prcList.length} PRCs, ${totalDeptMats} items)</span>
+                  <div class="tree-node-left">
+                    <button type="button" class="tree-expander-btn" onclick="event.stopPropagation();toggleTreeNode('${deptId}')" title="Toggle department">
+                      <svg class="tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                    <input type="checkbox" class="tree-dept-cb" data-dept="${deptId}" onclick="event.stopPropagation();onDeptTreeCheck('${deptId}', this.checked)"/>
+                    <span class="tree-icon-badge tree-icon-dept" title="Department">
+                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                    </span>
+                    <span class="tree-title-dept">${deptName}</span>
+                    <span class="tree-meta-count">${prcList.length} PRCs • ${totalDeptMats} items</span>
+                  </div>
+                  <div class="tree-node-right">
+                    <span class="tree-meta-pill">Department Level</span>
+                  </div>
                 </div>
                 <ul class="tree-children">
                   ${prcList.map(p => {
@@ -2617,14 +2629,27 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
                     return `
                       <li class="classic-tree-prc ${isOpen ? 'open' : ''}" id="${prcNodeId}">
                         <div class="tree-node-item ${isPreselected ? 'selected' : ''}" onclick="toggleTreeNode('${prcNodeId}')">
-                          <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${prcNodeId}')">${isOpen ? '-' : '+'}</span>
-                          <input type="checkbox" class="prc-tree-header-cb" data-prc="${p.id}" data-dept="${deptId}" ${isPreselected ? 'checked' : ''} onclick="event.stopPropagation();onPRCTreeHeaderCheck('${p.id}', this.checked)"/>
-                          <span class="tree-folder-icon">📁</span>
-                          <span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="tree-label-prc">${p.prNumber}</span><span class="copy-icon">📋</span></span>
-                          <button type="button" class="btn btn-ghost btn-xs tree-view-btn" style="padding:1px 6px;font-size:11px;margin-left:4px" onclick="event.stopPropagation();openPRCDetail('${p.id}')" title="View PRC Details">👁️ View</button>
-                          ${p.job ? `<span class="tree-sublabel">(${p.job})</span>` : ''}
-                          <span class="tree-badge">(${unallocatedMats.length} items)</span>
-                          <span class="chip ${getStatusChipClass(p.status)}" style="font-size:10px;padding:1px 6px;margin-left:8px">${p.status}</span>
+                          <div class="tree-node-left">
+                            <button type="button" class="tree-expander-btn" onclick="event.stopPropagation();toggleTreeNode('${prcNodeId}')" title="Toggle PRC materials">
+                              <svg class="tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                            </button>
+                            <input type="checkbox" class="prc-tree-header-cb" data-prc="${p.id}" data-dept="${deptId}" ${isPreselected ? 'checked' : ''} onclick="event.stopPropagation();onPRCTreeHeaderCheck('${p.id}', this.checked)"/>
+                            <span class="tree-icon-badge tree-icon-prc" title="PRC Document">
+                              <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            </span>
+                            <span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number">
+                              <span class="tree-title-prc">${p.prNumber}</span>
+                              <span class="copy-icon">📋</span>
+                            </span>
+                            ${p.job ? `<span class="tree-sublabel font-mono" style="font-size:11.5px;color:var(--color-text-secondary)">[${p.job}]</span>` : ''}
+                            <span class="tree-meta-count">${unallocatedMats.length} unallocated</span>
+                          </div>
+                          <div class="tree-node-right">
+                            <span class="chip ${getStatusChipClass(p.status)}" style="font-size:10.5px;padding:2px 8px">${p.status}</span>
+                            <button type="button" class="btn btn-ghost btn-xs" style="padding:2px 8px;font-size:11px" onclick="event.stopPropagation();openPRCDetail('${p.id}')" title="View PRC Details">
+                              <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="display:inline-block;vertical-align:-1px;margin-right:2px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>View
+                            </button>
+                          </div>
                         </div>
                         <ul class="tree-children">
                           ${unallocatedMats.map(m => {
@@ -2632,12 +2657,21 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
                             return `
                               <li class="classic-tree-mat">
                                 <div class="tree-node-item" onclick="toggleMatItemCheck('${p.id}', '${m.id}')">
-                                  <span class="tree-expander-spacer"></span>
-                                  <input type="checkbox" class="alloc-tree-mat-cb" data-prc="${p.id}" data-dept="${deptId}" data-mat="${m.id}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onPRCTreeMatCheck('${p.id}', '${m.id}')"/>
-                                  <span class="tree-file-icon">📄</span>
-                                  <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="tree-label-mat-code font-mono">${m.matCode}</span><span class="copy-icon">📋</span></span>
-                                  <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
-                                  <span class="tree-mat-qty">Qty: ${m.quantity} ${m.unit || ''}</span>
+                                  <div class="tree-node-left">
+                                    <span class="tree-expander-spacer"></span>
+                                    <input type="checkbox" class="alloc-tree-mat-cb" data-prc="${p.id}" data-dept="${deptId}" data-mat="${m.id}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onPRCTreeMatCheck('${p.id}', '${m.id}')"/>
+                                    <span class="tree-icon-badge tree-icon-mat" title="Material Item">
+                                      <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                                    </span>
+                                    <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code">
+                                      <span class="tree-title-mat">${m.matCode}</span>
+                                      <span class="copy-icon">📋</span>
+                                    </span>
+                                    <span class="tree-desc-mat" title="${m.description}">${m.description}</span>
+                                  </div>
+                                  <div class="tree-node-right">
+                                    <span class="tree-meta-pill">Qty: <strong>${m.quantity}</strong> ${m.unit || ''}</span>
+                                  </div>
                                 </div>
                               </li>`;
                           }).join('')}
@@ -2650,8 +2684,8 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
         </ul>
       </div>
       <div class="explorer-status-bar">
-        <span>📊 ${deptEntries.length} Department(s) • ${totalPRCs} Authorised PRC(s) • ${totalMats} Total Material(s)</span>
-        <span>💡 Click folder/items to expand or select</span>
+        <span>📊 <strong>${deptEntries.length}</strong> Department(s) • <strong>${totalPRCs}</strong> Authorised PRC(s) • <strong>${totalMats}</strong> Material Line Item(s)</span>
+        <span style="font-size:11.5px;color:var(--color-text-tertiary)">✨ Click any row or expander to navigate items</span>
       </div>
     </div>`;
 }
@@ -2660,10 +2694,6 @@ window.toggleTreeNode = function(nodeId) {
   const node = document.getElementById(nodeId);
   if (node) {
     node.classList.toggle('open');
-    const expander = node.querySelector(':scope > .tree-node-item > .tree-expander');
-    if (expander) {
-      expander.textContent = node.classList.contains('open') ? '-' : '+';
-    }
   }
 };
 
@@ -3176,12 +3206,15 @@ function renderRFQTreeHTML(allocEntries, query = '') {
   return `
     <div class="explorer-frame">
       <div class="explorer-address-bar">
-        <span>📍 Location:</span>
-        <span class="explorer-address-pill">📁 Procurement</span>
-        <span>›</span>
-        <span class="explorer-address-pill">📂 Allocated Documents (${totalAllocs})</span>
-        <span>›</span>
-        <span class="explorer-address-pill">📨 Materials (${totalItems})</span>
+        <span style="font-weight:700;color:var(--color-primary);display:inline-flex;align-items:center;gap:4px">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Hierarchy:
+        </span>
+        <span class="explorer-address-pill">🏢 Procurement</span>
+        <span style="color:var(--color-text-tertiary)">›</span>
+        <span class="explorer-address-pill">📂 Allocated Documents <span class="tree-meta-count">${totalAllocs}</span></span>
+        <span style="color:var(--color-text-tertiary)">›</span>
+        <span class="explorer-address-pill">📨 Materials <span class="tree-meta-count">${totalItems}</span></span>
       </div>
       <div class="classic-tree explorer-tree" id="rfq-classic-tree">
         <ul class="tree-root">
@@ -3192,26 +3225,53 @@ function renderRFQTreeHTML(allocEntries, query = '') {
             return `
               <li class="open" id="${allocNodeId}">
                 <div class="tree-node-item" onclick="toggleTreeNode('${allocNodeId}')">
-                  <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${allocNodeId}')">-</span>
-                  <input type="checkbox" class="rfq-alloc-cb" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation();onRFQAllocCheck('${allocNodeId}', this.checked)"/>
-                  <span class="tree-folder-icon">📁</span>
-                  <span class="copy-badge" onclick="copyToClipboard('${data.allocationNumber || allocKey}','Allocation Number',event)" title="Click to copy Allocation Number"><span class="tree-label-dept font-mono">${data.allocationNumber || allocKey}</span><span class="copy-icon">📋</span></span>
-                  <span class="tree-sublabel">Buyer: ${data.buyerName || '—'}</span>
-                  <span class="tree-badge">(${totalItems} items)</span>
+                  <div class="tree-node-left">
+                    <button type="button" class="tree-expander-btn" onclick="event.stopPropagation();toggleTreeNode('${allocNodeId}')" title="Toggle allocation">
+                      <svg class="tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                    <input type="checkbox" class="rfq-alloc-cb" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation();onRFQAllocCheck('${allocNodeId}', this.checked)"/>
+                    <span class="tree-icon-badge tree-icon-prc" title="Allocation Document">
+                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    </span>
+                    <span class="copy-badge" onclick="copyToClipboard('${data.allocationNumber || allocKey}','Allocation Number',event)" title="Click to copy Allocation Number">
+                      <span class="tree-title-prc">${data.allocationNumber || allocKey}</span>
+                      <span class="copy-icon">📋</span>
+                    </span>
+                    <span class="tree-sublabel" style="font-size:11.5px;color:var(--color-text-secondary)">Buyer: <strong>${data.buyerName || '—'}</strong></span>
+                    <span class="tree-meta-count">${totalItems} item(s)</span>
+                  </div>
+                  <div class="tree-node-right">
+                    <span class="tree-meta-pill">Allocated Group</span>
+                  </div>
                 </div>
                 <ul class="tree-children">
                   ${data.items.map(m => `
                     <li class="rfq-tree-mat">
                       <div class="tree-node-item" onclick="toggleRFQMatCheck('${allocNodeId}', ${m._idx})">
-                         <span class="tree-expander-spacer"></span>
-                        <input type="checkbox" class="rfq-mat-cb" data-idx="${m._idx}" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation()" onchange="onRFQMatCheck('${allocNodeId}')"/>
-                        <span class="tree-file-icon">📄</span>
-                        <span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="tree-label-prc font-mono">${m.prNumber}</span><span class="copy-icon">📋</span></span>
-                        <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="tree-label-mat-code font-mono">${m.matCode}</span><span class="copy-icon">📋</span></span>
-                        <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
-                        <span class="tree-mat-qty">Alloc: ${m.allocatedQty} ${m.unit || ''}</span>
-                        <span class="tree-mat-qty" style="background:rgba(16,185,129,0.15);border-color:rgba(16,185,129,0.3);color:var(--color-success)">Avail: ${m.availableQty}</span>
-                        <input type="number" class="form-control rfq-qty-input" data-idx="${m._idx}" min="0" max="${m.availableQty}" value="${m.availableQty}" style="width:75px;height:24px;font-size:11px;padding:2px 4px;margin-left:4px" onclick="event.stopPropagation()"/>
+                        <div class="tree-node-left">
+                          <span class="tree-expander-spacer"></span>
+                          <input type="checkbox" class="rfq-mat-cb" data-idx="${m._idx}" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation()" onchange="onRFQMatCheck('${allocNodeId}')"/>
+                          <span class="tree-icon-badge tree-icon-mat" title="Material Item">
+                            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                          </span>
+                          <span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number">
+                            <span class="tree-title-prc" style="font-size:12px">${m.prNumber}</span>
+                            <span class="copy-icon">📋</span>
+                          </span>
+                          <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code">
+                            <span class="tree-title-mat">${m.matCode}</span>
+                            <span class="copy-icon">📋</span>
+                          </span>
+                          <span class="tree-desc-mat" title="${m.description}">${m.description}</span>
+                        </div>
+                        <div class="tree-node-right">
+                          <span class="tree-meta-pill">Alloc: <strong>${m.allocatedQty}</strong> ${m.unit || ''}</span>
+                          <span class="tree-meta-pill tree-meta-avail">Avail: <strong>${m.availableQty}</strong></span>
+                          <span style="display:inline-flex;align-items:center;gap:4px" onclick="event.stopPropagation()">
+                            <span style="font-size:11px;font-weight:600;color:var(--color-text-secondary)">RFQ Qty:</span>
+                            <input type="number" class="form-control rfq-qty-input" data-idx="${m._idx}" min="0" max="${m.availableQty}" value="${m.availableQty}" style="width:75px;height:26px;font-size:11.5px;padding:2px 6px;border-radius:6px" onclick="event.stopPropagation()"/>
+                          </span>
+                        </div>
                       </div>
                     </li>`).join('')}
                 </ul>
@@ -3220,8 +3280,8 @@ function renderRFQTreeHTML(allocEntries, query = '') {
         </ul>
       </div>
       <div class="explorer-status-bar">
-        <span>📊 ${totalAllocs} Allocation Document(s) • ${totalItems} Total Material Item(s)</span>
-        <span>💡 Select materials and enter RFQ quantities</span>
+        <span>📊 <strong>${totalAllocs}</strong> Allocation Document(s) • <strong>${totalItems}</strong> Total Material Item(s)</span>
+        <span style="font-size:11.5px;color:var(--color-text-tertiary)">✨ Select items and enter RFQ quantities to proceed</span>
       </div>
     </div>`;
 }
@@ -3242,8 +3302,6 @@ window.expandAllRFQTree = function(expand) {
   document.querySelectorAll('#rfq-tree-container .classic-tree li, #rfq-tree-container-modal .classic-tree li').forEach(node => {
     if (expand) node.classList.add('open');
     else node.classList.remove('open');
-    const expander = node.querySelector(':scope > .tree-node-item > .tree-expander');
-    if (expander) expander.textContent = expand ? '-' : '+';
   });
 };
 
@@ -3603,12 +3661,15 @@ function renderTCDTreeHTML(rfqEntries, query = '') {
   return `
     <div class="explorer-frame">
       <div class="explorer-address-bar">
-        <span>📍 Location:</span>
-        <span class="explorer-address-pill">📁 Procurement</span>
-        <span>›</span>
-        <span class="explorer-address-pill">📂 RFQ Documents (${totalRFQs})</span>
-        <span>›</span>
-        <span class="explorer-address-pill">📊 Materials (${totalItems})</span>
+        <span style="font-weight:700;color:var(--color-primary);display:inline-flex;align-items:center;gap:4px">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Hierarchy:
+        </span>
+        <span class="explorer-address-pill">🏢 Procurement</span>
+        <span style="color:var(--color-text-tertiary)">›</span>
+        <span class="explorer-address-pill">📂 RFQ Documents <span class="tree-meta-count">${totalRFQs}</span></span>
+        <span style="color:var(--color-text-tertiary)">›</span>
+        <span class="explorer-address-pill">📊 Materials <span class="tree-meta-count">${totalItems}</span></span>
       </div>
       <div class="classic-tree explorer-tree" id="tcd-classic-tree">
         <ul class="tree-root">
@@ -3619,33 +3680,57 @@ function renderTCDTreeHTML(rfqEntries, query = '') {
             return `
               <li class="open" id="${rfqNodeId}">
                 <div class="tree-node-item" onclick="toggleTreeNode('${rfqNodeId}')">
-                  <span class="tree-expander" onclick="event.stopPropagation();toggleTreeNode('${rfqNodeId}')">-</span>
-                  <input type="checkbox" class="tcd-rfq-cb" data-rfq-node="${rfqNodeId}" onclick="event.stopPropagation();onTCDRFQCheck('${rfqNodeId}', this.checked)"/>
-                  <span class="tree-folder-icon">📨</span>
-                  <span class="copy-badge" onclick="copyToClipboard('${data.rfqNumber || rfqKey}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="tree-label-dept font-mono">${data.rfqNumber || rfqKey}</span><span class="copy-icon">📋</span></span>
-                  <span class="tree-sublabel">Date: ${fmtDate(data.rfqDate)}</span>
-                  <span class="tree-badge">(${totalItems} items)</span>
+                  <div class="tree-node-left">
+                    <button type="button" class="tree-expander-btn" onclick="event.stopPropagation();toggleTreeNode('${rfqNodeId}')" title="Toggle RFQ materials">
+                      <svg class="tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                    <input type="checkbox" class="tcd-rfq-cb" data-rfq-node="${rfqNodeId}" onclick="event.stopPropagation();onTCDRFQCheck('${rfqNodeId}', this.checked)"/>
+                    <span class="tree-icon-badge tree-icon-prc" title="RFQ Document">
+                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                    </span>
+                    <span class="copy-badge" onclick="copyToClipboard('${data.rfqNumber || rfqKey}','RFQ Number',event)" title="Click to copy RFQ Number">
+                      <span class="tree-title-prc">${data.rfqNumber || rfqKey}</span>
+                      <span class="copy-icon">📋</span>
+                    </span>
+                    <span class="tree-sublabel" style="font-size:11.5px;color:var(--color-text-secondary)">Date: <strong>${fmtDate(data.rfqDate)}</strong></span>
+                    <span class="tree-meta-count">${totalItems} item(s)</span>
+                  </div>
+                  <div class="tree-node-right">
+                    <span class="tree-meta-pill">RFQ Group</span>
+                  </div>
                 </div>
                 <ul class="tree-children">
                   ${data.items.map(m => `
                     <li class="tcd-tree-mat">
                       <div class="tree-node-item" onclick="toggleTCDMatCheck('${rfqNodeId}', ${m._idx})">
-                        <span class="tree-expander-spacer"></span>
-                        <input type="checkbox" class="tcd-mat-cb" data-idx="${m._idx}" data-rfq-node="${rfqNodeId}" onclick="event.stopPropagation()" onchange="onTCDMatCheck('${rfqNodeId}')"/>
-                        <span class="tree-file-icon">📄</span>
-                        <span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="tree-label-prc font-mono">${m.prNumber}</span><span class="copy-icon">📋</span></span>
-                        <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="tree-label-mat-code font-mono">${m.matCode}</span><span class="copy-icon">📋</span></span>
-                        <span class="tree-label-mat-desc"><strong>${m.description}</strong></span>
-                        <span class="tree-mat-qty">RFQ: ${m.rfqdQty} ${m.unit || ''}</span>
-                        <span class="tree-mat-qty" style="background:rgba(16,185,129,0.15);border-color:rgba(16,185,129,0.3);color:var(--color-success)">Avail: ${m.availableQty}</span>
-                        <span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px" onclick="event.stopPropagation()">
-                          <span style="font-size:11px;font-weight:600;color:var(--color-text-secondary)">Qty:</span>
-                          <input type="number" class="form-control tcd-qty-input" data-idx="${m._idx}" min="0" max="${m.availableQty}" value="${m.availableQty}" style="width:75px;height:24px;font-size:11px;padding:2px 4px"/>
-                        </span>
-                        <span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px" onclick="event.stopPropagation()">
-                          <span style="font-size:11px;font-weight:600;color:var(--color-text-secondary)">Vendor *:</span>
-                          <input type="text" class="form-control tcd-vendor-input" data-idx="${m._idx}" placeholder="Vendor name" style="width:160px;height:24px;font-size:11px;padding:2px 6px"/>
-                        </span>
+                        <div class="tree-node-left">
+                          <span class="tree-expander-spacer"></span>
+                          <input type="checkbox" class="tcd-mat-cb" data-idx="${m._idx}" data-rfq-node="${rfqNodeId}" onclick="event.stopPropagation()" onchange="onTCDMatCheck('${rfqNodeId}')"/>
+                          <span class="tree-icon-badge tree-icon-mat" title="Material Item">
+                            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                          </span>
+                          <span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number">
+                            <span class="tree-title-prc" style="font-size:12px">${m.prNumber}</span>
+                            <span class="copy-icon">📋</span>
+                          </span>
+                          <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code">
+                            <span class="tree-title-mat">${m.matCode}</span>
+                            <span class="copy-icon">📋</span>
+                          </span>
+                          <span class="tree-desc-mat" title="${m.description}">${m.description}</span>
+                        </div>
+                        <div class="tree-node-right">
+                          <span class="tree-meta-pill">RFQ: <strong>${m.rfqdQty}</strong> ${m.unit || ''}</span>
+                          <span class="tree-meta-pill tree-meta-avail">Avail: <strong>${m.availableQty}</strong></span>
+                          <span style="display:inline-flex;align-items:center;gap:4px" onclick="event.stopPropagation()">
+                            <span style="font-size:11px;font-weight:600;color:var(--color-text-secondary)">TCD Qty:</span>
+                            <input type="number" class="form-control tcd-qty-input" data-idx="${m._idx}" min="0" max="${m.availableQty}" value="${m.availableQty}" style="width:75px;height:26px;font-size:11.5px;padding:2px 6px;border-radius:6px"/>
+                          </span>
+                          <span style="display:inline-flex;align-items:center;gap:4px" onclick="event.stopPropagation()">
+                            <span style="font-size:11px;font-weight:600;color:var(--color-text-secondary)">Vendor *:</span>
+                            <input type="text" class="form-control tcd-vendor-input" data-idx="${m._idx}" placeholder="Vendor name" style="width:160px;height:26px;font-size:11.5px;padding:2px 8px;border-radius:6px"/>
+                          </span>
+                        </div>
                       </div>
                     </li>`).join('')}
                 </ul>
@@ -3654,8 +3739,8 @@ function renderTCDTreeHTML(rfqEntries, query = '') {
         </ul>
       </div>
       <div class="explorer-status-bar">
-        <span>📊 ${totalRFQs} RFQ Document(s) • ${totalItems} Total Material Item(s)</span>
-        <span>💡 Select materials, assign vendor names & set TCD quantities</span>
+        <span>📊 <strong>${totalRFQs}</strong> RFQ Document(s) • <strong>${totalItems}</strong> Total Material Item(s)</span>
+        <span style="font-size:11.5px;color:var(--color-text-tertiary)">✨ Select materials, assign vendor names & set TCD quantities</span>
       </div>
     </div>`;
 }
@@ -3676,8 +3761,6 @@ window.expandAllTCDTree = function(expand) {
   document.querySelectorAll('#tcd-tree-container .classic-tree li, #tcd-tree-container-modal .classic-tree li').forEach(node => {
     if (expand) node.classList.add('open');
     else node.classList.remove('open');
-    const expander = node.querySelector(':scope > .tree-node-item > .tree-expander');
-    if (expander) expander.textContent = expand ? '-' : '+';
   });
 };
 
