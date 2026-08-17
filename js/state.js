@@ -112,37 +112,49 @@ function saveToLocalCache() {
 
 export function loadFromLocalCache() {
   try {
-    const uidKey = _getCacheKey();
-    let raw = localStorage.getItem(uidKey);
+    // Collect all candidate cache entries — check every possible key
+    const candidates = [];
 
-    // 1. Try user-scoped key
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.prcs) && parsed.prcs.length > 0) return parsed;
+    // 1. Try user-scoped key (current UID)
+    const uidKey = _getCacheKey();
+    const uidRaw = localStorage.getItem(uidKey);
+    if (uidRaw) {
+      try {
+        const parsed = JSON.parse(uidRaw);
+        if (parsed && Array.isArray(parsed.prcs)) candidates.push(parsed);
+      } catch(e) {}
     }
 
     // 2. Try global/guest fallback key
-    raw = localStorage.getItem(LOCAL_CACHE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.prcs) && parsed.prcs.length > 0) return parsed;
+    const globalRaw = localStorage.getItem(LOCAL_CACHE_KEY);
+    if (globalRaw) {
+      try {
+        const parsed = JSON.parse(globalRaw);
+        if (parsed && Array.isArray(parsed.prcs)) candidates.push(parsed);
+      } catch(e) {}
     }
 
-    // 3. Scan any matching PRC cache keys in localStorage
+    // 3. Scan ALL localStorage keys for any PRC cache data
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && key.startsWith('PRC_PROCUREMENT_')) {
+      if (key && (key.startsWith('PRC_PROCUREMENT') || key.includes('CACHE'))) {
+        if (key === uidKey || key === LOCAL_CACHE_KEY) continue; // already checked
         const val = localStorage.getItem(key);
-        if (val && val.includes('"prcs"')) {
+        if (val && val.length > 10) {
           try {
             const parsed = JSON.parse(val);
-            if (parsed && Array.isArray(parsed.prcs) && parsed.prcs.length > 0) return parsed;
+            if (parsed && Array.isArray(parsed.prcs)) candidates.push(parsed);
           } catch(e) {}
         }
       }
     }
 
-    return raw ? JSON.parse(raw) : null;
+    // Return the candidate with the most PRCs
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => (b.prcs?.length || 0) - (a.prcs?.length || 0));
+    const best = candidates[0];
+    console.info(`📦 Local cache loaded: ${best.prcs?.length || 0} PRCs, ${best.allocations?.length || 0} allocations, ${best.rfqs?.length || 0} RFQs`);
+    return best;
   } catch (err) {
     console.error('Failed to load from local cache:', err);
     return null;
@@ -293,14 +305,15 @@ export async function initAppData(forceClean = false) {
   let vendors = [], users = [], notifications = [], activityLogs = [];
   let loadedFrom = 'empty';
 
+  // Load local cache FIRST (before auth potentially changes the UID)
+  const cached = loadFromLocalCache();
+
   const { ensureFirebaseAuth, isFirebaseConfigured } = await import('./firebase-config.js');
   const authUser = await ensureFirebaseAuth();
   if (authUser && (!state.firebaseUser || !state.firebaseUser.uid)) {
     await setAuthenticatedUser(authUser);
   }
   const uid = state.firebaseUser?.uid || authUser?.uid || 'default';
-
-  const cached = loadFromLocalCache();
 
   if (!forceClean) {
     // 1. Direct Firestore fetch
