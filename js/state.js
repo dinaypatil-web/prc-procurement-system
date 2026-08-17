@@ -101,20 +101,70 @@ function saveToLocalCache() {
       notifications: state.notifications,
       activityLogs: state.activityLogs
     };
+    // Save to user-scoped key
     localStorage.setItem(_getCacheKey(), JSON.stringify(dataToSave));
+    // Also save to global cache fallback
+    localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(dataToSave));
   } catch (err) {
     console.error('Failed to save local cache:', err);
   }
 }
 
-function loadFromLocalCache() {
+export function loadFromLocalCache() {
   try {
-    const raw = localStorage.getItem(_getCacheKey());
-    if (!raw) return null;
-    return JSON.parse(raw);
+    const uidKey = _getCacheKey();
+    let raw = localStorage.getItem(uidKey);
+
+    // 1. Try user-scoped key
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.prcs) && parsed.prcs.length > 0) return parsed;
+    }
+
+    // 2. Try global/guest fallback key
+    raw = localStorage.getItem(LOCAL_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.prcs) && parsed.prcs.length > 0) return parsed;
+    }
+
+    // 3. Scan any matching PRC cache keys in localStorage
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('PRC_PROCUREMENT_')) {
+        const val = localStorage.getItem(key);
+        if (val && val.includes('"prcs"')) {
+          try {
+            const parsed = JSON.parse(val);
+            if (parsed && Array.isArray(parsed.prcs) && parsed.prcs.length > 0) return parsed;
+          } catch(e) {}
+        }
+      }
+    }
+
+    return raw ? JSON.parse(raw) : null;
   } catch (err) {
     console.error('Failed to load from local cache:', err);
     return null;
+  }
+}
+
+export async function pushLocalDataToFirestore() {
+  if (!isFirebaseConfigured() || !state.firebaseUser?.uid) return { success: false, reason: 'Firebase not authenticated' };
+  const uid = state.firebaseUser.uid;
+  try {
+    console.info(`☁️ Pushing ${state.prcs.length} local records to Cloud Firestore for user ${uid}...`);
+    // Import saveAllUserData
+    const { saveAllUserData } = await import('./firestore-db.js');
+    const success = await saveAllUserData(uid, state);
+    if (success) {
+      saveToLocalCache();
+      emit('*');
+    }
+    return { success, count: state.prcs.length };
+  } catch (err) {
+    console.error('Failed to push local data to Firestore:', err);
+    return { success: false, reason: err.message };
   }
 }
 
@@ -239,11 +289,13 @@ export async function initAppData(forceClean = false) {
   let vendors = [], users = [], notifications = [], activityLogs = [];
   let loadedFrom = 'empty';
 
+  const cached = loadFromLocalCache();
+
   if (!forceClean) {
     // 1. Direct Firestore fetch if authenticated
     if (isFirebaseConfigured() && state.firebaseUser?.uid) {
       try {
-        const firestoreData = await loadAllUserData(state.firebaseUser.uid);
+        const firestoreData = await loadAllUserData(state.firebaseUser.uid, true);
         if (firestoreData) {
           prcs = firestoreData.prcs || [];
           allocations = firestoreData.allocations || [];
@@ -255,27 +307,59 @@ export async function initAppData(forceClean = false) {
           notifications = firestoreData.notifications || [];
           activityLogs = firestoreData.activityLogs || [];
           loadedFrom = 'firestore';
+
+          // AUTOMATIC MIGRATION / SYNC:
+          // If Firestore is empty (0 PRCs) but local cache on this PC has PRCs,
+          // automatically upload the local records to Firestore so other PCs receive them!
+          if (cached && Array.isArray(cached.prcs) && cached.prcs.length > 0) {
+            if (prcs.length === 0) {
+              console.info(`☁️ Auto-migrating ${cached.prcs.length} local records to Cloud Firestore for user ${state.firebaseUser.uid}`);
+              prcs = cached.prcs;
+              allocations = cached.allocations || allocations;
+              rfqs = cached.rfqs || rfqs;
+              tcds = cached.tcds || tcds;
+              pods = cached.pods || pods;
+              vendors = cached.vendors || vendors;
+              users = cached.users || users;
+              notifications = cached.notifications || notifications;
+              activityLogs = cached.activityLogs || activityLogs;
+              loadedFrom = 'local-migrated-to-firestore';
+
+              // Push immediately to Firestore
+              setTimeout(() => {
+                pushLocalDataToFirestore();
+              }, 400);
+            } else {
+              // Check if there are local PRCs missing in Firestore
+              const firestorePrcIds = new Set(prcs.map(p => p.id || p.prNumber));
+              const missingLocalPrcs = cached.prcs.filter(p => !firestorePrcIds.has(p.id || p.prNumber));
+              if (missingLocalPrcs.length > 0) {
+                console.info(`☁️ Merging ${missingLocalPrcs.length} local records missing in Firestore`);
+                prcs = [...prcs, ...missingLocalPrcs];
+                setTimeout(() => {
+                  pushLocalDataToFirestore();
+                }, 400);
+              }
+            }
+          }
         }
       } catch (err) {
         console.warn('Firestore load failed, falling back to cache:', err);
       }
     }
 
-    // 2. Cache fallback
-    if (loadedFrom === 'empty') {
-      const cached = loadFromLocalCache();
-      if (cached && Array.isArray(cached.prcs)) {
-        prcs = cached.prcs;
-        allocations = cached.allocations || [];
-        rfqs = cached.rfqs || [];
-        tcds = cached.tcds || [];
-        pods = cached.pods || [];
-        vendors = cached.vendors || [];
-        users = cached.users || [];
-        notifications = cached.notifications || [];
-        activityLogs = cached.activityLogs || [];
-        loadedFrom = 'local-cache';
-      }
+    // 2. Cache fallback if offline or not logged in
+    if (loadedFrom === 'empty' && cached && Array.isArray(cached.prcs)) {
+      prcs = cached.prcs;
+      allocations = cached.allocations || [];
+      rfqs = cached.rfqs || [];
+      tcds = cached.tcds || [];
+      pods = cached.pods || [];
+      vendors = cached.vendors || [];
+      users = cached.users || [];
+      notifications = cached.notifications || [];
+      activityLogs = cached.activityLogs || [];
+      loadedFrom = 'local-cache';
     }
   }
 

@@ -311,7 +311,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, resetDatabase, forceSyncWithFirestore } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
@@ -2124,20 +2124,24 @@ window.clearAIChat = function() {
 function renderSettings(container) {
   const state = getState();
   const user  = state.currentUser;
+  const cached = loadFromLocalCache();
+  const localCount = cached?.prcs?.length || 0;
 
   container.innerHTML = `
 <div class="page-header">
   <h1 class="page-title">Settings</h1>
+  <p class="page-subtitle">Configure your account, workspace appearance, and cloud database synchronization</p>
 </div>
-<div style="display:grid;grid-template-columns:220px 1fr;gap:24px;max-width:1000px">
+<div style="display:grid;grid-template-columns:240px 1fr;gap:24px;max-width:1100px">
   <!-- Settings Nav -->
   <div class="card" style="padding:8px;height:fit-content">
     ${[
       {id:'profile',    label:'👤 Profile'},
+      {id:'database',   label:'🗄️ Cloud DB & Sync'},
       {id:'appearance', label:'🎨 Appearance'},
       {id:'users',      label:'👥 Users & Roles'},
       {id:'about',      label:'ℹ️ About'}
-    ].map(s=>`<button class="btn btn-ghost w-full" style="justify-content:flex-start;border-radius:8px" onclick="showSettingsTab('${s.id}')">${s.label}</button>`).join('')}
+    ].map((s, idx)=>`<button class="btn btn-ghost w-full settings-tab-nav-btn ${idx===0?'active':''}" id="tab-nav-${s.id}" style="justify-content:flex-start;border-radius:8px;margin-bottom:2px" onclick="showSettingsTab('${s.id}')">${s.label}</button>`).join('')}
   </div>
 
   <!-- Settings Content -->
@@ -2156,6 +2160,59 @@ function renderSettings(container) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div class="form-group"><label class="form-label">Full Name</label><input class="form-control" value="${user.name}" readonly/></div>
         <div class="form-group"><label class="form-label">Email</label><input class="form-control" value="${user.email || ''}" type="email" readonly/></div>
+      </div>
+    </div>
+
+    <!-- Database & Cloud Sync -->
+    <div id="settings-database" class="card hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px">
+        <div>
+          <h3 style="font-weight:700;margin-bottom:2px">Cloud Database & Multi-PC Synchronization</h3>
+          <p style="font-size:12px;color:var(--color-text-secondary)">Manage data synchronization between local browser storage and Google Cloud Firestore</p>
+        </div>
+        <div class="chip ${isFirebaseConfigured() && state.isAuthenticated ? 'chip-completed' : 'chip-warning'}" style="padding:6px 12px;font-weight:600">
+          ${isFirebaseConfigured() && state.isAuthenticated ? '🟢 Connected to Cloud Firestore' : '⚠️ Offline / Guest Mode'}
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:24px">
+        <div style="background:var(--color-surface-2);border:1px solid var(--color-border);padding:14px;border-radius:10px">
+          <div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-transform:uppercase">Active Memory PRCs</div>
+          <div style="font-size:24px;font-weight:800;color:var(--color-primary);margin-top:4px">${state.prcs.length}</div>
+          <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">${state.totalMaterials} material items</div>
+        </div>
+        <div style="background:var(--color-surface-2);border:1px solid var(--color-border);padding:14px;border-radius:10px">
+          <div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-transform:uppercase">Allocations / RFQs</div>
+          <div style="font-size:24px;font-weight:800;color:var(--color-text-primary);margin-top:4px">${state.allocations.length} / ${state.rfqs.length}</div>
+          <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">${state.tcds.length} TCDs • ${state.pods.length} POs</div>
+        </div>
+        <div style="background:var(--color-surface-2);border:1px solid var(--color-border);padding:14px;border-radius:10px">
+          <div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-transform:uppercase">Local Cache Records</div>
+          <div style="font-size:24px;font-weight:800;color:var(--color-text-primary);margin-top:4px">${localCount}</div>
+          <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Saved in browser storage</div>
+        </div>
+      </div>
+
+      <div style="background:var(--color-surface-2);border:1px solid var(--color-border);padding:18px;border-radius:12px;margin-bottom:24px">
+        <h4 style="font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+          <span>☁️</span> Push Local Storage Data to Cloud Firestore
+        </h4>
+        <p style="font-size:12.5px;color:var(--color-text-secondary);margin-bottom:14px;line-height:1.5">
+          If you uploaded an Excel sheet or created PRCs on this PC while offline or before Firestore was attached, click this button to <strong>upload all local records directly to Cloud Firestore</strong> so they immediately become available across all your other PCs and team members.
+        </p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button id="btn-push-local-cloud" class="btn btn-primary btn-sm" style="padding:8px 16px;font-weight:600" onclick="handlePushLocalToCloud()">
+            <span>☁️ Push / Upload Local Data to Firestore</span>
+          </button>
+          <button id="btn-pull-cloud-local" class="btn btn-secondary btn-sm" style="padding:8px 16px;font-weight:600" onclick="handlePullCloudToLocal()">
+            <span>🔄 Force Pull Fresh from Firestore</span>
+          </button>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;padding-top:16px;border-top:1px solid var(--color-border);flex-wrap:wrap;gap:10px">
+        <button class="btn btn-secondary btn-sm" onclick="exportDatabaseBackup()">💾 Download JSON Backup</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleResetUserDB()">🗑️ Reset Database</button>
       </div>
     </div>
 
@@ -2220,6 +2277,63 @@ function renderSettings(container) {
 window.showSettingsTab = function(id) {
   document.querySelectorAll('#settings-content > div').forEach(el=>el.classList.add('hidden'));
   document.getElementById('settings-'+id)?.classList.remove('hidden');
+  document.querySelectorAll('.settings-tab-nav-btn').forEach(b => b.classList.remove('btn-primary', 'active'));
+  const activeBtn = document.getElementById('tab-nav-' + id);
+  if (activeBtn) activeBtn.classList.add('btn-primary', 'active');
+};
+
+window.handlePushLocalToCloud = async function() {
+  const btn = document.getElementById('btn-push-local-cloud');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳ Uploading to Cloud Firestore...</span>';
+  }
+  try {
+    const res = await pushLocalDataToFirestore();
+    if (res.success) {
+      toast(`Successfully uploaded ${res.count} PRC record(s) and all procurement workflow data to Cloud Firestore!`, 'success');
+      renderSettings(document.getElementById('page-content'));
+      window.showSettingsTab('database');
+      updateUserUI();
+      updateSidebarBadges();
+    } else {
+      toast(`Upload failed: ${res.reason || 'Please verify authentication.'}`, 'error');
+    }
+  } catch (err) {
+    toast(`Upload error: ${err.message}`, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span>☁️ Push / Upload Local Data to Firestore</span>';
+    }
+  }
+};
+
+window.handlePullCloudToLocal = async function() {
+  const btn = document.getElementById('btn-pull-cloud-local');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳ Fetching from Cloud Firestore...</span>';
+  }
+  try {
+    const success = await forceSyncWithFirestore();
+    if (success) {
+      toast(`Successfully pulled fresh database from Cloud Firestore! (${getState().prcs.length} PRCs loaded)`, 'success');
+      renderSettings(document.getElementById('page-content'));
+      window.showSettingsTab('database');
+      updateUserUI();
+      updateSidebarBadges();
+    } else {
+      toast('Could not pull from Firestore. Please check your network connection.', 'warning');
+    }
+  } catch (err) {
+    toast(`Sync error: ${err.message}`, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span>🔄 Force Pull Fresh from Firestore</span>';
+    }
+  }
 };
 
 window.setTheme = function(t) {
