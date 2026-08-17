@@ -471,12 +471,13 @@ export async function forceSyncWithFirestore() {
       state.totalMaterials = state.prcs.reduce((acc, p) => acc + (p.materials || []).length, 0);
       saveToLocalCache();
       emit('*');
-      return true;
+      return { success: true, count: state.prcs.length };
     }
   } catch (err) {
     console.error('Force Firestore sync failed:', err);
+    return { success: false, reason: err.message };
   }
-  return false;
+  return { success: false, reason: 'Cloud Firestore database returned no data.' };
 }
 
 export function clearAuthenticatedUser() {

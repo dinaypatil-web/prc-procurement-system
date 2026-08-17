@@ -315,7 +315,7 @@ import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, cl
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
-import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser } from './js/firebase-config.js';
+import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection } from './js/firebase-config.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
 import { exportCSV, exportExcel, exportPDF, getAgeingReport } from './js/reports.js';
 
@@ -2223,6 +2223,19 @@ function renderSettings(container) {
         </div>
       </div>
 
+      <div style="background:var(--color-surface-2);border:1px solid var(--color-border);padding:18px;border-radius:12px;margin-bottom:24px">
+        <h4 style="font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+          <span>🔍</span> Firestore Connection Diagnostics
+        </h4>
+        <p style="font-size:12.5px;color:var(--color-text-secondary);margin-bottom:14px;line-height:1.5">
+          Test whether this browser can read & write to your Cloud Firestore database. This writes a tiny ping document and reads it back.
+        </p>
+        <button id="btn-test-firestore" class="btn btn-secondary btn-sm" style="padding:8px 16px;font-weight:600" onclick="handleTestFirestoreConnection()">
+          🔍 Test Firestore Connection
+        </button>
+        <div id="firestore-diag-output" style="margin-top:12px;background:var(--color-surface-3);border-radius:8px;padding:12px;min-height:20px"></div>
+      </div>
+
       <div style="display:flex;justify-content:space-between;align-items:center;padding-top:16px;border-top:1px solid var(--color-border);flex-wrap:wrap;gap:10px">
         <button class="btn btn-secondary btn-sm" onclick="exportDatabaseBackup()">💾 Download JSON Backup</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleResetUserDB()">🗑️ Reset Database</button>
@@ -2329,15 +2342,15 @@ window.handlePullCloudToLocal = async function() {
     btn.innerHTML = '<span>⏳ Fetching from Cloud Firestore...</span>';
   }
   try {
-    const success = await forceSyncWithFirestore();
-    if (success) {
-      toast(`Successfully pulled fresh database from Cloud Firestore! (${getState().prcs.length} PRCs loaded)`, 'success');
+    const res = await forceSyncWithFirestore();
+    if (res && res.success) {
+      toast(`Successfully pulled fresh database from Cloud Firestore! (${res.count || getState().prcs.length} PRCs loaded)`, 'success');
       renderSettings(document.getElementById('page-content'));
       window.showSettingsTab('database');
       updateUserUI();
       updateSidebarBadges();
     } else {
-      toast('Could not pull from Firestore. Please check your network connection.', 'warning');
+      toast(`Firestore pull: ${res?.reason || 'Cloud returned empty data. Check Firestore rules and network.'}`, 'warning');
     }
   } catch (err) {
     toast(`Sync error: ${err.message}`, 'error');
@@ -2346,6 +2359,28 @@ window.handlePullCloudToLocal = async function() {
       btn.disabled = false;
       btn.innerHTML = '<span>🔄 Force Pull Fresh from Firestore</span>';
     }
+  }
+};
+
+window.handleTestFirestoreConnection = async function() {
+  const btn = document.getElementById('btn-test-firestore');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Testing...'; }
+  try {
+    const diag = getFirebaseDiagnostics();
+    const result = await testFirestoreConnection();
+    const diagEl = document.getElementById('firestore-diag-output');
+    if (diagEl) {
+      diagEl.innerHTML = `<pre style="font-size:11px;line-height:1.6;white-space:pre-wrap;word-break:break-all;margin:0;color:var(--color-text-secondary)">${JSON.stringify({ ...diag, connectionTest: result }, null, 2)}</pre>`;
+    }
+    if (result.success) {
+      toast(`✅ Firestore connection OK! Latency: ${result.latencyMs}ms | Project: ${result.projectId}`, 'success');
+    } else {
+      toast(`❌ Firestore connection failed: ${result.error || 'Unknown error'}`, 'error');
+    }
+  } catch (err) {
+    toast(`Connection test error: ${err.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Test Firestore Connection'; }
   }
 };
 

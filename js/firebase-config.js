@@ -305,6 +305,33 @@ export function getDB() { return _db; }
 export function getAuthInstance() { return _auth; }
 export function getStorageInstance() { return _storage; }
 
+export function getFirebaseDiagnostics() {
+  return {
+    projectId: FIREBASE_CONFIG.projectId || 'Not Configured',
+    authDomain: FIREBASE_CONFIG.authDomain || 'Not Configured',
+    apiKeyMasked: FIREBASE_CONFIG.apiKey ? (FIREBASE_CONFIG.apiKey.slice(0, 6) + '...' + FIREBASE_CONFIG.apiKey.slice(-4)) : 'Missing',
+    storageBucket: FIREBASE_CONFIG.storageBucket || 'Not Configured',
+    isConfigured: isFirebaseConfigured(),
+    isInitialized: Boolean(_firebaseApp && _db)
+  };
+}
+
+export async function testFirestoreConnection() {
+  try {
+    await initFirebase();
+    if (!_db) return { success: false, error: 'Firestore database instance not initialized' };
+    const { doc, getDoc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const pingRef = doc(_db, 'workspaces/default/diagnostics/ping');
+    const start = Date.now();
+    await setDoc(pingRef, { lastPing: new Date().toISOString(), client: 'web' }, { merge: true });
+    const snap = await getDoc(pingRef);
+    const latency = Date.now() - start;
+    return { success: snap.exists(), latencyMs: latency, projectId: FIREBASE_CONFIG.projectId };
+  } catch (err) {
+    return { success: false, error: err.message, code: err.code || 'UNKNOWN' };
+  }
+}
+
 export {
   FIREBASE_CONFIG, GEMINI_API_KEY, GEMINI_MODEL, APP_CONFIG,
   isFirebaseConfigured, initFirebase,
