@@ -1,11 +1,14 @@
 // =========================================================
 // GLOBAL STATE MANAGER (DIRECT FIRESTORE PERSISTENCE)
 // Data is saved directly to Firebase Cloud Firestore per-user
+// Supports Real-Time Multi-Device Synchronization & Safe ID Escaping
 // =========================================================
 import { calculateStatus, calculateMaterialStatus, buildStatusSummary } from './status-engine.js';
 import {
   loadAllUserData,
   saveCollection as firestoreSaveCollection,
+  subscribeToRealtimeUserData,
+  unsubscribeRealtimeUserData,
   directSavePRC,
   directDeletePRC,
   directSaveAllocation,
@@ -316,9 +319,64 @@ export async function setAuthenticatedUser(firebaseUser) {
   emit('currentUser');
   emit('isAuthenticated');
   emit('*');
+
+  // Start Real-Time Multi-Device Sync with Firestore
+  if (isFirebaseConfigured() && firebaseUser.uid) {
+    subscribeToRealtimeUserData(firebaseUser.uid, (colName, items) => {
+      handleRealtimeUpdate(colName, items);
+    });
+  }
+}
+
+function handleRealtimeUpdate(colName, items) {
+  if (state[colName] !== undefined && Array.isArray(items)) {
+    // Only update if incoming items differ from current local state
+    const currentList = state[colName] || [];
+    const isDifferent = items.length !== currentList.length ||
+      JSON.stringify(items.map(i => i.id).sort()) !== JSON.stringify(currentList.map(i => i.id).sort());
+
+    if (isDifferent || colName === 'prcs') {
+      state[colName] = items;
+      if (colName === 'prcs') {
+        state.statusSummary = buildStatusSummary(items);
+        state.totalMaterials = items.reduce((acc, p) => acc + (p.materials || []).length, 0);
+        state.poToday = items.filter(p => p.poDate === new Date().toISOString().split('T')[0]).length;
+      }
+      saveToLocalCache();
+      emit(colName);
+      emit('*');
+    }
+  }
+}
+
+export async function forceSyncWithFirestore() {
+  if (!isFirebaseConfigured() || !state.firebaseUser?.uid) return false;
+  try {
+    const firestoreData = await loadAllUserData(state.firebaseUser.uid, true);
+    if (firestoreData) {
+      state.prcs = firestoreData.prcs || [];
+      state.allocations = firestoreData.allocations || [];
+      state.rfqs = firestoreData.rfqs || [];
+      state.tcds = firestoreData.tcds || [];
+      state.pods = firestoreData.pods || [];
+      state.vendors = firestoreData.vendors || [];
+      state.users = firestoreData.users || [];
+      state.notifications = firestoreData.notifications || [];
+      state.activityLogs = firestoreData.activityLogs || [];
+      state.statusSummary = buildStatusSummary(state.prcs);
+      state.totalMaterials = state.prcs.reduce((acc, p) => acc + (p.materials || []).length, 0);
+      saveToLocalCache();
+      emit('*');
+      return true;
+    }
+  } catch (err) {
+    console.error('Force Firestore sync failed:', err);
+  }
+  return false;
 }
 
 export function clearAuthenticatedUser() {
+  unsubscribeRealtimeUserData();
   state.firebaseUser = null;
   state.isAuthenticated = false;
   state.currentUser = { ...DEFAULT_USER };

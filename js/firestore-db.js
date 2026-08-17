@@ -1,6 +1,7 @@
 // =========================================================
 // FIRESTORE DATA LAYER — DIRECT USER-SCOPED PERSISTENCE
 // Data is saved directly in Firebase Cloud Firestore under users/{uid}/...
+// Supports Real-Time Multi-Device Synchronization & Safe ID Escaping
 // =========================================================
 
 import { db, isFirebaseConfigured } from './firebase-config.js';
@@ -14,7 +15,19 @@ async function getFS() {
   return _firestoreMod;
 }
 
-const COLLECTIONS = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'notifications', 'activityLogs'];
+const COLLECTIONS = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'users', 'notifications', 'activityLogs'];
+
+// ── SAFE DOCUMENT ID ENCODING & DECODING ─────────────────
+// In Firestore, document IDs cannot contain forward slashes '/' as they break path parsing.
+function _encodeDocId(id) {
+  if (id === null || id === undefined) return '';
+  return String(id).trim().replace(/\//g, '__slash__');
+}
+
+function _decodeDocId(encodedId) {
+  if (encodedId === null || encodedId === undefined) return '';
+  return String(encodedId).replace(/__slash__/g, '/');
+}
 
 // ═══════════════════════════════════════════════════════════
 // DIRECT DOCUMENT LEVEL WRITES (REAL-TIME IMMEDIATE PERSISTENCE)
@@ -27,8 +40,9 @@ export async function directSaveDoc(uid, collectionName, docId, docData) {
   if (!isFirebaseConfigured() || !db || !uid || !docId) return false;
   try {
     const fs = await getFS();
-    const docRef = fs.doc(db, `users/${uid}/${collectionName}/${docId}`);
-    await fs.setDoc(docRef, _sanitize(docData), { merge: true });
+    const cleanDocId = _encodeDocId(docId);
+    const docRef = fs.doc(db, `users/${uid}/${collectionName}/${cleanDocId}`);
+    await fs.setDoc(docRef, _sanitize({ ...docData, id: docId }), { merge: true });
     return true;
   } catch (err) {
     console.error(`Direct Firestore write error (${collectionName}/${docId}):`, err);
@@ -43,7 +57,8 @@ export async function directDeleteDoc(uid, collectionName, docId) {
   if (!isFirebaseConfigured() || !db || !uid || !docId) return false;
   try {
     const fs = await getFS();
-    const docRef = fs.doc(db, `users/${uid}/${collectionName}/${docId}`);
+    const cleanDocId = _encodeDocId(docId);
+    const docRef = fs.doc(db, `users/${uid}/${collectionName}/${cleanDocId}`);
     await fs.deleteDoc(docRef);
     return true;
   } catch (err) {
@@ -56,7 +71,7 @@ export async function directDeleteDoc(uid, collectionName, docId) {
  * Direct helpers for specific business entities
  */
 export async function directSavePRC(uid, prc) {
-  return directSaveDoc(uid, 'prcs', prc.id, prc);
+  return directSaveDoc(uid, 'prcs', prc.id || prc.prNumber, prc);
 }
 
 export async function directDeletePRC(uid, prcId) {
@@ -64,7 +79,7 @@ export async function directDeletePRC(uid, prcId) {
 }
 
 export async function directSaveAllocation(uid, allocation) {
-  return directSaveDoc(uid, 'allocations', allocation.id, allocation);
+  return directSaveDoc(uid, 'allocations', allocation.id || allocation.allocationNumber, allocation);
 }
 
 export async function directDeleteAllocation(uid, allocId) {
@@ -72,7 +87,7 @@ export async function directDeleteAllocation(uid, allocId) {
 }
 
 export async function directSaveRFQ(uid, rfq) {
-  return directSaveDoc(uid, 'rfqs', rfq.id, rfq);
+  return directSaveDoc(uid, 'rfqs', rfq.id || rfq.rfqNumber, rfq);
 }
 
 export async function directDeleteRFQ(uid, rfqId) {
@@ -80,11 +95,11 @@ export async function directDeleteRFQ(uid, rfqId) {
 }
 
 export async function directSaveTCD(uid, tcd) {
-  return directSaveDoc(uid, 'tcds', tcd.id, tcd);
+  return directSaveDoc(uid, 'tcds', tcd.id || tcd.tcdNumber, tcd);
 }
 
 export async function directSavePOD(uid, pod) {
-  return directSaveDoc(uid, 'pods', pod.id, pod);
+  return directSaveDoc(uid, 'pods', pod.id || pod.poNumber, pod);
 }
 
 export async function directSaveActivityLog(uid, log) {
@@ -98,7 +113,7 @@ export async function directSaveActivityLog(uid, log) {
 /**
  * Load all collections for a given user UID directly from Firestore
  */
-export async function loadAllUserData(uid) {
+export async function loadAllUserData(uid, forceServer = false) {
   if (!isFirebaseConfigured() || !db || !uid) return null;
 
   try {
@@ -107,8 +122,21 @@ export async function loadAllUserData(uid) {
 
     for (const colName of COLLECTIONS) {
       const colRef = fs.collection(db, `users/${uid}/${colName}`);
-      const snapshot = await fs.getDocs(colRef);
-      result[colName] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let snapshot;
+      if (forceServer && fs.getDocsFromServer) {
+        try {
+          snapshot = await fs.getDocsFromServer(colRef);
+        } catch (e) {
+          snapshot = await fs.getDocs(colRef);
+        }
+      } else {
+        snapshot = await fs.getDocs(colRef);
+      }
+      result[colName] = snapshot.docs.map(doc => {
+        const data = doc.data();
+        const rawId = data.id || _decodeDocId(doc.id);
+        return { ...data, id: rawId };
+      });
     }
 
     // Load profile
@@ -174,6 +202,61 @@ export async function saveAllUserData(uid, stateData) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// REAL-TIME MULTI-DEVICE SYNCHRONIZATION
+// ═══════════════════════════════════════════════════════════
+
+let _unsubscribers = [];
+
+/**
+ * Subscribe to real-time Firestore updates across multiple devices/PCs
+ */
+export async function subscribeToRealtimeUserData(uid, onUpdate) {
+  if (!isFirebaseConfigured() || !db || !uid) return () => {};
+
+  unsubscribeRealtimeUserData();
+
+  try {
+    const fs = await getFS();
+
+    COLLECTIONS.forEach(colName => {
+      const colRef = fs.collection(db, `users/${uid}/${colName}`);
+      const unsub = fs.onSnapshot(colRef, (snapshot) => {
+        // Skip empty snapshot on initial load if pending
+        if (snapshot.metadata.hasPendingWrites) {
+          // Local optimistic write
+        }
+        const items = snapshot.docs.map(doc => {
+          const data = doc.data();
+          const rawId = data.id || _decodeDocId(doc.id);
+          return { ...data, id: rawId };
+        });
+        if (typeof onUpdate === 'function') {
+          onUpdate(colName, items);
+        }
+      }, (err) => {
+        console.warn(`Real-time listener notice for ${colName}:`, err);
+      });
+      _unsubscribers.push(unsub);
+    });
+
+    console.info(`🔥 Real-time multi-device Firestore synchronization active for user ${uid}`);
+    return unsubscribeRealtimeUserData;
+  } catch (err) {
+    console.error('Failed to start real-time Firestore subscription:', err);
+    return () => {};
+  }
+}
+
+export function unsubscribeRealtimeUserData() {
+  if (_unsubscribers && _unsubscribers.length > 0) {
+    _unsubscribers.forEach(unsub => {
+      try { unsub(); } catch (e) {}
+    });
+    _unsubscribers = [];
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
 // INTERNAL HELPERS
 // ═══════════════════════════════════════════════════════════
 
@@ -181,8 +264,8 @@ async function _syncCollection(uid, collectionName, items, fs) {
   const colPath = `users/${uid}/${collectionName}`;
   const colRef = fs.collection(db, colPath);
   const existingSnap = await fs.getDocs(colRef);
-  const existingIds = new Set(existingSnap.docs.map(d => d.id));
-  const currentIds = new Set((items || []).map(item => item.id));
+  const existingDocIds = new Set(existingSnap.docs.map(d => d.id));
+  const currentDocIds = new Set();
 
   const MAX_BATCH = 450;
   let batch = fs.writeBatch(db);
@@ -190,9 +273,13 @@ async function _syncCollection(uid, collectionName, items, fs) {
 
   // Write all current items
   for (const item of (items || [])) {
-    if (!item.id) continue;
-    const docRef = fs.doc(db, `${colPath}/${item.id}`);
-    batch.set(docRef, _sanitize(item), { merge: true });
+    const rawId = item.id || item.prNumber || item.allocationNumber || item.rfqNumber || item.tcdNumber || item.poNumber;
+    if (!rawId) continue;
+    const cleanDocId = _encodeDocId(rawId);
+    currentDocIds.add(cleanDocId);
+
+    const docRef = fs.doc(db, `${colPath}/${cleanDocId}`);
+    batch.set(docRef, _sanitize({ ...item, id: rawId }), { merge: true });
     opCount++;
     if (opCount >= MAX_BATCH) {
       await batch.commit();
@@ -202,8 +289,8 @@ async function _syncCollection(uid, collectionName, items, fs) {
   }
 
   // Delete removed items
-  for (const existingId of existingIds) {
-    if (!currentIds.has(existingId)) {
+  for (const existingId of existingDocIds) {
+    if (!currentDocIds.has(existingId)) {
       const docRef = fs.doc(db, `${colPath}/${existingId}`);
       batch.delete(docRef);
       opCount++;

@@ -6,13 +6,13 @@
 import { loadEnv, getEnv } from './env.js';
 
 let FIREBASE_CONFIG = {
-  apiKey:            "YOUR_API_KEY",
-  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId:         "YOUR_PROJECT_ID",
-  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId:             "YOUR_APP_ID",
-  measurementId:     "YOUR_MEASUREMENT_ID"
+  apiKey:            "AIzaSyAadw4srX9OFbNTxSoJDf_lPZ-KHrN8L6o",
+  authDomain:        "procuretrack-3cb1c.firebaseapp.com",
+  projectId:         "procuretrack-3cb1c",
+  storageBucket:     "procuretrack-3cb1c.firebasestorage.app",
+  messagingSenderId: "313091514958",
+  appId:             "1:313091514958:web:2698e5d5ebd168e86d991f",
+  measurementId:     "G-YW515VXH0G"
 };
 
 let GEMINI_API_KEY = "YOUR_GEMINI_API_KEY";
@@ -56,22 +56,22 @@ async function initFirebase() {
     return _firebaseApp;
   }
 
-  // Load environment variables from /api/env or .env
+  // Load environment variables from /api/env or .env if available
   await loadEnv();
 
-  const projectId = getEnv('FIREBASE_PROJECT_ID', 'YOUR_PROJECT_ID');
+  const projectId = getEnv('FIREBASE_PROJECT_ID', FIREBASE_CONFIG.projectId || 'procuretrack-3cb1c');
 
   FIREBASE_CONFIG = {
-    apiKey:            getEnv('FIREBASE_API_KEY', 'YOUR_API_KEY'),
+    apiKey:            getEnv('FIREBASE_API_KEY', FIREBASE_CONFIG.apiKey || 'AIzaSyAadw4srX9OFbNTxSoJDf_lPZ-KHrN8L6o'),
     authDomain:        getEnv('FIREBASE_AUTH_DOMAIN', `${projectId}.firebaseapp.com`),
     projectId:         projectId,
-    storageBucket:     getEnv('FIREBASE_STORAGE_BUCKET', `${projectId}.appspot.com`),
-    messagingSenderId: getEnv('FIREBASE_MESSAGING_SENDER_ID', 'YOUR_SENDER_ID'),
-    appId:             getEnv('FIREBASE_APP_ID', 'YOUR_APP_ID'),
-    measurementId:     getEnv('FIREBASE_MEASUREMENT_ID', '')
+    storageBucket:     getEnv('FIREBASE_STORAGE_BUCKET', getEnv('FIREBASE_STORAGE_BUCKET', FIREBASE_CONFIG.storageBucket || `${projectId}.firebasestorage.app`)),
+    messagingSenderId: getEnv('FIREBASE_MESSAGING_SENDER_ID', FIREBASE_CONFIG.messagingSenderId || '313091514958'),
+    appId:             getEnv('FIREBASE_APP_ID', FIREBASE_CONFIG.appId || '1:313091514958:web:2698e5d5ebd168e86d991f'),
+    measurementId:     getEnv('FIREBASE_MEASUREMENT_ID', FIREBASE_CONFIG.measurementId || 'G-YW515VXH0G')
   };
 
-  GEMINI_API_KEY = getEnv('GEMINI_API_KEY', 'YOUR_GEMINI_API_KEY');
+  GEMINI_API_KEY = getEnv('GEMINI_API_KEY', GEMINI_API_KEY);
 
   if (!isFirebaseConfigured()) {
     console.warn("⚠️ Firebase API Key missing in environment variables. Please check Vercel settings or .env file.");
