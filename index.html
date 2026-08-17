@@ -1517,22 +1517,36 @@ window.handlePRCStatusChange = function(id, newStatus) {
   if (newStatus === 'Authorised' || newStatus === 'Approved') {
     patch.isPRNotApproved = false;
     patch.isWrongPRC = false;
+    patch.isFuturePRC = false;
+    patch.isSystemIssue = false;
     patch.prStatus = 'Authorised';
     patch.authorizedBy = prc.authorizedBy || getState().currentUser?.name || 'App Owner';
     patch.authorizedOn = prc.authorizedOn || new Date().toISOString().split('T')[0];
   } else if (newStatus === 'PR Not Approved') {
     patch.isPRNotApproved = true;
     patch.isWrongPRC = false;
+    patch.isFuturePRC = false;
+    patch.isSystemIssue = false;
   } else if (newStatus === 'Wrong PRC') {
     patch.isWrongPRC = true;
     patch.isPRNotApproved = false;
+    patch.isFuturePRC = false;
+    patch.isSystemIssue = false;
   } else if (newStatus === 'Future PRC') {
     patch.isFuturePRC = true;
+    patch.isWrongPRC = false;
+    patch.isPRNotApproved = false;
+    patch.isSystemIssue = false;
   } else if (newStatus === 'System Issue') {
     patch.isSystemIssue = true;
+    patch.isFuturePRC = false;
+    patch.isWrongPRC = false;
+    patch.isPRNotApproved = false;
   } else {
     patch.isPRNotApproved = false;
     patch.isWrongPRC = false;
+    patch.isFuturePRC = false;
+    patch.isSystemIssue = false;
   }
 
   updatePRC(id, patch);
@@ -1543,6 +1557,9 @@ window.handlePRCStatusChange = function(id, newStatus) {
   }
   if (getState().currentPage === 'allocations') {
     renderAllocationsPage(document.getElementById('page-content'));
+  }
+  if (getState().currentPage === 'rfqs') {
+    renderRFQsPage(document.getElementById('page-content'));
   }
   const modal = document.getElementById('prc-detail-modal');
   if (modal && modal.classList.contains('open')) {

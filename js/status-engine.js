@@ -68,17 +68,19 @@ export const STATUS_ICON = {
  * @returns {string} Status string from STATUS enum.
  */
 export function calculateStatus(prc, materials = []) {
+  const prStatus = String(prc.prStatus || '').trim().toLowerCase();
+
   // 1. Wrong PRC (user override)
-  if (prc.isWrongPRC) return STATUS.WRONG_PRC;
+  if (prc.isWrongPRC || prStatus === 'wrong prc') return STATUS.WRONG_PRC;
 
   // 2. PR Not Approved (user override)
-  if (prc.isPRNotApproved) return STATUS.PR_NOT_APPROVED;
+  if (prc.isPRNotApproved || prStatus === 'pr not approved') return STATUS.PR_NOT_APPROVED;
 
   // 3. Future PRC (user override)
-  if (prc.isFuturePRC) return STATUS.FUTURE_PRC;
+  if (prc.isFuturePRC || prStatus === 'future prc') return STATUS.FUTURE_PRC;
 
   // 4. System Issue (user override)
-  if (prc.isSystemIssue) return STATUS.SYSTEM_ISSUE;
+  if (prc.isSystemIssue || prStatus === 'system issue') return STATUS.SYSTEM_ISSUE;
 
   // 5. Inputs Required — if any input source is flagged
   if (
@@ -122,7 +124,9 @@ export function calculateMaterialStatus(material) {
   const clsQty   = parseFloat(material.closedQty) || 0;
   const pendQty  = Math.max(0, totalQty - procQty - clsQty);
 
-  if (material.isWrongPRC || material.isCancelled) return STATUS.WRONG_PRC;
+  const matPrStatus = String(material.prStatus || '').trim().toLowerCase();
+  if (material.isWrongPRC || material.isCancelled || matPrStatus === 'wrong prc') return STATUS.WRONG_PRC;
+  if (material.isFuturePRC || matPrStatus === 'future prc') return STATUS.FUTURE_PRC;
 
   // Fully completed if processed + closed equals or exceeds requested quantity, or PO is fully issued
   if (totalQty > 0 && (procQty + clsQty) >= totalQty) return STATUS.COMPLETED;

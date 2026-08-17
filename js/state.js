@@ -619,8 +619,9 @@ export function getAllocatedQty(prcId, materialId) {
 
 export function isPRCAuthorised(p) {
   if (!p) return false;
-  if (p.isPRNotApproved || p.isWrongPRC) return false;
+  if (p.isPRNotApproved || p.isWrongPRC || p.isFuturePRC) return false;
   const s = String(p.prStatus || p.status || '').trim().toLowerCase();
+  if (s === 'future prc' || s === 'wrong prc' || s === 'pr not approved') return false;
   return s === 'authorised' || s === 'authorized' || s === 'approved';
 }
 
@@ -743,6 +744,31 @@ export function getAvailableForRFQ() {
   const result = [];
   state.allocations.forEach(alloc => {
     alloc.items.forEach(item => {
+      // Exclude PRCs tagged as Future PRC or Wrong PRC
+      const prc = state.prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
+      if (prc) {
+        if (prc.isFuturePRC || prc.isWrongPRC) return;
+        const prcStatus = String(prc.status || '').trim().toLowerCase();
+        const prStatus = String(prc.prStatus || '').trim().toLowerCase();
+        if (prcStatus === 'future prc' || prcStatus === 'wrong prc' ||
+            prStatus === 'future prc' || prStatus === 'wrong prc') {
+          return;
+        }
+
+        // Also check material-level flags
+        const mat = (prc.materials || []).find(m => m.id === item.materialId || m.matCode === item.matCode);
+        if (mat) {
+          if (mat.isFuturePRC || mat.isWrongPRC) return;
+          const matStatus = String(mat.status || '').trim().toLowerCase();
+          if (matStatus === 'future prc' || matStatus === 'wrong prc') return;
+        }
+      }
+
+      // Check item itself if flags exist directly on allocation item
+      if (item.isFuturePRC || item.isWrongPRC) return;
+      const itemStatus = String(item.status || '').trim().toLowerCase();
+      if (itemStatus === 'future prc' || itemStatus === 'wrong prc') return;
+
       const rfqdQty = getRFQdQty(alloc.id, item.prcId, item.materialId);
       const available = (parseFloat(item.quantity) || 0) - rfqdQty;
       if (available > 0) {
