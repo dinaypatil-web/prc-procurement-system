@@ -2175,6 +2175,19 @@ function renderSettings(container) {
         </div>
       </div>
 
+      ${!state.isAuthenticated ? `
+      <div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+        <div>
+          <div style="font-weight:700;color:#f59e0b;font-size:14px;display:flex;align-items:center;gap:6px">
+            <span>⚠️</span> Sign-in Required for Cloud Synchronization
+          </div>
+          <div style="font-size:12.5px;color:var(--color-text-secondary);margin-top:4px">
+            You are currently browsing in guest/offline mode. Sign in to your account with your email & password so your local records can be saved to Cloud Firestore and accessed on other computers.
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" style="font-weight:700;white-space:nowrap" onclick="showAuthModal('signin')">🔑 Sign In Now</button>
+      </div>` : ''}
+
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:24px">
         <div style="background:var(--color-surface-2);border:1px solid var(--color-border);padding:14px;border-radius:10px">
           <div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-transform:uppercase">Active Memory PRCs</div>
@@ -2283,6 +2296,12 @@ window.showSettingsTab = function(id) {
 };
 
 window.handlePushLocalToCloud = async function() {
+  const state = getState();
+  if (!state.isAuthenticated || !state.firebaseUser?.uid) {
+    toast('Please sign in to your user account first.', 'warning');
+    window.showAuthModal('signin');
+    return;
+  }
   const btn = document.getElementById('btn-push-local-cloud');
   if (btn) {
     btn.disabled = true;
@@ -2298,6 +2317,9 @@ window.handlePushLocalToCloud = async function() {
       updateSidebarBadges();
     } else {
       toast(`Upload failed: ${res.reason || 'Please verify authentication.'}`, 'error');
+      if (res.reason && res.reason.includes('sign in')) {
+        window.showAuthModal('signin');
+      }
     }
   } catch (err) {
     toast(`Upload error: ${err.message}`, 'error');
