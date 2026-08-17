@@ -179,26 +179,26 @@ export async function pushLocalDataToFirestore() {
 const _pendingCollections = new Set();
 
 function scheduleFirestoreSync(changedCollections) {
-  if (!isFirebaseConfigured() || !state.firebaseUser?.uid) return;
-
   changedCollections.forEach(c => _pendingCollections.add(c));
 
   clearTimeout(_syncTimer);
   _syncTimer = setTimeout(async () => {
-    const uid = state.firebaseUser?.uid;
-    if (!uid) return;
+    const { ensureFirebaseAuth, isFirebaseConfigured } = await import('./firebase-config.js');
+    const authUser = await ensureFirebaseAuth();
+    const uid = state.firebaseUser?.uid || authUser?.uid || 'default';
 
     const toSync = [..._pendingCollections];
     _pendingCollections.clear();
 
     for (const colName of toSync) {
       try {
+        console.info(`☁️ Auto-syncing collection '${colName}' to Cloud Firestore (${(state[colName]||[]).length} items)...`);
         await firestoreSaveCollection(uid, colName, state[colName] || []);
       } catch (err) {
         console.error(`Firestore sync failed for ${colName}:`, err);
       }
     }
-  }, SYNC_DEBOUNCE_MS);
+  }, 200);
 }
 
 // ── EXPORT / RESET ────────────────────────────────────────
@@ -231,7 +231,7 @@ export function exportDatabaseBackup() {
 export const exportCreatorDatabase = exportDatabaseBackup;
 
 export async function resetDatabase() {
-  const uid = state.firebaseUser?.uid;
+  const uid = state.firebaseUser?.uid || 'default';
   state.prcs = [];
   state.allocations = [];
   state.rfqs = [];
@@ -245,11 +245,9 @@ export async function resetDatabase() {
   state.totalMaterials = 0;
 
   saveToLocalCache();
-  if (uid && isFirebaseConfigured()) {
-    const collections = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'notifications', 'activityLogs'];
-    for (const col of collections) {
-      await firestoreSaveCollection(uid, col, []);
-    }
+  const collections = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'notifications', 'activityLogs'];
+  for (const col of collections) {
+    await firestoreSaveCollection(uid, col, []);
   }
   emit('*');
 }
@@ -288,73 +286,78 @@ function emit(event) {
   });
 }
 
-// ── INITIALISE APP DATA ───────────────────────────────────
+// ── INITIALISE APP DATA (AUTOMATIC BIDIRECTIONAL SYNC) ────
 
 export async function initAppData(forceClean = false) {
   let prcs = [], allocations = [], rfqs = [], tcds = [], pods = [];
   let vendors = [], users = [], notifications = [], activityLogs = [];
   let loadedFrom = 'empty';
 
+  const { ensureFirebaseAuth, isFirebaseConfigured } = await import('./firebase-config.js');
+  const authUser = await ensureFirebaseAuth();
+  if (authUser && (!state.firebaseUser || !state.firebaseUser.uid)) {
+    await setAuthenticatedUser(authUser);
+  }
+  const uid = state.firebaseUser?.uid || authUser?.uid || 'default';
+
   const cached = loadFromLocalCache();
 
   if (!forceClean) {
-    // 1. Direct Firestore fetch if authenticated
-    if (isFirebaseConfigured() && state.firebaseUser?.uid) {
-      try {
-        const firestoreData = await loadAllUserData(state.firebaseUser.uid, true);
-        if (firestoreData) {
-          prcs = firestoreData.prcs || [];
-          allocations = firestoreData.allocations || [];
-          rfqs = firestoreData.rfqs || [];
-          tcds = firestoreData.tcds || [];
-          pods = firestoreData.pods || [];
-          vendors = firestoreData.vendors || [];
-          users = firestoreData.users || [];
-          notifications = firestoreData.notifications || [];
-          activityLogs = firestoreData.activityLogs || [];
-          loadedFrom = 'firestore';
+    // 1. Direct Firestore fetch
+    try {
+      const firestoreData = await loadAllUserData(uid, true);
+      if (firestoreData) {
+        prcs = firestoreData.prcs || [];
+        allocations = firestoreData.allocations || [];
+        rfqs = firestoreData.rfqs || [];
+        tcds = firestoreData.tcds || [];
+        pods = firestoreData.pods || [];
+        vendors = firestoreData.vendors || [];
+        users = firestoreData.users || [];
+        notifications = firestoreData.notifications || [];
+        activityLogs = firestoreData.activityLogs || [];
+        loadedFrom = 'firestore';
 
-          // AUTOMATIC MIGRATION / SYNC:
-          // If Firestore is empty (0 PRCs) but local cache on this PC has PRCs,
-          // automatically upload the local records to Firestore so other PCs receive them!
-          if (cached && Array.isArray(cached.prcs) && cached.prcs.length > 0) {
-            if (prcs.length === 0) {
-              console.info(`☁️ Auto-migrating ${cached.prcs.length} local records to Cloud Firestore for user ${state.firebaseUser.uid}`);
-              prcs = cached.prcs;
-              allocations = cached.allocations || allocations;
-              rfqs = cached.rfqs || rfqs;
-              tcds = cached.tcds || tcds;
-              pods = cached.pods || pods;
-              vendors = cached.vendors || vendors;
-              users = cached.users || users;
-              notifications = cached.notifications || notifications;
-              activityLogs = cached.activityLogs || activityLogs;
-              loadedFrom = 'local-migrated-to-firestore';
+        // AUTOMATIC BACKGROUND SYNC / MIGRATION:
+        // If Firestore is empty (0 PRCs) but local cache on this PC has PRCs:
+        // Automatically sync all local cache records to Cloud Firestore in background!
+        if (cached && Array.isArray(cached.prcs) && cached.prcs.length > 0) {
+          if (prcs.length === 0) {
+            console.info(`☁️ Auto-syncing ${cached.prcs.length} local records to Cloud Firestore in background...`);
+            prcs = cached.prcs;
+            allocations = cached.allocations || allocations;
+            rfqs = cached.rfqs || rfqs;
+            tcds = cached.tcds || tcds;
+            pods = cached.pods || pods;
+            vendors = cached.vendors || vendors;
+            users = cached.users || users;
+            notifications = cached.notifications || notifications;
+            activityLogs = cached.activityLogs || activityLogs;
+            loadedFrom = 'local-migrated-to-firestore';
 
-              // Push immediately to Firestore
+            // Push automatically in background
+            setTimeout(() => {
+              pushLocalDataToFirestore();
+            }, 100);
+          } else {
+            // Check if there are local PRCs missing in Firestore
+            const firestorePrcIds = new Set(prcs.map(p => p.id || p.prNumber));
+            const missingLocalPrcs = cached.prcs.filter(p => !firestorePrcIds.has(p.id || p.prNumber));
+            if (missingLocalPrcs.length > 0) {
+              console.info(`☁️ Auto-merging ${missingLocalPrcs.length} local records missing in Firestore...`);
+              prcs = [...prcs, ...missingLocalPrcs];
               setTimeout(() => {
                 pushLocalDataToFirestore();
-              }, 400);
-            } else {
-              // Check if there are local PRCs missing in Firestore
-              const firestorePrcIds = new Set(prcs.map(p => p.id || p.prNumber));
-              const missingLocalPrcs = cached.prcs.filter(p => !firestorePrcIds.has(p.id || p.prNumber));
-              if (missingLocalPrcs.length > 0) {
-                console.info(`☁️ Merging ${missingLocalPrcs.length} local records missing in Firestore`);
-                prcs = [...prcs, ...missingLocalPrcs];
-                setTimeout(() => {
-                  pushLocalDataToFirestore();
-                }, 400);
-              }
+              }, 100);
             }
           }
         }
-      } catch (err) {
-        console.warn('Firestore load failed, falling back to cache:', err);
       }
+    } catch (err) {
+      console.warn('Firestore load failed, falling back to cache:', err);
     }
 
-    // 2. Cache fallback if offline or not logged in
+    // 2. Cache fallback if offline
     if (loadedFrom === 'empty' && cached && Array.isArray(cached.prcs)) {
       prcs = cached.prcs;
       allocations = cached.allocations || [];
@@ -389,6 +392,11 @@ export async function initAppData(forceClean = false) {
 
   saveToLocalCache();
   emit('*');
+
+  // Start Real-Time continuous live subscription across all PCs
+  subscribeToRealtimeUserData(uid, (colName, items) => {
+    handleRealtimeUpdate(colName, items);
+  });
 }
 
 export const initDemoData = initAppData;

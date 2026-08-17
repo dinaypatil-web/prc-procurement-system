@@ -4533,45 +4533,31 @@ async function init() {
   // 1. Initialize Firebase from config/environment
   const app = await initFirebase();
 
+  // 2. Automatically load all data from Cloud Firestore & start continuous real-time sync
+  await initAppData();
+  updateUserUI();
+  updateSidebarBadges();
+
   if (isFirebaseConfigured() && app) {
-    // 2. Mandatory Auth State Listener
     onAuthChange(async (firebaseUser) => {
       if (firebaseUser) {
         await setAuthenticatedUser(firebaseUser);
-        await initAppData();
-        updateUserUI();
-        updateSidebarBadges();
-        window.closeAuthModal();
-      } else {
-        clearAuthenticatedUser();
-        updateUserUI();
-        updateSidebarBadges();
-        // Mandatory Auth Gate: prompt user for login / registration
-        window.showAuthModal('signin');
       }
-
-      // Update notification dot/badge
-      const unread = (getState().notifications || []).filter(n => n.unread).length;
-      const notifBadge = document.getElementById('nav-notif-count');
-      if (notifBadge) notifBadge.textContent = unread || '';
-      const dot = document.getElementById('notif-dot');
-      if (dot) dot.style.display = unread ? '' : 'none';
-
-      // Route to page
-      const hash = window.location.hash.slice(1) || 'dashboard';
-      navigate(PAGES[hash] ? hash : 'dashboard');
+      updateUserUI();
+      updateSidebarBadges();
     });
-  } else {
-    // Fallback mode if Firebase not initialized
-    console.warn("Firebase offline mode active.");
-    await initAppData();
-    updateUserUI();
-    updateSidebarBadges();
-    window.showAuthModal('signin');
-
-    const hash = window.location.hash.slice(1) || 'dashboard';
-    navigate(PAGES[hash] ? hash : 'dashboard');
   }
+
+  // Update notification dot/badge
+  const unread = (getState().notifications || []).filter(n => n.unread).length;
+  const notifBadge = document.getElementById('nav-notif-count');
+  if (notifBadge) notifBadge.textContent = unread || '';
+  const dot = document.getElementById('notif-dot');
+  if (dot) dot.style.display = unread ? '' : 'none';
+
+  // Route to page
+  const hash = window.location.hash.slice(1) || 'dashboard';
+  navigate(PAGES[hash] ? hash : 'dashboard');
 }
 
 init();
