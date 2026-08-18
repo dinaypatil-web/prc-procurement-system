@@ -1064,6 +1064,73 @@ export function getAllocationById(id) {
   return state.allocations.find(a => a.id === id) || null;
 }
 
+export function updateAllocation(id, data) {
+  const allocIdx = state.allocations.findIndex(a => a.id === id);
+  if (allocIdx === -1) return { success: false, reason: 'Allocation document not found' };
+
+  const existingAlloc = state.allocations[allocIdx];
+  const updatedAlloc = {
+    ...existingAlloc,
+    allocationNumber: data.allocationNumber || existingAlloc.allocationNumber,
+    allocationDate: data.allocationDate || existingAlloc.allocationDate,
+    buyerName: data.buyerName !== undefined ? data.buyerName : existingAlloc.buyerName,
+    items: data.items !== undefined ? data.items : existingAlloc.items,
+    updatedAt: new Date().toISOString(),
+    updatedBy: state.currentUser?.name || 'User'
+  };
+
+  const allocations = [...state.allocations];
+  allocations[allocIdx] = updatedAlloc;
+
+  const prcs = [...state.prcs];
+  const affectedPrcIds = new Set(updatedAlloc.items.map(i => i.prcId));
+
+  affectedPrcIds.forEach(prcId => {
+    const prcIdx = prcs.findIndex(p => p.id === prcId);
+    if (prcIdx === -1) return;
+    const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
+
+    updatedAlloc.items.filter(i => i.prcId === prcId).forEach(item => {
+      const matIdx = prc.materials.findIndex(m => m.id === item.materialId);
+      if (matIdx === -1) return;
+      prc.materials[matIdx] = {
+        ...prc.materials[matIdx],
+        allocationNumber: updatedAlloc.allocationNumber,
+        allocationDate: updatedAlloc.allocationDate,
+        buyerName: updatedAlloc.buyerName,
+        allocatedBy: updatedAlloc.buyerName
+      };
+      prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
+    });
+
+    prc.allocationNumber = updatedAlloc.allocationNumber;
+    prc.allocationDate = updatedAlloc.allocationDate;
+    prc.buyerName = updatedAlloc.buyerName;
+    prc.allocatedBy = updatedAlloc.buyerName;
+
+    prc.status = calculateStatus(prc, prc.materials);
+    prc.updatedAt = new Date().toISOString();
+    prcs[prcIdx] = prc;
+
+    if (state.firebaseUser?.uid) {
+      directSavePRC(state.firebaseUser.uid, prc);
+    }
+  });
+
+  setState({ allocations, prcs, statusSummary: buildStatusSummary(prcs) });
+
+  if (state.firebaseUser?.uid) {
+    directSaveAllocation(state.firebaseUser.uid, updatedAlloc);
+  }
+
+  addAuditLog({
+    action: 'update_allocation', collection: 'Allocations', docId: id,
+    changes: { allocationNumber: updatedAlloc.allocationNumber, buyerName: updatedAlloc.buyerName }
+  });
+
+  return { success: true, allocation: updatedAlloc };
+}
+
 export function deleteAllocation(id) {
   const hasRFQs = state.rfqs.some(r => r.items.some(i => i.allocationId === id));
   if (hasRFQs) {
