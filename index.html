@@ -768,6 +768,7 @@ function renderPRCList(container) {
             <th onclick="sortTable('priority')">Priority <span class="sort-icon">↕</span></th>
             <th onclick="sortTable('status')">Status <span class="sort-icon">↕</span></th>
             <th onclick="sortTable('allocationDate')">Allocated <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('buyerName')">Buyer Name <span class="sort-icon">↕</span></th>
             <th onclick="sortTable('rfqNumber')">RFQ <span class="sort-icon">↕</span></th>
             <th onclick="sortTable('tcdNumber')">TCD <span class="sort-icon">↕</span></th>
             <th onclick="sortTable('poNumber')">PO Number <span class="sort-icon">↕</span></th>
@@ -925,6 +926,7 @@ function renderPRCTable() {
         <th onclick="sortTable('priority')">Priority <span class="sort-icon">↕</span></th>
         <th onclick="sortTable('status')">PRC Status <span class="sort-icon">↕</span></th>
         <th onclick="sortTable('allocationDate')">Allocated <span class="sort-icon">↕</span></th>
+        <th onclick="sortTable('buyerName')">Buyer Name <span class="sort-icon">↕</span></th>
         <th onclick="sortTable('rfqNumber')">RFQ <span class="sort-icon">↕</span></th>
         <th onclick="sortTable('tcdNumber')">TCD <span class="sort-icon">↕</span></th>
         <th onclick="sortTable('poNumber')">PO Number <span class="sort-icon">↕</span></th>
@@ -938,7 +940,7 @@ function renderPRCTable() {
     if(!tbody) return;
 
     if(!items.length) {
-      tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state" style="padding:48px">
+      tbody.innerHTML = `<tr><td colspan="12"><div class="empty-state" style="padding:48px">
         <div class="empty-state-icon">🔍</div>
         <div class="empty-state-title">No PRCs found</div>
         <div class="empty-state-text">Try adjusting your filters or search query.</div>
@@ -973,6 +975,7 @@ function renderPRCTable() {
             </div>
           </td>
           <td>${fmtDate(p.allocationDate)}<br>${p.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number" style="font-size:11px">${p.allocationNumber}<span class="copy-icon">📋</span></span>` : '<span style="font-size:11px;color:var(--color-text-tertiary)">—</span>'}</td>
+          <td>${p.buyerName || p.allocatedBy ? highlight(p.buyerName || p.allocatedBy, q) : '<span style="font-size:11px;color:var(--color-text-tertiary)">—</span>'}</td>
           <td>${p.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="text-sm font-mono">${highlight(p.rfqNumber,q)}</span><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.rfqDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
           <td>${p.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><span class="text-sm font-mono">${p.tcdNumber}</span><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.tcdDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
           <td>${p.poNumber  ? `<span class="copy-badge" onclick="copyToClipboard('${p.poNumber}','PO Number',event)" title="Click to copy PO Number"><span class="text-sm font-mono font-semibold text-brand">${highlight(p.poNumber,q)}</span><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.poDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
@@ -2436,7 +2439,8 @@ window.handleDeletePRC = async function(id) {
 // ═══════════════════════════════════════════════════════════
 function renderAllocationsPage(container) {
   const state = getState();
-  const allocs = state.allocations || [];
+  const allocs = [...(state.allocations || [])];
+  allocs.sort((a, b) => (a.allocationNumber || '').localeCompare(b.allocationNumber || '', undefined, { numeric: true, sensitivity: 'base' }));
   const availablePrcs = getAvailablePRCsForAllocation();
 
   container.innerHTML = `
@@ -2728,7 +2732,13 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
     deptMap[dept].push(p);
   });
 
+  // Sort PRCs within each department by PRC Number
+  Object.values(deptMap).forEach(list => {
+    list.sort((a, b) => (a.prNumber || '').localeCompare(b.prNumber || '', undefined, { numeric: true, sensitivity: 'base' }));
+  });
+
   const deptEntries = Object.entries(deptMap);
+  deptEntries.sort((a, b) => (a[0] || '').localeCompare(b[0] || '', undefined, { numeric: true, sensitivity: 'base' }));
   const totalPRCs = filteredPrcs.length;
   const totalMats = filteredPrcs.reduce((acc, p) => acc + (p.materials || []).length, 0);
 
@@ -3158,6 +3168,8 @@ function renderRFQsPage(container) {
     allocMap[key].items.push({ ...m, _idx: i });
   });
   const allocEntries = Object.entries(allocMap);
+  allocEntries.sort((a, b) => (a[0] || '').localeCompare(b[0] || '', undefined, { numeric: true, sensitivity: 'base' }));
+  rfqs.sort((a, b) => (a.rfqNumber || '').localeCompare(b.rfqNumber || '', undefined, { numeric: true, sensitivity: 'base' }));
   window._rfqAvailable = available;
   window._rfqAllocEntries = allocEntries;
 
@@ -3280,6 +3292,7 @@ window.showCreateRFQModal = function() {
     allocMap[key].items.push({ ...m, _idx: i });
   });
   const allocEntries = Object.entries(allocMap);
+  allocEntries.sort((a, b) => (a[0] || '').localeCompare(b[0] || '', undefined, { numeric: true, sensitivity: 'base' }));
 
   const modalId = 'create-rfq-modal';
   let el = document.getElementById(modalId);
@@ -3609,6 +3622,8 @@ function renderTCDsPage(container) {
     rfqMap[key].items.push({ ...m, _idx: i });
   });
   const rfqEntries = Object.entries(rfqMap);
+  rfqEntries.sort((a, b) => (a[0] || '').localeCompare(b[0] || '', undefined, { numeric: true, sensitivity: 'base' }));
+  tcds.sort((a, b) => (a.tcdNumber || '').localeCompare(b.tcdNumber || '', undefined, { numeric: true, sensitivity: 'base' }));
   window._tcdAvailable = available;
   window._tcdRFQEntries = rfqEntries;
 
@@ -3735,6 +3750,7 @@ window.showCreateTCDModal = function() {
     rfqMap[key].items.push({ ...m, _idx: i });
   });
   const rfqEntries = Object.entries(rfqMap);
+  rfqEntries.sort((a, b) => (a[0] || '').localeCompare(b[0] || '', undefined, { numeric: true, sensitivity: 'base' }));
 
   const modalId = 'create-tcd-modal';
   let el = document.getElementById(modalId);

@@ -669,6 +669,8 @@ export function getFilteredPRCs() {
     list = list.filter(p =>
       p.prNumber?.toLowerCase().includes(q)       ||
       p.allocationNumber?.toLowerCase().includes(q)||
+      p.buyerName?.toLowerCase().includes(q)       ||
+      p.allocatedBy?.toLowerCase().includes(q)       ||
       p.rfqNumber?.toLowerCase().includes(q)      ||
       p.tcdNumber?.toLowerCase().includes(q)      ||
       p.poNumber?.toLowerCase().includes(q)       ||
@@ -678,7 +680,8 @@ export function getFilteredPRCs() {
       p.remarks?.toLowerCase().includes(q)        ||
       (p.materials||[]).some(m =>
         m.matCode?.toLowerCase().includes(q) ||
-        m.description?.toLowerCase().includes(q)
+        m.description?.toLowerCase().includes(q) ||
+        m.buyerName?.toLowerCase().includes(q)
       )
     );
   }
@@ -698,9 +701,9 @@ export function getFilteredPRCs() {
   if (f.dateTo)     list = list.filter(p => p.createdAt <= f.dateTo);
 
   list.sort((a,b) => {
-    const av = a[state.sortField] || '';
-    const bv = b[state.sortField] || '';
-    const cmp = String(av).localeCompare(String(bv));
+    let av = a[state.sortField] || (state.sortField === 'buyerName' ? a.allocatedBy : '') || '';
+    let bv = b[state.sortField] || (state.sortField === 'buyerName' ? b.allocatedBy : '') || '';
+    const cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
     return state.sortDir === 'asc' ? cmp : -cmp;
   });
 
