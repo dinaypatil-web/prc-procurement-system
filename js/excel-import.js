@@ -2,7 +2,7 @@
 // EXCEL IMPORT ENGINE (SheetJS-based)
 // =========================================================
 import { toast } from './utils.js';
-import { updatePRC, getState, setState, addAuditLog } from './state.js';
+import { updatePRC, getState, setState, addAuditLog, createAllocation } from './state.js';
 import { calculateStatus, calculateMaterialStatus, buildStatusSummary } from './status-engine.js';
 
 // Expected columns in the import Excel file (45 Enterprise Columns)
@@ -389,6 +389,91 @@ export function mergeImport(rows) {
     statusSummary: summary,
     totalMaterials: totalMats
   });
+
+  // If imported rows contained allocation data, create or merge Allocation documents
+  try {
+    const currentState = getState();
+    const existingAllocNumbers = new Set((currentState.allocations || []).map(a => a.allocationNumber));
+
+    // Group imported materials by allocation number
+    const allocGroups = {};
+    newPRCsToAdd.forEach(prc => {
+      (prc.materials || []).forEach(m => {
+        const allocNum = (m.allocationNumber || prc.allocationNumber || '').trim();
+        if (!allocNum) return;
+        const allocDate = (m.allocationDate || prc.allocationDate || '').trim() || new Date().toISOString().split('T')[0];
+        const buyerName = (m.buyerName || prc.buyerName || '').trim();
+        if (!allocGroups[allocNum]) allocGroups[allocNum] = { allocationNumber: allocNum, allocationDate: allocDate, buyerName, items: [] };
+        allocGroups[allocNum].items.push({
+          prcId: prc.id,
+          materialId: m.id,
+          quantity: parseFloat(m.quantity) || 0,
+          matCode: m.matCode,
+          description: m.description,
+          unit: m.unit || '',
+          prNumber: prc.prNumber
+        });
+      });
+    });
+
+    Object.values(allocGroups).forEach(alloc => {
+      if (!alloc.items.length) return;
+      // If allocation number already exists, merge items into existing allocation
+      if (existingAllocNumbers.has(alloc.allocationNumber)) {
+        const stateNow = getState();
+        const allocations = [...(stateNow.allocations || [])];
+        const idx = allocations.findIndex(a => a.allocationNumber === alloc.allocationNumber);
+        if (idx === -1) return; // safety
+        const existing = { ...allocations[idx], items: [...(allocations[idx].items || [])] };
+        const keySet = new Set(existing.items.map(i => `${i.prcId}::${i.materialId}`));
+        alloc.items.forEach(it => {
+          const key = `${it.prcId}::${it.materialId}`;
+          if (!keySet.has(key)) {
+            existing.items.push(it);
+            keySet.add(key);
+          }
+        });
+        allocations[idx] = existing;
+
+        // Cascade changes to PRCs/materials similar to createAllocation
+        const prcs = [...(stateNow.prcs || [])];
+        const affectedPrcIds = new Set(existing.items.map(i => i.prcId));
+        affectedPrcIds.forEach(prcId => {
+          const prcIdx = prcs.findIndex(p => p.id === prcId);
+          if (prcIdx === -1) return;
+          const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
+          existing.items.filter(i => i.prcId === prcId).forEach(item => {
+            const matIdx = prc.materials.findIndex(m => m.id === item.materialId);
+            if (matIdx === -1) return;
+            prc.materials[matIdx] = {
+              ...prc.materials[matIdx],
+              allocationNumber: existing.allocationNumber,
+              allocationDate: existing.allocationDate,
+              buyerName: existing.buyerName,
+              allocatedBy: existing.buyerName
+            };
+            prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
+          });
+          if (!prc.allocationNumber || prc.allocationNumber === existing.allocationNumber) {
+            prc.allocationNumber = existing.allocationNumber;
+            prc.allocationDate = existing.allocationDate;
+            prc.buyerName = existing.buyerName;
+            prc.allocatedBy = existing.buyerName;
+          }
+          prc.status = calculateStatus(prc, prc.materials);
+          prc.updatedAt = new Date().toISOString();
+          prcs[prcIdx] = prc;
+        });
+
+        setState({ allocations, prcs, statusSummary: buildStatusSummary(prcs) });
+      } else {
+        // Create a new Allocation document for this allocation number
+        createAllocation({ allocationNumber: alloc.allocationNumber, allocationDate: alloc.allocationDate, buyerName: alloc.buyerName, items: alloc.items });
+      }
+    });
+  } catch (err) {
+    console.error('Failed to create/merge imported allocation documents:', err);
+  }
 
   addAuditLog({
     action: 'import', collection: 'PRCs', docId: 'batch',
