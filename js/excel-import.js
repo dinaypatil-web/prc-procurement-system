@@ -262,10 +262,10 @@ export function mergeImport(rows) {
         const serialNo = String(row['SERIAL NUMBER'] || idx + 1).trim();
         const matId = `${prNumber}-${matCode}-${serialNo}`;
         const allocNum = String(row['ALLOCATION NUMBER'] || '').trim();
-        const allocDate = String(row['ALLOCATION DATE'] || '').trim() || new Date().toISOString().split('T')[0];
+        const allocDate = String(row['ALLOCATION DATE'] || '').trim();
         const buyerName = String(row['BUYER NAME'] || '').trim();
 
-        if (allocNum) {
+        if (allocNum && allocDate && buyerName) {
           anyAllocFound = true;
           if (!allocGroups[allocNum]) allocGroups[allocNum] = { allocationNumber: allocNum, allocationDate: allocDate, buyerName, items: [] };
 
@@ -442,6 +442,15 @@ export function mergeImport(rows) {
     const jobDesc = String(firstRow['JOB DESC'] || '').trim();
     const jobStr = jobCode ? `${jobCode}${jobDesc ? ' - ' + jobDesc : ''}` : jobDesc;
 
+    let rawPrStatus = String(firstRow['PR STATUS'] || '').trim();
+    const hasAuthMeta = !!(
+      String(firstRow['AUTHORIZED BY'] || firstRow['AUTHORISED BY'] || '').trim() ||
+      String(firstRow['AUTHORIZED ON'] || firstRow['AUTHORISED ON'] || '').trim()
+    );
+    if (hasAuthMeta || !rawPrStatus || rawPrStatus.toLowerCase() === 'pending') {
+      rawPrStatus = 'Authorised';
+    }
+
     const prHeaderFields = {
       jobCode,
       jobDesc,
@@ -457,7 +466,7 @@ export function mergeImport(rows) {
       wbsDesc: String(firstRow['WBS DESC'] || '').trim(),
       currencyDesc: String(firstRow['CURRENCY DESC'] || '').trim(),
       budgetReference: String(firstRow['BUDGET REFERENCE'] || '').trim(),
-      prStatus: String(firstRow['PR STATUS'] || '').trim(),
+      prStatus: rawPrStatus,
       closedBy: String(firstRow['CLOSED BY'] || '').trim(),
       closedOn: String(firstRow['CLOSED ON'] || '').trim(),
       createdBy: String(firstRow['CREATED BY'] || '').trim(),
@@ -516,20 +525,22 @@ export function mergeImport(rows) {
     const allocGroups = {};
     newPRCsToAdd.forEach(prc => {
       (prc.materials || []).forEach(m => {
-        const allocNum = (m.allocationNumber || prc.allocationNumber || '').trim();
-        if (!allocNum) return;
-        const allocDate = (m.allocationDate || prc.allocationDate || '').trim() || new Date().toISOString().split('T')[0];
-        const buyerName = (m.buyerName || prc.buyerName || '').trim();
-        if (!allocGroups[allocNum]) allocGroups[allocNum] = { allocationNumber: allocNum, allocationDate: allocDate, buyerName, items: [] };
-        allocGroups[allocNum].items.push({
-          prcId: prc.id,
-          materialId: m.id,
-          quantity: parseFloat(m.quantity) || 0,
-          matCode: m.matCode,
-          description: m.description,
-          unit: m.unit || '',
-          prNumber: prc.prNumber
-        });
+        const allocNum = String(m.allocationNumber || prc.allocationNumber || '').trim();
+        const allocDate = String(m.allocationDate || prc.allocationDate || '').trim();
+        const buyerName = String(m.buyerName || prc.buyerName || '').trim();
+
+        if (allocNum && allocDate && buyerName) {
+          if (!allocGroups[allocNum]) allocGroups[allocNum] = { allocationNumber: allocNum, allocationDate: allocDate, buyerName, items: [] };
+          allocGroups[allocNum].items.push({
+            prcId: prc.id,
+            materialId: m.id,
+            quantity: parseFloat(m.quantity) || 0,
+            matCode: m.matCode,
+            description: m.description,
+            unit: m.unit || '',
+            prNumber: prc.prNumber
+          });
+        }
       });
     });
 

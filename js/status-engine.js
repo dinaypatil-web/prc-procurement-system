@@ -68,13 +68,18 @@ export const STATUS_ICON = {
  * @returns {string} Status string from STATUS enum.
  */
 export function calculateStatus(prc, materials = []) {
-  // If explicit PR status is not provided but authorization metadata exists,
-  // consider the PRC as Authorised.
+  // If authorization metadata exists, consider the PRC as Authorised even if prStatus is Pending
   let prStatus = String(prc.prStatus || '').trim();
-  if (!prStatus) {
-    if (prc.authorizedBy || prc.authorizedOn || prc.authorisedBy || prc.authorisedOn) {
-      prStatus = 'Authorised';
-    }
+  const hasAuthMeta = !!(
+    (prc.authorizedBy && String(prc.authorizedBy).trim()) ||
+    (prc.authorizedOn && String(prc.authorizedOn).trim()) ||
+    (prc.authorisedBy && String(prc.authorisedBy).trim()) ||
+    (prc.authorisedOn && String(prc.authorisedOn).trim()) ||
+    (prc.authorizedDate && String(prc.authorizedDate).trim()) ||
+    (prc.authorisedDate && String(prc.authorisedDate).trim())
+  );
+  if (hasAuthMeta && (!prStatus || prStatus.toLowerCase() === 'pending')) {
+    prStatus = 'Authorised';
   }
   prStatus = String(prStatus).trim().toLowerCase();
 
@@ -114,6 +119,8 @@ export function calculateStatus(prc, materials = []) {
     // No materials — check top-level PO fields
     if (prc.poNumber && prc.poDate && prc.vendorName) return STATUS.COMPLETED;
   }
+
+  if (prStatus === 'authorised' || prStatus === 'approved') return STATUS.AUTHORISED;
 
   // 9. Default
   return STATUS.PENDING;

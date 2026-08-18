@@ -796,14 +796,22 @@ export function getAllocatedQty(prcId, materialId) {
 export function isPRCAuthorised(p) {
   if (!p) return false;
   if (p.isPRNotApproved || p.isWrongPRC || p.isFuturePRC) return false;
-  // If explicit prStatus or status indicates authorised, respect that.
-  let s = String(p.prStatus || p.status || '').trim();
-  // If no explicit status but authorization metadata exists, consider authorised
-  if (!s && (p.authorizedBy || p.authorizedOn || p.authorisedBy || p.authorisedOn)) {
-    s = 'Authorised';
-  }
-  s = String(s).trim().toLowerCase();
-  if (s === 'future prc' || s === 'wrong prc' || s === 'pr not approved') return false;
+
+  let s = String(p.prStatus || p.status || '').trim().toLowerCase();
+  if (s === 'future prc' || s === 'wrong prc' || s === 'pr not approved' || s === 'rejected') return false;
+
+  // If Authorised by or Authorised date/data is available, consider PRC as authorised even if prStatus shows Pending
+  const hasAuthMeta = !!(
+    (p.authorizedBy && String(p.authorizedBy).trim()) ||
+    (p.authorizedOn && String(p.authorizedOn).trim()) ||
+    (p.authorisedBy && String(p.authorisedBy).trim()) ||
+    (p.authorisedOn && String(p.authorisedOn).trim()) ||
+    (p.authorizedDate && String(p.authorizedDate).trim()) ||
+    (p.authorisedDate && String(p.authorisedDate).trim())
+  );
+
+  if (hasAuthMeta) return true;
+
   return s === 'authorised' || s === 'authorized' || s === 'approved';
 }
 
