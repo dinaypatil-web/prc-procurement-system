@@ -796,7 +796,13 @@ export function getAllocatedQty(prcId, materialId) {
 export function isPRCAuthorised(p) {
   if (!p) return false;
   if (p.isPRNotApproved || p.isWrongPRC || p.isFuturePRC) return false;
-  const s = String(p.prStatus || p.status || '').trim().toLowerCase();
+  // If explicit prStatus or status indicates authorised, respect that.
+  let s = String(p.prStatus || p.status || '').trim();
+  // If no explicit status but authorization metadata exists, consider authorised
+  if (!s && (p.authorizedBy || p.authorizedOn || p.authorisedBy || p.authorisedOn)) {
+    s = 'Authorised';
+  }
+  s = String(s).trim().toLowerCase();
   if (s === 'future prc' || s === 'wrong prc' || s === 'pr not approved') return false;
   return s === 'authorised' || s === 'authorized' || s === 'approved';
 }

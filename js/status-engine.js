@@ -68,7 +68,15 @@ export const STATUS_ICON = {
  * @returns {string} Status string from STATUS enum.
  */
 export function calculateStatus(prc, materials = []) {
-  const prStatus = String(prc.prStatus || '').trim().toLowerCase();
+  // If explicit PR status is not provided but authorization metadata exists,
+  // consider the PRC as Authorised.
+  let prStatus = String(prc.prStatus || '').trim();
+  if (!prStatus) {
+    if (prc.authorizedBy || prc.authorizedOn || prc.authorisedBy || prc.authorisedOn) {
+      prStatus = 'Authorised';
+    }
+  }
+  prStatus = String(prStatus).trim().toLowerCase();
 
   // 1. Wrong PRC (user override)
   if (prc.isWrongPRC || prStatus === 'wrong prc') return STATUS.WRONG_PRC;
