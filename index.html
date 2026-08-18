@@ -3435,6 +3435,7 @@ function renderRFQsPage(container) {
     if (!allocMap[key]) allocMap[key] = { allocationNumber: m.allocationNumber, allocationDate: m.allocationDate, buyerName: m.buyerName, items: [] };
     allocMap[key].items.push({ ...m, _idx: i });
   });
+  const allocEntries = Object.entries(allocMap);
   const sf = state.rfqSortField || 'allocationNumber';
   const sd = state.rfqSortDir === 'desc' ? -1 : 1;
   allocEntries.sort((a, b) => {
@@ -3912,6 +3913,7 @@ function renderTCDsPage(container) {
     if (!rfqMap[key]) rfqMap[key] = { rfqNumber: m.rfqNumber, rfqDate: m.rfqDate, items: [] };
     rfqMap[key].items.push({ ...m, _idx: i });
   });
+  const rfqEntries = Object.entries(rfqMap);
   const sf = state.tcdSortField || 'rfqNumber';
   const sd = state.tcdSortDir === 'desc' ? -1 : 1;
   rfqEntries.sort((a, b) => {
