@@ -763,8 +763,8 @@ function renderPRCList(container) {
         </select>
         <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
         <select class="form-control form-control-sm" style="width:120px;font-weight:600" id="sort-dir-select" onchange="changeSortDir(this.value)">
-          <option value="asc" ${state.sortDir==='asc'?'selected':''}>Ascending ⬆️</option>
           <option value="desc" ${state.sortDir==='desc'?'selected':''}>Descending ⬇️</option>
+          <option value="asc" ${state.sortDir==='asc'?'selected':''}>Ascending ⬆️</option>
         </select>
       </div>
 
@@ -801,7 +801,7 @@ function renderPRCList(container) {
           </tr>
         </thead>
         <tbody id="prc-table-body">
-          <tr><td colspan="11" style="text-align:center;padding:40px"><div class="loading-spinner" style="margin:auto"></div></td></tr>
+          <tr><td colspan="12" style="text-align:center;padding:40px"><div class="loading-spinner" style="margin:auto"></div></td></tr>
         </tbody>
       </table>
     </div>
@@ -2029,8 +2029,8 @@ function renderVendors(container) {
     </select>
     <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
     <select class="form-control form-control-sm" style="width:120px;font-weight:600" id="vendor-sort-dir" onchange="changeVendorSort(document.getElementById('vendor-sort-field').value, this.value)">
-      <option value="asc" ${state.vendorSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
       <option value="desc" ${state.vendorSortDir==='desc'?'selected':''}>Descending ⬇️</option>
+      <option value="asc" ${state.vendorSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
     </select>
   </div>
 </div>
@@ -2590,8 +2590,8 @@ function renderAllocationsPage(container) {
         </select>
         <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
         <select class="form-control form-control-xs" style="width:115px;font-size:11px" id="alloc-sort-dir" onchange="changeAllocSort(document.getElementById('alloc-sort-field').value, this.value)">
-          <option value="asc" ${state.allocSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
           <option value="desc" ${state.allocSortDir==='desc'?'selected':''}>Descending ⬇️</option>
+          <option value="asc" ${state.allocSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
         </select>
       </div>
       <div class="flex gap-2 flex-wrap">
@@ -2637,8 +2637,8 @@ function renderAllocationsPage(container) {
         </select>
         <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
         <select class="form-control form-control-xs" style="width:115px;font-size:11px" id="alloc-docs-sort-dir" onchange="changeAllocSort(document.getElementById('alloc-docs-sort-field').value, this.value)">
-          <option value="asc" ${state.allocSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
           <option value="desc" ${state.allocSortDir==='desc'?'selected':''}>Descending ⬇️</option>
+          <option value="asc" ${state.allocSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
         </select>
       </div>
     </div>
@@ -3504,8 +3504,8 @@ function renderRFQsPage(container) {
         </select>
         <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
         <select class="form-control form-control-xs" style="width:115px;font-size:11px" id="rfq-sort-dir" onchange="changeRFQSort(document.getElementById('rfq-sort-field').value, this.value)">
-          <option value="asc" ${state.rfqSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
           <option value="desc" ${state.rfqSortDir==='desc'?'selected':''}>Descending ⬇️</option>
+          <option value="asc" ${state.rfqSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
         </select>
       </div>
       <div class="flex gap-2 flex-wrap">
@@ -3982,8 +3982,8 @@ function renderTCDsPage(container) {
         </select>
         <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
         <select class="form-control form-control-xs" style="width:115px;font-size:11px" id="tcd-sort-dir" onchange="changeTCDSort(document.getElementById('tcd-sort-field').value, this.value)">
-          <option value="asc" ${state.tcdSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
           <option value="desc" ${state.tcdSortDir==='desc'?'selected':''}>Descending ⬇️</option>
+          <option value="asc" ${state.tcdSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
         </select>
       </div>
       <div class="flex gap-2 flex-wrap">
@@ -4471,8 +4471,8 @@ function renderPODsPage(container) {
     </select>
     <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
     <select class="form-control form-control-sm" style="width:120px;font-weight:600" id="po-sort-dir" onchange="changePOSort(document.getElementById('po-sort-field').value, this.value)">
-      <option value="asc" ${state.poSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
       <option value="desc" ${state.poSortDir==='desc'?'selected':''}>Descending ⬇️</option>
+      <option value="asc" ${state.poSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
     </select>
   </div>
 </div>
