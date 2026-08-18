@@ -745,7 +745,30 @@ function renderPRCList(container) {
       <input type="date" class="form-control" style="width:150px" id="filter-date-from" onchange="applyFilters()" placeholder="From date"/>
       <input type="date" class="form-control" style="width:150px" id="filter-date-to"   onchange="applyFilters()" placeholder="To date"/>
       <button class="btn btn-ghost btn-sm" onclick="clearFilters()">✕ Clear</button>
-      <div style="margin-left:auto" class="flex gap-2 items-center">
+
+      <div style="display:flex;align-items:center;gap:6px;background:var(--color-surface-2);padding:4px 10px;border-radius:8px;border:1px solid var(--color-border);margin-left:auto">
+        <span class="text-xs font-semibold text-secondary" style="white-space:nowrap">Sort By:</span>
+        <select class="form-control form-control-sm" style="width:130px;font-weight:600" id="sort-by-select" onchange="changeSortField(this.value)">
+          <option value="prNumber" ${state.sortField==='prNumber'?'selected':''}>PR Number</option>
+          <option value="department" ${state.sortField==='department'?'selected':''}>Department</option>
+          <option value="priority" ${state.sortField==='priority'?'selected':''}>Priority</option>
+          <option value="status" ${state.sortField==='status'?'selected':''}>Status</option>
+          <option value="allocationDate" ${state.sortField==='allocationDate'?'selected':''}>Allocated Date</option>
+          <option value="buyerName" ${state.sortField==='buyerName'?'selected':''}>Buyer Name</option>
+          <option value="rfqNumber" ${state.sortField==='rfqNumber'?'selected':''}>RFQ Number</option>
+          <option value="tcdNumber" ${state.sortField==='tcdNumber'?'selected':''}>TCD Number</option>
+          <option value="poNumber" ${state.sortField==='poNumber'?'selected':''}>PO Number</option>
+          <option value="vendorName" ${state.sortField==='vendorName'?'selected':''}>Vendor Name</option>
+          <option value="createdAt" ${state.sortField==='createdAt'?'selected':''}>Created Date</option>
+        </select>
+        <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
+        <select class="form-control form-control-sm" style="width:120px;font-weight:600" id="sort-dir-select" onchange="changeSortDir(this.value)">
+          <option value="asc" ${state.sortDir==='asc'?'selected':''}>Ascending ⬆️</option>
+          <option value="desc" ${state.sortDir==='desc'?'selected':''}>Descending ⬇️</option>
+        </select>
+      </div>
+
+      <div class="flex gap-2 items-center">
         <span class="text-sm text-secondary">Rows:</span>
         <select class="form-control" style="width:80px" id="page-size-select" onchange="changePageSize(this.value)">
           <option value="10">10</option>
@@ -823,6 +846,46 @@ window.sortTable = function(field) {
   const dir = state.sortField === field && state.sortDir === 'asc' ? 'desc' : 'asc';
   setState({ sortField: field, sortDir: dir });
   renderPRCTable();
+};
+
+window.changeSortField = function(val) {
+  setState({ sortField: val });
+  renderPRCTable();
+};
+
+window.changeSortDir = function(val) {
+  setState({ sortDir: val });
+  renderPRCTable();
+};
+
+window.changeAllocSort = function(field, dir) {
+  setState({ allocSortField: field, allocSortDir: dir });
+  const container = document.getElementById('page-content');
+  if (container) renderAllocationsPage(container);
+};
+
+window.changeRFQSort = function(field, dir) {
+  setState({ rfqSortField: field, rfqSortDir: dir });
+  const container = document.getElementById('page-content');
+  if (container) renderRFQsPage(container);
+};
+
+window.changeTCDSort = function(field, dir) {
+  setState({ tcdSortField: field, tcdSortDir: dir });
+  const container = document.getElementById('page-content');
+  if (container) renderTCDsPage(container);
+};
+
+window.changePOSort = function(field, dir) {
+  setState({ poSortField: field, poSortDir: dir });
+  const container = document.getElementById('page-content');
+  if (container) renderPODsPage(container);
+};
+
+window.changeVendorSort = function(field, dir) {
+  setState({ vendorSortField: field, vendorSortDir: dir });
+  const container = document.getElementById('page-content');
+  if (container) renderVendors(container);
 };
 
 window.changePageSize = function(size) {
@@ -1935,11 +1998,41 @@ function renderReports(container) {
 // ═══════════════════════════════════════════════════════════
 function renderVendors(container) {
   const state = getState();
-  const vendors = state.vendors || [];
+  const vendors = [...(state.vendors || [])];
+  const sf = state.vendorSortField || 'name';
+  const sd = state.vendorSortDir === 'desc' ? -1 : 1;
+
+  vendors.sort((a, b) => {
+    let av = a[sf] || '';
+    let bv = b[sf] || '';
+    if (typeof av === 'number' && typeof bv === 'number') {
+      return (av - bv) * sd;
+    }
+    return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * sd;
+  });
 
   container.innerHTML = `
 <div class="page-header">
-  <h1 class="page-title">Vendor Performance</h1>
+  <div>
+    <h1 class="page-title">Vendor Performance</h1>
+    <p class="page-subtitle">${vendors.length} Vendors tracked</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px;background:var(--color-surface-2);padding:6px 12px;border-radius:8px;border:1px solid var(--color-border)">
+    <span class="text-xs font-semibold text-secondary" style="white-space:nowrap">Sort By:</span>
+    <select class="form-control form-control-sm" style="width:130px;font-weight:600" id="vendor-sort-field" onchange="changeVendorSort(this.value, document.getElementById('vendor-sort-dir').value)">
+      <option value="name" ${state.vendorSortField==='name'?'selected':''}>Vendor Name</option>
+      <option value="category" ${state.vendorSortField==='category'?'selected':''}>Category</option>
+      <option value="code" ${state.vendorSortField==='code'?'selected':''}>Code</option>
+      <option value="rating" ${state.vendorSortField==='rating'?'selected':''}>Rating</option>
+      <option value="poCount" ${state.vendorSortField==='poCount'?'selected':''}>PO Count</option>
+      <option value="avgResponseDays" ${state.vendorSortField==='avgResponseDays'?'selected':''}>Avg Response</option>
+    </select>
+    <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
+    <select class="form-control form-control-sm" style="width:120px;font-weight:600" id="vendor-sort-dir" onchange="changeVendorSort(document.getElementById('vendor-sort-field').value, this.value)">
+      <option value="asc" ${state.vendorSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
+      <option value="desc" ${state.vendorSortDir==='desc'?'selected':''}>Descending ⬇️</option>
+    </select>
+  </div>
 </div>
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px" class="stagger-children">
   ${vendors.map(v => {
@@ -2486,6 +2579,21 @@ function renderAllocationsPage(container) {
       <div style="flex:1;min-width:240px;position:relative">
         <input type="text" id="alloc-page-tree-search" class="form-control form-control-sm" placeholder="🔍 Search pending PRCs by Number, Dept, Job, Material Code, Description..." oninput="filterAllocPRCTree(this.value)"/>
       </div>
+      <div style="display:flex;align-items:center;gap:6px;background:var(--color-surface-1);padding:4px 8px;border-radius:6px;border:1px solid var(--color-border)">
+        <span class="text-xs font-semibold text-secondary" style="white-space:nowrap">Sort By:</span>
+        <select class="form-control form-control-xs" style="width:130px;font-size:11px" id="alloc-sort-field" onchange="changeAllocSort(this.value, document.getElementById('alloc-sort-dir').value)">
+          <option value="prNumber" ${state.allocSortField==='prNumber'?'selected':''}>PR Number</option>
+          <option value="department" ${state.allocSortField==='department'?'selected':''}>Department</option>
+          <option value="allocationNumber" ${state.allocSortField==='allocationNumber'?'selected':''}>Allocation #</option>
+          <option value="buyerName" ${state.allocSortField==='buyerName'?'selected':''}>Buyer Name</option>
+          <option value="createdAt" ${state.allocSortField==='createdAt'?'selected':''}>Created Date</option>
+        </select>
+        <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
+        <select class="form-control form-control-xs" style="width:115px;font-size:11px" id="alloc-sort-dir" onchange="changeAllocSort(document.getElementById('alloc-sort-field').value, this.value)">
+          <option value="asc" ${state.allocSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
+          <option value="desc" ${state.allocSortDir==='desc'?'selected':''}>Descending ⬇️</option>
+        </select>
+      </div>
       <div class="flex gap-2 flex-wrap">
         <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllAllocPRCTree(true)">▶ Expand All</button>
         <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllAllocPRCTree(false)">▼ Collapse All</button>
@@ -2732,13 +2840,21 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
     deptMap[dept].push(p);
   });
 
-  // Sort PRCs within each department by PRC Number
+  // Sort PRCs within each department by allocSortField & allocSortDir
+  const state = getState();
+  const sf = state.allocSortField || 'prNumber';
+  const sd = state.allocSortDir === 'desc' ? -1 : 1;
+
   Object.values(deptMap).forEach(list => {
-    list.sort((a, b) => (a.prNumber || '').localeCompare(b.prNumber || '', undefined, { numeric: true, sensitivity: 'base' }));
+    list.sort((a, b) => {
+      let av = a[sf] || (sf === 'buyerName' ? a.allocatedBy : '') || '';
+      let bv = b[sf] || (sf === 'buyerName' ? b.allocatedBy : '') || '';
+      return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * sd;
+    });
   });
 
   const deptEntries = Object.entries(deptMap);
-  deptEntries.sort((a, b) => (a[0] || '').localeCompare(b[0] || '', undefined, { numeric: true, sensitivity: 'base' }));
+  deptEntries.sort((a, b) => (a[0] || '').localeCompare(b[0] || '', undefined, { numeric: true, sensitivity: 'base' }) * sd);
   const totalPRCs = filteredPrcs.length;
   const totalMats = filteredPrcs.reduce((acc, p) => acc + (p.materials || []).length, 0);
 
@@ -3167,9 +3283,18 @@ function renderRFQsPage(container) {
     if (!allocMap[key]) allocMap[key] = { allocationNumber: m.allocationNumber, allocationDate: m.allocationDate, buyerName: m.buyerName, items: [] };
     allocMap[key].items.push({ ...m, _idx: i });
   });
-  const allocEntries = Object.entries(allocMap);
-  allocEntries.sort((a, b) => (a[0] || '').localeCompare(b[0] || '', undefined, { numeric: true, sensitivity: 'base' }));
-  rfqs.sort((a, b) => (a.rfqNumber || '').localeCompare(b.rfqNumber || '', undefined, { numeric: true, sensitivity: 'base' }));
+  const sf = state.rfqSortField || 'allocationNumber';
+  const sd = state.rfqSortDir === 'desc' ? -1 : 1;
+  allocEntries.sort((a, b) => {
+    let av = a[1]?.[sf] || a[0] || '';
+    let bv = b[1]?.[sf] || b[0] || '';
+    return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * sd;
+  });
+  rfqs.sort((a, b) => {
+    let av = a[sf] || a.rfqNumber || '';
+    let bv = b[sf] || b.rfqNumber || '';
+    return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * sd;
+  });
   window._rfqAvailable = available;
   window._rfqAllocEntries = allocEntries;
 
@@ -3215,6 +3340,20 @@ function renderRFQsPage(container) {
     <div class="prc-tree-toolbar" style="margin-bottom:16px;background:var(--color-surface-2);padding:12px;border-radius:8px">
       <div style="flex:1;min-width:240px;position:relative">
         <input type="text" id="rfq-page-tree-search" class="form-control form-control-sm" placeholder="🔍 Search by Allocation #, PR Number, Mat Code, Description..." oninput="filterRFQTree(this.value)"/>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;background:var(--color-surface-1);padding:4px 8px;border-radius:6px;border:1px solid var(--color-border)">
+        <span class="text-xs font-semibold text-secondary" style="white-space:nowrap">Sort By:</span>
+        <select class="form-control form-control-xs" style="width:140px;font-size:11px" id="rfq-sort-field" onchange="changeRFQSort(this.value, document.getElementById('rfq-sort-dir').value)">
+          <option value="allocationNumber" ${state.rfqSortField==='allocationNumber'?'selected':''}>Allocation Number</option>
+          <option value="prNumber" ${state.rfqSortField==='prNumber'?'selected':''}>PR Number</option>
+          <option value="buyerName" ${state.rfqSortField==='buyerName'?'selected':''}>Buyer Name</option>
+          <option value="rfqNumber" ${state.rfqSortField==='rfqNumber'?'selected':''}>RFQ Number</option>
+        </select>
+        <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
+        <select class="form-control form-control-xs" style="width:115px;font-size:11px" id="rfq-sort-dir" onchange="changeRFQSort(document.getElementById('rfq-sort-field').value, this.value)">
+          <option value="asc" ${state.rfqSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
+          <option value="desc" ${state.rfqSortDir==='desc'?'selected':''}>Descending ⬇️</option>
+        </select>
       </div>
       <div class="flex gap-2 flex-wrap">
         <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllRFQTree(true)">▶ Expand All</button>
@@ -3621,9 +3760,18 @@ function renderTCDsPage(container) {
     if (!rfqMap[key]) rfqMap[key] = { rfqNumber: m.rfqNumber, rfqDate: m.rfqDate, items: [] };
     rfqMap[key].items.push({ ...m, _idx: i });
   });
-  const rfqEntries = Object.entries(rfqMap);
-  rfqEntries.sort((a, b) => (a[0] || '').localeCompare(b[0] || '', undefined, { numeric: true, sensitivity: 'base' }));
-  tcds.sort((a, b) => (a.tcdNumber || '').localeCompare(b.tcdNumber || '', undefined, { numeric: true, sensitivity: 'base' }));
+  const sf = state.tcdSortField || 'rfqNumber';
+  const sd = state.tcdSortDir === 'desc' ? -1 : 1;
+  rfqEntries.sort((a, b) => {
+    let av = a[1]?.[sf] || a[0] || '';
+    let bv = b[1]?.[sf] || b[0] || '';
+    return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * sd;
+  });
+  tcds.sort((a, b) => {
+    let av = a[sf] || a.tcdNumber || '';
+    let bv = b[sf] || b.tcdNumber || '';
+    return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * sd;
+  });
   window._tcdAvailable = available;
   window._tcdRFQEntries = rfqEntries;
 
@@ -3669,6 +3817,20 @@ function renderTCDsPage(container) {
     <div class="prc-tree-toolbar" style="margin-bottom:16px;background:var(--color-surface-2);padding:12px;border-radius:8px">
       <div style="flex:1;min-width:240px;position:relative">
         <input type="text" id="tcd-page-tree-search" class="form-control form-control-sm" placeholder="🔍 Search by RFQ #, PR Number, Mat Code, Description..." oninput="filterTCDTree(this.value)"/>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;background:var(--color-surface-1);padding:4px 8px;border-radius:6px;border:1px solid var(--color-border)">
+        <span class="text-xs font-semibold text-secondary" style="white-space:nowrap">Sort By:</span>
+        <select class="form-control form-control-xs" style="width:130px;font-size:11px" id="tcd-sort-field" onchange="changeTCDSort(this.value, document.getElementById('tcd-sort-dir').value)">
+          <option value="rfqNumber" ${state.tcdSortField==='rfqNumber'?'selected':''}>RFQ Number</option>
+          <option value="prNumber" ${state.tcdSortField==='prNumber'?'selected':''}>PR Number</option>
+          <option value="tcdNumber" ${state.tcdSortField==='tcdNumber'?'selected':''}>TCD Number</option>
+          <option value="allocationNumber" ${state.tcdSortField==='allocationNumber'?'selected':''}>Allocation Number</option>
+        </select>
+        <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
+        <select class="form-control form-control-xs" style="width:115px;font-size:11px" id="tcd-sort-dir" onchange="changeTCDSort(document.getElementById('tcd-sort-field').value, this.value)">
+          <option value="asc" ${state.tcdSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
+          <option value="desc" ${state.tcdSortDir==='desc'?'selected':''}>Descending ⬇️</option>
+        </select>
       </div>
       <div class="flex gap-2 flex-wrap">
         <button type="button" class="btn btn-secondary btn-xs" onclick="expandAllTCDTree(true)">▶ Expand All</button>
@@ -4127,13 +4289,37 @@ window.handleApproveTCD = async function(id) {
 // ═══════════════════════════════════════════════════════════
 function renderPODsPage(container) {
   const state = getState();
-  const pods = state.pods || [];
+  const pods = [...(state.pods || [])];
+  const sf = state.poSortField || 'poNumber';
+  const sd = state.poSortDir === 'desc' ? -1 : 1;
+
+  pods.sort((a, b) => {
+    let av = a[sf] || a.poNumber || '';
+    let bv = b[sf] || b.poNumber || '';
+    return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * sd;
+  });
 
   container.innerHTML = `
 <div class="page-header">
   <div>
     <h1 class="page-title">Purchase Order Documents (POD)</h1>
     <p class="page-subtitle">${pods.length} PO document(s) generated from approved TCDs</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px;background:var(--color-surface-2);padding:6px 12px;border-radius:8px;border:1px solid var(--color-border)">
+    <span class="text-xs font-semibold text-secondary" style="white-space:nowrap">Sort By:</span>
+    <select class="form-control form-control-sm" style="width:130px;font-weight:600" id="po-sort-field" onchange="changePOSort(this.value, document.getElementById('po-sort-dir').value)">
+      <option value="poNumber" ${state.poSortField==='poNumber'?'selected':''}>PO Number</option>
+      <option value="poDate" ${state.poSortField==='poDate'?'selected':''}>PO Date</option>
+      <option value="vendorName" ${state.poSortField==='vendorName'?'selected':''}>Vendor</option>
+      <option value="tcdNumber" ${state.poSortField==='tcdNumber'?'selected':''}>TCD Reference</option>
+      <option value="status" ${state.poSortField==='status'?'selected':''}>Status</option>
+      <option value="createdAt" ${state.poSortField==='createdAt'?'selected':''}>Created Date</option>
+    </select>
+    <span class="text-xs font-semibold text-secondary" style="white-space:nowrap;margin-left:4px">Type:</span>
+    <select class="form-control form-control-sm" style="width:120px;font-weight:600" id="po-sort-dir" onchange="changePOSort(document.getElementById('po-sort-field').value, this.value)">
+      <option value="asc" ${state.poSortDir==='asc'?'selected':''}>Ascending ⬆️</option>
+      <option value="desc" ${state.poSortDir==='desc'?'selected':''}>Descending ⬇️</option>
+    </select>
   </div>
 </div>
 
