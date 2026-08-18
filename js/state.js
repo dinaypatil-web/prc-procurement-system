@@ -268,8 +268,150 @@ export const resetCreatorDatabase = resetDatabase;
 
 // ── STATE DISPATCH ────────────────────────────────────────
 
+/**
+ * Scans available PRCs and materials in state to enforce allocation document routing:
+ * 1. If PRC/material data has ALL 3 allocation fields (Allocation number, Allocation date, Buyer Name),
+ *    ensure an Allocation Document exists in state.allocations.
+ * 2. If PRC has authorization metadata or is pending allocation, ensure its prStatus is set to 'Authorised'.
+ */
+export function reconcileAllocationRouting(prcs = state.prcs, allocations = state.allocations) {
+  if (!Array.isArray(prcs) || !Array.isArray(allocations)) {
+    return { prcs: prcs || [], allocations: allocations || [], prcChanged: false, allocChanged: false };
+  }
+
+  let prcChanged = false;
+  let allocChanged = false;
+
+  const existingAllocMap = new Map();
+  allocations.forEach((a, idx) => {
+    if (a && a.allocationNumber) {
+      existingAllocMap.set(String(a.allocationNumber).trim().toUpperCase(), idx);
+    }
+  });
+
+  const allocGroups = {};
+
+  const updatedPrcs = prcs.map(prc => {
+    if (!prc) return prc;
+    let prcCopy = { ...prc };
+    let prcModified = false;
+
+    // Check authorization metadata
+    const hasAuthMeta = !!(
+      (prcCopy.authorizedBy && String(prcCopy.authorizedBy).trim()) ||
+      (prcCopy.authorizedOn && String(prcCopy.authorizedOn).trim()) ||
+      (prcCopy.authorisedBy && String(prcCopy.authorisedBy).trim()) ||
+      (prcCopy.authorisedOn && String(prcCopy.authorisedOn).trim()) ||
+      (prcCopy.authorizedDate && String(prcCopy.authorizedDate).trim()) ||
+      (prcCopy.authorisedDate && String(prcCopy.authorisedDate).trim())
+    );
+
+    const s = String(prcCopy.prStatus || prcCopy.status || '').trim().toLowerCase();
+    if (hasAuthMeta && (!s || s === 'pending')) {
+      prcCopy.prStatus = 'Authorised';
+      prcCopy.status = calculateStatus(prcCopy, prcCopy.materials || []);
+      prcModified = true;
+    }
+
+    const mats = prcCopy.materials || [];
+    mats.forEach(m => {
+      const allocNum = String(m.allocationNumber || prcCopy.allocationNumber || '').trim();
+      const allocDate = String(m.allocationDate || prcCopy.allocationDate || '').trim();
+      const buyerName = String(m.buyerName || m.allocatedBy || prcCopy.buyerName || prcCopy.allocatedBy || '').trim();
+
+      if (allocNum && allocDate && buyerName) {
+        const groupKey = allocNum.toUpperCase();
+        if (!allocGroups[groupKey]) {
+          allocGroups[groupKey] = {
+            allocationNumber: allocNum,
+            allocationDate: allocDate,
+            buyerName: buyerName,
+            items: []
+          };
+        }
+        allocGroups[groupKey].items.push({
+          prcId: prcCopy.id,
+          materialId: m.id,
+          quantity: parseFloat(m.quantity) || 0,
+          matCode: m.matCode,
+          description: m.description,
+          unit: m.unit || '',
+          prNumber: prcCopy.prNumber
+        });
+      }
+    });
+
+    if (prcModified) prcChanged = true;
+    return prcCopy;
+  });
+
+  const updatedAllocations = [...allocations];
+
+  Object.values(allocGroups).forEach(group => {
+    if (!group.items.length) return;
+    const groupKey = group.allocationNumber.toUpperCase();
+
+    if (existingAllocMap.has(groupKey)) {
+      const idx = existingAllocMap.get(groupKey);
+      const existingAlloc = updatedAllocations[idx];
+      const existingItems = existingAlloc.items || [];
+      const itemKeySet = new Set(existingItems.map(i => `${i.prcId}::${i.materialId}`));
+
+      let itemsAdded = false;
+      const mergedItems = [...existingItems];
+
+      group.items.forEach(it => {
+        const key = `${it.prcId}::${it.materialId}`;
+        if (!itemKeySet.has(key)) {
+          mergedItems.push(it);
+          itemKeySet.add(key);
+          itemsAdded = true;
+        }
+      });
+
+      if (itemsAdded) {
+        updatedAllocations[idx] = {
+          ...existingAlloc,
+          items: mergedItems
+        };
+        allocChanged = true;
+      }
+    } else {
+      // Create new allocation document
+      const newAlloc = {
+        id: `alloc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        allocationNumber: group.allocationNumber,
+        allocationDate: group.allocationDate,
+        buyerName: group.buyerName,
+        allocatedBy: group.buyerName,
+        items: group.items,
+        createdAt: new Date().toISOString()
+      };
+      updatedAllocations.push(newAlloc);
+      existingAllocMap.set(groupKey, updatedAllocations.length - 1);
+      allocChanged = true;
+    }
+  });
+
+  return {
+    prcs: updatedPrcs,
+    allocations: updatedAllocations,
+    prcChanged,
+    allocChanged
+  };
+}
+
 export function setState(patch) {
   Object.assign(state, patch);
+
+  if (patch.prcs || patch.allocations) {
+    const reconciled = reconcileAllocationRouting(state.prcs, state.allocations);
+    if (reconciled.allocChanged || reconciled.prcChanged) {
+      state.prcs = reconciled.prcs;
+      state.allocations = reconciled.allocations;
+    }
+  }
+
   Object.keys(patch).forEach(key => emit(key));
   emit('*');
 
@@ -384,6 +526,11 @@ export async function initAppData(forceClean = false) {
       loadedFrom = 'local-cache';
     }
   }
+
+  // Reconcile allocation document routing for all available data
+  const reconciled = reconcileAllocationRouting(prcs, allocations);
+  prcs = reconciled.prcs;
+  allocations = reconciled.allocations;
 
   const summary = buildStatusSummary(prcs);
   const totalMats = prcs.reduce((acc, p) => acc + (p.materials || []).length, 0);
