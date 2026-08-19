@@ -2562,6 +2562,47 @@ window.handleTestFirestoreConnection = async function() {
     if (btn) btn.disabled = false;
   }
 };
+window.updateTopBarDbBadge = function(isConnected) {
+  const dot = document.getElementById('topbar-db-dot');
+  const text = document.getElementById('topbar-db-text');
+  const badge = document.getElementById('topbar-db-badge');
+  if (!badge) return;
+
+  if (isConnected) {
+    badge.className = 'chip chip-completed';
+    if (dot) dot.style.background = '#10b981';
+    if (text) text.textContent = 'Firestore Live';
+  } else {
+    badge.className = 'chip chip-wrong';
+    if (dot) dot.style.background = '#ef4444';
+    if (text) text.textContent = 'Local Mode';
+  }
+};
+
+window.triggerManualSync = async function() {
+  const syncBtn = document.getElementById('topbar-sync-btn');
+  const syncText = document.getElementById('topbar-sync-text');
+  if (syncBtn) syncBtn.disabled = true;
+  if (syncText) syncText.textContent = 'Syncing...';
+
+  try {
+    const res = await forceSyncWithFirestore();
+    if (res.success) {
+      toast(`Direct connection active! Fetched ${res.count} records from Cloud Firestore.`, "success");
+      window.updateTopBarDbBadge(true);
+    } else {
+      toast(`Cloud Firestore Sync notice: ${res.reason || 'Could not reach server'}`, "warning");
+      window.updateTopBarDbBadge(false);
+    }
+  } catch (err) {
+    toast(`Sync error: ${err.message}`, "danger");
+    window.updateTopBarDbBadge(false);
+  } finally {
+    if (syncBtn) syncBtn.disabled = false;
+    if (syncText) syncText.textContent = 'Sync';
+  }
+};
+
 window.handleResetUserDB      = async function() {
   const confirmed = await confirmDialog("Are you sure you want to reset your user database to a clean empty state?", "Reset User Database");
   if (confirmed) {
