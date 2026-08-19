@@ -198,6 +198,10 @@ export async function pushLocalDataToFirestore() {
 
 // ── FIRESTORE ASYNC SYNC ──────────────────────────────────
 
+function _getEffectiveUid() {
+  return state.firebaseUser?.uid || state.currentUser?.id || state.currentUser?.uid || 'default';
+}
+
 const _pendingCollections = new Set();
 
 function scheduleFirestoreSync(changedCollections) {
@@ -207,14 +211,14 @@ function scheduleFirestoreSync(changedCollections) {
   _syncTimer = setTimeout(async () => {
     const { ensureFirebaseAuth, isFirebaseConfigured } = await import('./firebase-config.js');
     const authUser = await ensureFirebaseAuth();
-    const uid = state.firebaseUser?.uid || authUser?.uid || 'default';
+    const uid = _getEffectiveUid() || authUser?.uid || 'default';
 
     const toSync = [..._pendingCollections];
     _pendingCollections.clear();
 
     for (const colName of toSync) {
       try {
-        console.info(`☁️ Auto-syncing collection '${colName}' to Cloud Firestore (${(state[colName]||[]).length} items)...`);
+        console.info(`☁️ Auto-syncing collection '${colName}' to Cloud Firestore (${(state[colName]||[]).length} items, uid: ${uid})...`);
         await firestoreSaveCollection(uid, colName, state[colName] || []);
       } catch (err) {
         console.error(`Firestore sync failed for ${colName}:`, err);
@@ -294,8 +298,8 @@ export async function restoreDatabaseBackup(jsonData) {
 
   saveToLocalCache();
 
-  // Sync restored data to Cloud Firestore if user is authenticated
-  const uid = state.firebaseUser?.uid || 'default';
+  // Sync restored data to Cloud Firestore
+  const uid = _getEffectiveUid();
   const collectionsToSave = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'notifications', 'activityLogs'];
   for (const col of collectionsToSave) {
     if (state[col] && state[col].length > 0) {
@@ -886,9 +890,7 @@ export function updatePRC(id, patch, cascadeToMaterials = false) {
   setState({ prcs, statusSummary: buildStatusSummary(prcs) });
 
   // Direct Firestore write
-  if (state.firebaseUser?.uid) {
-    directSavePRC(state.firebaseUser.uid, updated);
-  }
+  directSavePRC(_getEffectiveUid(), updated);
 
   addAuditLog({
     action: 'update_prc', collection: 'PRCs', docId: id,
@@ -917,9 +919,7 @@ export function deletePRC(id) {
   setState({ prcs, statusSummary: buildStatusSummary(prcs), totalMaterials: prcs.reduce((a, p) => a + (p.materials || []).length, 0) });
 
   // Direct Firestore delete
-  if (state.firebaseUser?.uid) {
-    directDeletePRC(state.firebaseUser.uid, id);
-  }
+  directDeletePRC(_getEffectiveUid(), id);
 
   addAuditLog({
     action: 'delete_prc', collection: 'PRCs', docId: id,
@@ -958,9 +958,7 @@ export function updateMaterial(prcId, materialId, patch) {
   prcs[prcIdx] = updatedPRC;
   setState({ prcs, statusSummary: buildStatusSummary(prcs) });
 
-  if (state.firebaseUser?.uid) {
-    directSavePRC(state.firebaseUser.uid, updatedPRC);
-  }
+  directSavePRC(_getEffectiveUid(), updatedPRC);
 
   addAuditLog({
     action: 'update_material', collection: 'PRC Materials', docId: `${prcId}/${materialId}`,
@@ -999,9 +997,7 @@ export function bulkUpdateMaterials(prcId, materialIds, patch) {
   prcs[prcIdx] = updatedPRC;
   setState({ prcs, statusSummary: buildStatusSummary(prcs) });
 
-  if (state.firebaseUser?.uid) {
-    directSavePRC(state.firebaseUser.uid, updatedPRC);
-  }
+  directSavePRC(_getEffectiveUid(), updatedPRC);
 
   addAuditLog({
     action: 'bulk_update_materials', collection: 'PRC Materials', docId: prcId,
@@ -1106,17 +1102,13 @@ export function createAllocation(data) {
     prcs[prcIdx] = prc;
 
     // Direct Firestore write for updated PRC
-    if (state.firebaseUser?.uid) {
-      directSavePRC(state.firebaseUser.uid, prc);
-    }
+    directSavePRC(_getEffectiveUid(), prc);
   });
 
   setState({ allocations, prcs, statusSummary: buildStatusSummary(prcs) });
 
   // Direct Firestore write for allocation
-  if (state.firebaseUser?.uid) {
-    directSaveAllocation(state.firebaseUser.uid, allocation);
-  }
+  directSaveAllocation(_getEffectiveUid(), allocation);
 
   addAuditLog({
     action: 'create_allocation', collection: 'Allocations', docId: allocation.id,
@@ -1178,16 +1170,12 @@ export function updateAllocation(id, data) {
     prc.updatedAt = new Date().toISOString();
     prcs[prcIdx] = prc;
 
-    if (state.firebaseUser?.uid) {
-      directSavePRC(state.firebaseUser.uid, prc);
-    }
+    directSavePRC(_getEffectiveUid(), prc);
   });
 
   setState({ allocations, prcs, statusSummary: buildStatusSummary(prcs) });
 
-  if (state.firebaseUser?.uid) {
-    directSaveAllocation(state.firebaseUser.uid, updatedAlloc);
-  }
+  directSaveAllocation(_getEffectiveUid(), updatedAlloc);
 
   addAuditLog({
     action: 'update_allocation', collection: 'Allocations', docId: id,
@@ -1205,9 +1193,7 @@ export function deleteAllocation(id) {
   const allocations = state.allocations.filter(a => a.id !== id);
   setState({ allocations });
 
-  if (state.firebaseUser?.uid) {
-    directDeleteAllocation(state.firebaseUser.uid, id);
-  }
+  directDeleteAllocation(_getEffectiveUid(), id);
 
   addAuditLog({ action: 'delete_allocation', collection: 'Allocations', docId: id, changes: {} });
   return { success: true };
@@ -1302,16 +1288,12 @@ export function createRFQ(data) {
     prc.updatedAt = new Date().toISOString();
     prcs[prcIdx] = prc;
 
-    if (state.firebaseUser?.uid) {
-      directSavePRC(state.firebaseUser.uid, prc);
-    }
+    directSavePRC(_getEffectiveUid(), prc);
   });
 
   setState({ rfqs, prcs, statusSummary: buildStatusSummary(prcs) });
 
-  if (state.firebaseUser?.uid) {
-    directSaveRFQ(state.firebaseUser.uid, rfq);
-  }
+  directSaveRFQ(_getEffectiveUid(), rfq);
 
   addAuditLog({
     action: 'create_rfq', collection: 'RFQs', docId: rfq.id,
@@ -1333,9 +1315,7 @@ export function deleteRFQ(id) {
   const rfqs = state.rfqs.filter(r => r.id !== id);
   setState({ rfqs });
 
-  if (state.firebaseUser?.uid) {
-    directDeleteRFQ(state.firebaseUser.uid, id);
-  }
+  directDeleteRFQ(_getEffectiveUid(), id);
 
   addAuditLog({ action: 'delete_rfq', collection: 'RFQs', docId: id, changes: {} });
   return { success: true };
@@ -1434,17 +1414,13 @@ export function createTCD(data) {
       prc.updatedAt = new Date().toISOString();
       prcs[prcIdx] = prc;
 
-      if (state.firebaseUser?.uid) {
-        directSavePRC(state.firebaseUser.uid, prc);
-      }
+      directSavePRC(_getEffectiveUid(), prc);
     });
   });
 
   setState({ tcds, prcs, statusSummary: buildStatusSummary(prcs) });
 
-  if (state.firebaseUser?.uid) {
-    directSaveTCD(state.firebaseUser.uid, tcd);
-  }
+  directSaveTCD(_getEffectiveUid(), tcd);
 
   addAuditLog({
     action: 'create_tcd', collection: 'TCDs', docId: tcd.id,
@@ -1491,9 +1467,7 @@ export function approveTCD(tcdId) {
     };
     generatedPODs.push(pod);
 
-    if (state.firebaseUser?.uid) {
-      directSavePOD(state.firebaseUser.uid, pod);
-    }
+    directSavePOD(_getEffectiveUid(), pod);
 
     va.items.forEach(item => {
       const prcIdx = prcs.findIndex(p => p.id === item.prcId);
@@ -1511,18 +1485,14 @@ export function approveTCD(tcdId) {
       prc.updatedAt = new Date().toISOString();
       prcs[prcIdx] = prc;
 
-      if (state.firebaseUser?.uid) {
-        directSavePRC(state.firebaseUser.uid, prc);
-      }
+      directSavePRC(_getEffectiveUid(), prc);
     });
   });
 
   const pods = [...generatedPODs, ...state.pods];
   setState({ tcds, pods, prcs, statusSummary: buildStatusSummary(prcs) });
 
-  if (state.firebaseUser?.uid) {
-    directSaveTCD(state.firebaseUser.uid, tcd);
-  }
+  directSaveTCD(_getEffectiveUid(), tcd);
 
   addAuditLog({
     action: 'approve_tcd', collection: 'TCDs', docId: tcdId,
@@ -1571,17 +1541,13 @@ export function updatePOD(podId, patch) {
       prc.updatedAt = new Date().toISOString();
       prcs[prcIdx] = prc;
 
-      if (state.firebaseUser?.uid) {
-        directSavePRC(state.firebaseUser.uid, prc);
-      }
+      directSavePRC(_getEffectiveUid(), prc);
     });
   }
 
   setState({ pods, prcs, statusSummary: buildStatusSummary(prcs) });
 
-  if (state.firebaseUser?.uid) {
-    directSavePOD(state.firebaseUser.uid, pod);
-  }
+  directSavePOD(_getEffectiveUid(), pod);
 
   addAuditLog({
     action: 'update_pod', collection: 'PODs', docId: podId,
@@ -1600,7 +1566,5 @@ export function addAuditLog(entry) {
   };
   setState({ activityLogs: [log, ...state.activityLogs] });
 
-  if (state.firebaseUser?.uid) {
-    directSaveActivityLog(state.firebaseUser.uid, log);
-  }
+  directSaveActivityLog(_getEffectiveUid(), log);
 }

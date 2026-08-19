@@ -320,7 +320,7 @@ async function _syncCollection(uid, collectionName, items, fs) {
       const existingDocIds = new Set(existingSnap.docs.map(d => d.id));
       const currentDocIds = new Set();
 
-      const MAX_BATCH = 450;
+      const MAX_BATCH = 400;
       let batch = fs.writeBatch(db);
       let opCount = 0;
 
@@ -358,21 +358,41 @@ async function _syncCollection(uid, collectionName, items, fs) {
       if (opCount > 0) {
         await batch.commit();
       }
+      console.info(`🔥 Firestore synced ${(items || []).length} items to path: ${colPath}`);
     } catch (colErr) {
-      console.warn(`Could not sync ${colPath}:`, colErr);
+      console.warn(`Batch sync error for ${colPath}, falling back to single doc writes:`, colErr);
+      // Fallback: Try saving items individually if batch failed
+      try {
+        for (const item of (items || [])) {
+          const rawId = item.id || item.prNumber || item.allocationNumber || item.rfqNumber || item.tcdNumber || item.poNumber;
+          if (!rawId) continue;
+          const cleanDocId = _encodeDocId(rawId);
+          const docRef = fs.doc(db, `${colPath}/${cleanDocId}`);
+          await fs.setDoc(docRef, _sanitize({ ...item, id: rawId }), { merge: true });
+        }
+      } catch (fallbackErr) {
+        console.error(`Fallback sync failed for ${colPath}:`, fallbackErr);
+      }
     }
   }
 }
 
 function _sanitize(obj) {
   if (obj === null || obj === undefined) return null;
-  if (typeof obj !== 'object') return obj;
+  if (typeof obj === 'number') {
+    if (isNaN(obj) || !isFinite(obj)) return 0;
+    return obj;
+  }
+  if (typeof obj === 'boolean' || typeof obj === 'string') return obj;
+  if (obj instanceof Date) return obj.toISOString();
   if (Array.isArray(obj)) return obj.map(item => _sanitize(item));
+  if (typeof obj !== 'object') return null;
 
   const clean = {};
   for (const [key, value] of Object.entries(obj)) {
-    if (value === undefined) continue;
+    if (value === undefined || typeof value === 'function') continue;
     clean[key] = _sanitize(value);
   }
   return clean;
 }
+
