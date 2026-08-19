@@ -59,16 +59,23 @@ async function initFirebase() {
   // Load environment variables from /api/env or .env if available
   await loadEnv();
 
-  const projectId = getEnv('FIREBASE_PROJECT_ID', FIREBASE_CONFIG.projectId || 'procuretrack-3cb1c');
+  // Check for UI custom config override
+  let customCfg = null;
+  try {
+    const raw = localStorage.getItem('PRC_CUSTOM_FIREBASE_CONFIG');
+    if (raw) customCfg = JSON.parse(raw);
+  } catch (e) {}
+
+  const projectId = customCfg?.projectId || getEnv('FIREBASE_PROJECT_ID', FIREBASE_CONFIG.projectId || 'procuretrack-3cb1c');
 
   FIREBASE_CONFIG = {
-    apiKey:            getEnv('FIREBASE_API_KEY', FIREBASE_CONFIG.apiKey || 'AIzaSyAadw4srX9OFbNTxSoJDf_lPZ-KHrN8L6o'),
-    authDomain:        getEnv('FIREBASE_AUTH_DOMAIN', `${projectId}.firebaseapp.com`),
+    apiKey:            customCfg?.apiKey || getEnv('FIREBASE_API_KEY', FIREBASE_CONFIG.apiKey || 'AIzaSyAadw4srX9OFbNTxSoJDf_lPZ-KHrN8L6o'),
+    authDomain:        customCfg?.authDomain || getEnv('FIREBASE_AUTH_DOMAIN', `${projectId}.firebaseapp.com`),
     projectId:         projectId,
-    storageBucket:     getEnv('FIREBASE_STORAGE_BUCKET', getEnv('FIREBASE_STORAGE_BUCKET', FIREBASE_CONFIG.storageBucket || `${projectId}.firebasestorage.app`)),
-    messagingSenderId: getEnv('FIREBASE_MESSAGING_SENDER_ID', FIREBASE_CONFIG.messagingSenderId || '313091514958'),
-    appId:             getEnv('FIREBASE_APP_ID', FIREBASE_CONFIG.appId || '1:313091514958:web:2698e5d5ebd168e86d991f'),
-    measurementId:     getEnv('FIREBASE_MEASUREMENT_ID', FIREBASE_CONFIG.measurementId || 'G-YW515VXH0G')
+    storageBucket:     customCfg?.storageBucket || getEnv('FIREBASE_STORAGE_BUCKET', FIREBASE_CONFIG.storageBucket || `${projectId}.firebasestorage.app`),
+    messagingSenderId: customCfg?.messagingSenderId || getEnv('FIREBASE_MESSAGING_SENDER_ID', FIREBASE_CONFIG.messagingSenderId || '313091514958'),
+    appId:             customCfg?.appId || getEnv('FIREBASE_APP_ID', FIREBASE_CONFIG.appId || '1:313091514958:web:2698e5d5ebd168e86d991f'),
+    measurementId:     customCfg?.measurementId || getEnv('FIREBASE_MEASUREMENT_ID', FIREBASE_CONFIG.measurementId || 'G-YW515VXH0G')
   };
 
   GEMINI_API_KEY = getEnv('GEMINI_API_KEY', GEMINI_API_KEY);
@@ -355,8 +362,28 @@ export async function testFirestoreConnection() {
   }
 }
 
+export function saveCustomFirebaseConfig(cfg) {
+  if (!cfg || !cfg.apiKey || !cfg.projectId) {
+    throw new Error('API Key and Project ID are required.');
+  }
+  localStorage.setItem('PRC_CUSTOM_FIREBASE_CONFIG', JSON.stringify(cfg));
+  _firebaseApp = null;
+  _db = null;
+  _auth = null;
+  _authModule = null;
+}
+
+export function resetCustomFirebaseConfig() {
+  localStorage.removeItem('PRC_CUSTOM_FIREBASE_CONFIG');
+  _firebaseApp = null;
+  _db = null;
+  _auth = null;
+  _authModule = null;
+}
+
 export {
   FIREBASE_CONFIG, GEMINI_API_KEY, GEMINI_MODEL, APP_CONFIG,
   isFirebaseConfigured, initFirebase,
   _db as db, _auth as auth, _storage as storage, _functions as functions
 };
+
