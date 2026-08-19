@@ -79,20 +79,26 @@ async function initFirebase() {
   }
 
   try {
-    const { initializeApp }  = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-    const { getFirestore }   = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-    const authMod            = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
-    const { getStorage }     = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js");
-    const { getFunctions }   = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js");
+    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+    const { getFirestore, initializeFirestore } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const authMod = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
+    const { getStorage } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js");
+    const { getFunctions } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js");
 
     _firebaseApp = initializeApp(FIREBASE_CONFIG);
-    _db          = getFirestore(_firebaseApp);
-    _auth        = authMod.getAuth(_firebaseApp);
-    _authModule  = authMod;
-    _storage     = getStorage(_firebaseApp);
-    _functions   = getFunctions(_firebaseApp);
+    try {
+      _db = initializeFirestore(_firebaseApp, {
+        experimentalAutoDetectLongPolling: true
+      });
+    } catch (dbErr) {
+      _db = getFirestore(_firebaseApp);
+    }
+    _auth = authMod.getAuth(_firebaseApp);
+    _authModule = authMod;
+    _storage = getStorage(_firebaseApp);
+    _functions = getFunctions(_firebaseApp);
 
-    console.info(`✅ Firebase initialized for project: ${FIREBASE_CONFIG.projectId}`);
+    console.info(`✅ Firebase initialized for project: ${FIREBASE_CONFIG.projectId} (long-polling auto-detect active)`);
     return _firebaseApp;
   } catch (err) {
     console.error("Firebase initialization failed:", err);

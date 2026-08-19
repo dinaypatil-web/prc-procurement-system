@@ -2540,8 +2540,20 @@ window.handleTestFirestoreConnection = async function() {
       if (out) out.innerHTML = `<span style="color:var(--color-success);font-weight:600">✅ Cloud Firestore Connection Successful!</span><br><span style="font-size:12px;color:var(--color-text-secondary)">Project: <code>${res.projectId}</code> | Latency: <strong>${res.latencyMs}ms</strong></span>`;
       toast("Firestore connection test passed!", "success");
     } else {
-      if (out) out.innerHTML = `<span style="color:var(--color-danger);font-weight:600">❌ Firestore Connection Error:</span><br><span style="font-size:12px;color:var(--color-danger)">${res.error || 'Unknown error'}</span>`;
-      toast("Firestore test failed: " + (res.error || 'Unknown error'), "danger");
+      const isTimeout = (res.error || '').toLowerCase().includes('timed out');
+      if (out) out.innerHTML = `
+        <div style="color:var(--color-danger);font-weight:600">❌ Firestore Connection Error:</div>
+        <div style="font-size:12px;color:var(--color-danger);margin-top:4px;margin-bottom:8px">${res.error || 'Unknown error'}</div>
+        <div style="font-size:11.5px;line-height:1.5;color:var(--color-text-secondary);background:var(--color-surface-1);padding:10px;border-radius:6px;border-left:3px solid var(--color-danger)">
+          <strong>Troubleshooting Checklist:</strong>
+          <ol style="margin-top:4px;margin-bottom:0;padding-left:18px">
+            <li><strong>Create Firestore Database:</strong> Open <a href="https://console.firebase.google.com/" target="_blank" style="color:var(--color-primary)">Firebase Console</a> › Select project <code>${res.projectId || 'procuretrack-3cb1c'}</code> › <strong>Build › Firestore Database</strong> › Click <strong>Create Database</strong>.</li>
+            <li><strong>Enable Test Mode Rules:</strong> In Firestore Database › <strong>Rules</strong> tab, set: <code>allow read, write: if true;</code></li>
+            <li><strong>Enable Anonymous Auth:</strong> Go to <strong>Authentication › Sign-in method</strong> › Enable <strong>Anonymous</strong>.</li>
+            <li><strong>Authorized Domains:</strong> Go to <strong>Authentication › Settings › Authorized Domains</strong> › Add your deployment domain.</li>
+          </ol>
+        </div>`;
+      toast("Firestore connection failed. Check setup guide in output box.", "danger");
     }
   } catch (err) {
     if (out) out.innerHTML = `<span style="color:var(--color-danger);font-weight:600">❌ Test Exception:</span> ${err.message}`;
