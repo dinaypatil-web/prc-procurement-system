@@ -2,7 +2,7 @@
 // EXCEL IMPORT ENGINE (SheetJS-based)
 // =========================================================
 import { toast } from './utils.js';
-import { updatePRC, getState, setState, addAuditLog, createAllocation } from './state.js';
+import { updatePRC, getState, setState, addAuditLog, createAllocation, pushLocalDataToFirestore } from './state.js';
 import { calculateStatus, calculateMaterialStatus, buildStatusSummary } from './status-engine.js';
 
 // Expected columns in the import Excel file (45 Enterprise Columns)
@@ -607,6 +607,13 @@ export function mergeImport(rows) {
     action: 'import', collection: 'PRCs', docId: 'batch',
     changes: { summary: `New: ${results.new} PRCs imported, Skipped: ${results.skipped} existing PRCs (prevented duplicates/overwriting)` }
   });
+
+  // Direct Cloud Firestore synchronization
+  try {
+    pushLocalDataToFirestore();
+  } catch (syncErr) {
+    console.warn('Direct Firestore push notice for imported data:', syncErr);
+  }
 
   return results;
 }
