@@ -317,18 +317,35 @@ export function getFirebaseDiagnostics() {
 }
 
 export async function testFirestoreConnection() {
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Connection timed out (7s). Could not reach Cloud Firestore servers. Please check network/firewall or Firebase Console config.')), 7000)
+  );
+
   try {
     await initFirebase();
-    if (!_db) return { success: false, error: 'Firestore database instance not initialized' };
+    if (!_db) return { success: false, error: 'Firestore database instance not initialized. Verify API key and Project ID.' };
+
+    try {
+      await ensureFirebaseAuth();
+    } catch (e) {
+      console.warn("Auth initialization notice during test:", e);
+    }
+
     const { doc, getDoc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
     const pingRef = doc(_db, 'workspaces/default/diagnostics/ping');
     const start = Date.now();
-    await setDoc(pingRef, { lastPing: new Date().toISOString(), client: 'web' }, { merge: true });
-    const snap = await getDoc(pingRef);
+
+    const pingOp = (async () => {
+      await setDoc(pingRef, { lastPing: new Date().toISOString(), client: 'web' }, { merge: true });
+      const snap = await getDoc(pingRef);
+      return snap;
+    })();
+
+    const snap = await Promise.race([pingOp, timeoutPromise]);
     const latency = Date.now() - start;
     return { success: snap.exists(), latencyMs: latency, projectId: FIREBASE_CONFIG.projectId };
   } catch (err) {
-    return { success: false, error: err.message, code: err.code || 'UNKNOWN' };
+    return { success: false, error: err.message || 'Firestore connection test failed', code: err.code || 'UNKNOWN' };
   }
 }
 
