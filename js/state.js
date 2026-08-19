@@ -252,6 +252,72 @@ export function exportDatabaseBackup() {
 
 export const exportCreatorDatabase = exportDatabaseBackup;
 
+export async function restoreDatabaseBackup(jsonData) {
+  if (!jsonData || typeof jsonData !== 'object') {
+    throw new Error('Invalid JSON backup file format.');
+  }
+
+  // Handle both standard backup object { meta, prcs, allocations... } and direct PRC array
+  const prcs = Array.isArray(jsonData.prcs) ? jsonData.prcs : (Array.isArray(jsonData) ? jsonData : []);
+  const allocations = Array.isArray(jsonData.allocations) ? jsonData.allocations : [];
+  const rfqs = Array.isArray(jsonData.rfqs) ? jsonData.rfqs : [];
+  const tcds = Array.isArray(jsonData.tcds) ? jsonData.tcds : [];
+  const pods = Array.isArray(jsonData.pods) ? jsonData.pods : [];
+  const vendors = Array.isArray(jsonData.vendors) ? jsonData.vendors : [];
+  const users = Array.isArray(jsonData.users) ? jsonData.users : [];
+  const notifications = Array.isArray(jsonData.notifications) ? jsonData.notifications : [];
+  const activityLogs = Array.isArray(jsonData.activityLogs) ? jsonData.activityLogs : [];
+
+  if (prcs.length === 0 && Object.keys(jsonData).length === 0) {
+    throw new Error('Backup file is empty or missing data collections.');
+  }
+
+  state.prcs = prcs;
+  if (allocations.length) state.allocations = allocations;
+  if (rfqs.length) state.rfqs = rfqs;
+  if (tcds.length) state.tcds = tcds;
+  if (pods.length) state.pods = pods;
+  if (vendors.length) state.vendors = vendors;
+  if (users.length) state.users = users;
+  if (notifications.length) state.notifications = notifications;
+  if (activityLogs.length) state.activityLogs = activityLogs;
+
+  // Recalculate status and summary
+  state.prcs.forEach(prc => {
+    prc.status = calculateStatus(prc);
+    (prc.materials || []).forEach(mat => {
+      mat.status = calculateMaterialStatus(mat, prc);
+    });
+  });
+  state.statusSummary = buildStatusSummary(state.prcs);
+  state.totalMaterials = state.prcs.reduce((acc, p) => acc + (p.materials ? p.materials.length : 0), 0);
+
+  saveToLocalCache();
+
+  // Sync restored data to Cloud Firestore if user is authenticated
+  const uid = state.firebaseUser?.uid || 'default';
+  const collectionsToSave = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'notifications', 'activityLogs'];
+  for (const col of collectionsToSave) {
+    if (state[col] && state[col].length > 0) {
+      try {
+        await firestoreSaveCollection(uid, col, state[col]);
+      } catch (err) {
+        console.warn(`Failed to sync restored collection '${col}' to Firestore:`, err);
+      }
+    }
+  }
+
+  emit('*');
+  return {
+    prcCount: state.prcs.length,
+    allocationsCount: state.allocations.length,
+    rfqCount: state.rfqs.length
+  };
+}
+
+export const restoreCreatorDatabase = restoreDatabaseBackup;
+
+
 export async function resetDatabase() {
   const uid = state.firebaseUser?.uid || 'default';
   state.prcs = [];

@@ -311,7 +311,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
@@ -2333,7 +2333,11 @@ function renderSettings(container) {
       </div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;padding-top:16px;border-top:1px solid var(--color-border);flex-wrap:wrap;gap:10px">
-        <button class="btn btn-secondary btn-sm" onclick="exportDatabaseBackup()">💾 Download JSON Backup</button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="exportDatabaseBackup()">💾 Download JSON Backup</button>
+          <button class="btn btn-secondary btn-sm" onclick="triggerRestoreJSONBackup()">📥 Restore JSON Backup</button>
+          <input type="file" id="json-backup-input" accept=".json" style="display:none" onchange="handleRestoreJSONBackupFile(event)">
+        </div>
         <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleResetUserDB()">🗑️ Reset Database</button>
       </div>
     </div>
@@ -2494,6 +2498,36 @@ window.exportPDF    = (t) => exportPDF(t);
 window.downloadSampleTemplate = downloadSampleTemplate;
 window.exportDatabaseBackup   = () => exportDatabaseBackup();
 window.exportCreatorDatabase  = () => exportDatabaseBackup();
+window.restoreDatabaseBackup  = (jsonData) => restoreDatabaseBackup(jsonData);
+window.triggerRestoreJSONBackup = function() {
+  const input = document.getElementById('json-backup-input');
+  if (input) {
+    input.value = '';
+    input.click();
+  }
+};
+window.handleRestoreJSONBackupFile = async function(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+
+  const confirmed = await confirmDialog(`Are you sure you want to restore database from backup file "${file.name}"? This will update your database with the backup data.`, "Restore Database Backup");
+  if (!confirmed) return;
+
+  const reader = new FileReader();
+  reader.onload = async (evt) => {
+    try {
+      const parsedData = JSON.parse(evt.target.result);
+      const res = await restoreDatabaseBackup(parsedData);
+      toast(`Database restored successfully! (${res.prcCount} PRCs loaded)`, "success");
+      navigate("dashboard");
+      updateSidebarBadges();
+    } catch (err) {
+      console.error("Failed to restore JSON backup:", err);
+      toast("Failed to restore backup: " + err.message, "danger");
+    }
+  };
+  reader.readAsText(file);
+};
 window.handleResetUserDB      = async function() {
   const confirmed = await confirmDialog("Are you sure you want to reset your user database to a clean empty state?", "Reset User Database");
   if (confirmed) {
