@@ -888,9 +888,55 @@ window.changeVendorSort = function(field, dir) {
   if (container) renderVendors(container);
 };
 
-window.changePageSize = function(size) {
-  setState({ pageSize: parseInt(size), currentPage_num: 1 });
-  renderPRCTable();
+window.getPRCDocumentSummary = function(p) {
+  if (!p) return { rfqs: [], tcds: [], pos: [], vendors: [] };
+  const mats = p.materials || [];
+
+  // 1. RFQs
+  const rfqSet = new Map();
+  if (p.rfqNumber) rfqSet.set(String(p.rfqNumber).trim(), p.rfqDate || '');
+  mats.forEach(m => {
+    if (m.rfqNumber) {
+      const num = String(m.rfqNumber).trim();
+      if (!rfqSet.has(num) || (!rfqSet.get(num) && m.rfqDate)) rfqSet.set(num, m.rfqDate || '');
+    }
+  });
+
+  // 2. TCDs
+  const tcdSet = new Map();
+  if (p.tcdNumber) tcdSet.set(String(p.tcdNumber).trim(), p.tcdDate || '');
+  mats.forEach(m => {
+    if (m.tcdNumber) {
+      const num = String(m.tcdNumber).trim();
+      if (!tcdSet.has(num) || (!tcdSet.get(num) && m.tcdDate)) tcdSet.set(num, m.tcdDate || '');
+    }
+  });
+
+  // 3. POs
+  const poSet = new Map();
+  if (p.poNumber) poSet.set(String(p.poNumber).trim(), p.poDate || '');
+  mats.forEach(m => {
+    if (m.poNumber) {
+      const num = String(m.poNumber).trim();
+      if (!poSet.has(num) || (!poSet.get(num) && m.poDate)) poSet.set(num, m.poDate || '');
+    }
+  });
+
+  // 4. Vendors
+  const vendorSet = new Set();
+  if (p.vendorName) vendorSet.add(String(p.vendorName).trim());
+  if (p.vendor) vendorSet.add(String(p.vendor).trim());
+  mats.forEach(m => {
+    if (m.vendorName) vendorSet.add(String(m.vendorName).trim());
+    if (m.vendor) vendorSet.add(String(m.vendor).trim());
+  });
+
+  return {
+    rfqs: Array.from(rfqSet.entries()).map(([num, date]) => ({ number: num, date })),
+    tcds: Array.from(tcdSet.entries()).map(([num, date]) => ({ number: num, date })),
+    pos:  Array.from(poSet.entries()).map(([num, date]) => ({ number: num, date })),
+    vendors: Array.from(vendorSet).filter(Boolean)
+  };
 };
 
 function renderPRCTable() {
@@ -1015,6 +1061,48 @@ function renderPRCTable() {
         const ageClass = getAgeBadgeClass(age, 7);
         const isAuth = isPRCAuthorised(p);
         const currentPrStatus = p.prStatus || (isAuth ? 'Authorised' : p.status);
+        const docSummary = getPRCDocumentSummary(p);
+
+        const rfqCell = docSummary.rfqs.length > 0
+          ? docSummary.rfqs.map(r => `
+              <div style="margin-bottom:2px">
+                <span class="copy-badge" onclick="copyToClipboard('${r.number}','RFQ Number',event)" title="Click to copy RFQ Number">
+                  <span class="text-sm font-mono">${highlight(r.number, q)}</span>
+                  <span class="copy-icon">📋</span>
+                </span>
+                ${r.date ? `<br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(r.date)}</span>` : ''}
+              </div>
+            `).join('')
+          : '<span class="text-tertiary">—</span>';
+
+        const tcdCell = docSummary.tcds.length > 0
+          ? docSummary.tcds.map(t => `
+              <div style="margin-bottom:2px">
+                <span class="copy-badge" onclick="copyToClipboard('${t.number}','TCD Number',event)" title="Click to copy TCD Number">
+                  <span class="text-sm font-mono">${highlight(t.number, q)}</span>
+                  <span class="copy-icon">📋</span>
+                </span>
+                ${t.date ? `<br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(t.date)}</span>` : ''}
+              </div>
+            `).join('')
+          : '<span class="text-tertiary">—</span>';
+
+        const poCell = docSummary.pos.length > 0
+          ? docSummary.pos.map(po => `
+              <div style="margin-bottom:2px">
+                <span class="copy-badge" onclick="copyToClipboard('${po.number}','PO Number',event)" title="Click to copy PO Number">
+                  <span class="text-sm font-mono font-semibold text-brand">${highlight(po.number, q)}</span>
+                  <span class="copy-icon">📋</span>
+                </span>
+                ${po.date ? `<br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(po.date)}</span>` : ''}
+              </div>
+            `).join('')
+          : '<span class="text-tertiary">—</span>';
+
+        const vendorCell = docSummary.vendors.length > 0
+          ? docSummary.vendors.map(v => `<div style="font-size:13px">${highlight(v, q)}</div>`).join('')
+          : '<span class="text-tertiary">—</span>';
+
         return `<tr onclick="openPRCDetail('${p.id}')" style="cursor:pointer">
           <td><span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(p.prNumber,q)}</span><span class="copy-icon">📋</span></span></td>
           <td>${highlight(p.department,q)}</td>
@@ -1040,10 +1128,10 @@ function renderPRCTable() {
           </td>
           <td>${fmtDate(p.allocationDate)}<br>${p.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number" style="font-size:11px">${p.allocationNumber}<span class="copy-icon">📋</span></span>` : '<span style="font-size:11px;color:var(--color-text-tertiary)">—</span>'}</td>
           <td>${p.buyerName || p.allocatedBy ? highlight(p.buyerName || p.allocatedBy, q) : '<span style="font-size:11px;color:var(--color-text-tertiary)">—</span>'}</td>
-          <td>${p.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="text-sm font-mono">${highlight(p.rfqNumber,q)}</span><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.rfqDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
-          <td>${p.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><span class="text-sm font-mono">${p.tcdNumber}</span><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.tcdDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
-          <td>${p.poNumber  ? `<span class="copy-badge" onclick="copyToClipboard('${p.poNumber}','PO Number',event)" title="Click to copy PO Number"><span class="text-sm font-mono font-semibold text-brand">${highlight(p.poNumber,q)}</span><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(p.poDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
-          <td>${p.vendorName ? `<span class="text-sm">${highlight(p.vendorName,q)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+          <td>${rfqCell}</td>
+          <td>${tcdCell}</td>
+          <td>${poCell}</td>
+          <td>${vendorCell}</td>
           <td><span class="${ageClass} text-sm">${age}d</span></td>
           <td onclick="event.stopPropagation()">
             <button class="btn btn-ghost btn-sm btn-icon" onclick="openPRCDetail('${p.id}')" title="View Details">👁️</button>
