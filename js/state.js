@@ -1125,12 +1125,10 @@ export function createAllocation(data) {
       prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
     });
 
-    if (!prc.allocationNumber || prc.allocationNumber === data.allocationNumber) {
-      prc.allocationNumber = data.allocationNumber;
-      prc.allocationDate = data.allocationDate;
-      prc.buyerName = data.buyerName;
-      prc.allocatedBy = data.buyerName;
-    }
+    prc.allocationNumber = prc.allocationNumber || data.allocationNumber;
+    prc.allocationDate   = prc.allocationDate || data.allocationDate;
+    prc.buyerName        = prc.buyerName || data.buyerName;
+    prc.allocatedBy      = prc.allocatedBy || data.buyerName;
 
     prc.status = calculateStatus(prc, prc.materials);
     prc.updatedAt = new Date().toISOString();

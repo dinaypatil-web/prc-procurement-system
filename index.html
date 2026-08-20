@@ -313,7 +313,7 @@
 // =========================================================
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary } from './js/status-engine.js';
-import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard } from './js/utils.js';
+import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
@@ -1567,9 +1567,10 @@ function renderProcurementField(label, value, onchange) {
 }
 
 function renderDateField(label, value, onchange) {
+  const formattedVal = toInputDateVal(value);
   return `<div class="form-group" style="margin:0">
     <label class="form-label">${label}</label>
-    <input type="date" class="form-control" value="${value||''}" onchange="${onchange}"/>
+    <input type="date" class="form-control" value="${formattedVal}" onchange="${onchange}"/>
   </div>`;
 }
 

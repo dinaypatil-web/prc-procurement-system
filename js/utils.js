@@ -10,6 +10,31 @@ export function fmtDate(d) {
   return dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
 }
 
+/** Convert any raw date string to YYYY-MM-DD for HTML input type="date" */
+export function toInputDateVal(d) {
+  if (!d) return '';
+  const s = String(d).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.split('T')[0];
+  
+  const dmYMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (dmYMatch) {
+    const day = dmYMatch[1].padStart(2, '0');
+    const month = dmYMatch[2].padStart(2, '0');
+    const year = dmYMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  const dt = new Date(d);
+  if (!isNaN(dt.getTime())) {
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return '';
+}
+
 /** Format datetime as DD MMM YYYY HH:MM */
 export function fmtDateTime(d) {
   if (!d) return '—';
