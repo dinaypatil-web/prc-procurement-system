@@ -311,7 +311,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, createRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
@@ -3823,18 +3823,29 @@ function renderRFQsPage(container) {
       <table class="data-table">
         <thead><tr><th>RFQ Number</th><th>Date</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
         <tbody>
-          ${rfqs.map(r => `
+          ${rfqs.map(r => {
+            const isClosed = !!(r.isClosed || String(r.status||'').trim().toLowerCase() === 'closed');
+            const statusChipClass = isClosed ? 'chip-completed' : (r.status === 'Short-Close' ? 'chip-shortclosed' : 'chip-pending');
+            return `
             <tr>
               <td><span class="copy-badge" onclick="copyToClipboard('${r.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="font-mono font-semibold">${r.rfqNumber}</span><span class="copy-icon">📋</span></span></td>
               <td>${fmtDate(r.rfqDate)}</td>
               <td><span class="chip chip-pending">${r.items.length} items</span></td>
-              <td><span class="chip chip-completed">${r.status}</span></td>
+              <td>
+                <span class="chip ${statusChipClass}">
+                  ${isClosed ? '🔒 Closed (TCD Eligible)' : (r.status || 'Active')}
+                </span>
+              </td>
               <td>${fmtDate(r.createdAt)}</td>
               <td>
                 <button class="btn btn-ghost btn-sm" onclick="viewRFQDetail('${r.id}')">👁️ View</button>
+                <button class="btn ${isClosed ? 'btn-secondary' : 'btn-primary'} btn-sm" onclick="handleToggleRFQClose('${r.id}', ${!isClosed})">
+                  ${isClosed ? '🔓 Re-open RFQ' : '🔒 Tag RFQ Close'}
+                </button>
                 <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleDeleteRFQ('${r.id}')">🗑️</button>
               </td>
-            </tr>`).join('')}
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>
     </div>` : `
@@ -4158,9 +4169,24 @@ window.submitCreateRFQ = function() {
   updateSidebarBadges();
 };
 
+window.handleToggleRFQClose = function(id, isClosed) {
+  const res = toggleRFQClose(id, isClosed);
+  if (res.success) {
+    toast(isClosed ? 'RFQ tagged as Closed (Eligible for TCD)' : 'RFQ re-opened (Active)', 'success');
+    const modal = document.getElementById('rfq-detail-modal');
+    if (modal) viewRFQDetail(id);
+    const container = document.getElementById('page-content');
+    if (getState().currentPage === 'rfqs' && container) renderRFQsPage(container);
+    if (getState().currentPage === 'tcds' && container) renderTCDsPage(container);
+  } else {
+    toast(res.reason || 'Failed to update RFQ status', 'error');
+  }
+};
+
 window.viewRFQDetail = function(id) {
   const rfq = getRFQById(id);
   if (!rfq) return;
+  const isClosed = !!(rfq.isClosed || String(rfq.status||'').trim().toLowerCase() === 'closed');
   const modalId = 'rfq-detail-modal';
   let el = document.getElementById(modalId);
   if (el) el.remove();
@@ -4170,8 +4196,15 @@ window.viewRFQDetail = function(id) {
   el.innerHTML = `
     <div class="modal modal-lg fade-in-up" style="max-width:850px">
       <div class="modal-header">
-        <div><h3 class="modal-title">📨 RFQ: <span class="copy-badge" onclick="copyToClipboard('${rfq.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="font-mono font-bold">${rfq.rfqNumber}</span><span class="copy-icon">📋</span></span></h3>
-        <div style="font-size:13px;color:var(--color-text-secondary)">Date: ${fmtDate(rfq.rfqDate)} · Created by ${rfq.createdBy}</div></div>
+        <div>
+          <h3 class="modal-title">📨 RFQ: <span class="copy-badge" onclick="copyToClipboard('${rfq.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="font-mono font-bold">${rfq.rfqNumber}</span><span class="copy-icon">📋</span></span></h3>
+          <div style="font-size:13px;color:var(--color-text-secondary);margin-top:2px">
+            Date: ${fmtDate(rfq.rfqDate)} · Created by ${rfq.createdBy} ·
+            <span class="chip ${isClosed ? 'chip-completed' : 'chip-pending'}" style="margin-left:4px">
+              ${isClosed ? '🔒 Closed (TCD Eligible)' : '🟢 Active'}
+            </span>
+          </div>
+        </div>
         <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
       </div>
       <div class="modal-body" style="padding:20px">
@@ -4180,7 +4213,12 @@ window.viewRFQDetail = function(id) {
           <tbody>${rfq.items.map(i => `<tr><td><span class="copy-badge" onclick="copyToClipboard('${i.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono">${i.prNumber}</span><span class="copy-icon">📋</span></span></td><td><span class="copy-badge" onclick="copyToClipboard('${i.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${i.matCode}</span><span class="copy-icon">📋</span></span></td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
         </table>
       </div>
-      <div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button></div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
+        <button class="btn ${isClosed ? 'btn-secondary' : 'btn-primary'}" onclick="handleToggleRFQClose('${rfq.id}', ${!isClosed})">
+          ${isClosed ? '🔓 Re-open RFQ' : '🔒 Tag RFQ Close'}
+        </button>
+        <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button>
+      </div>
     </div>`;
   document.body.appendChild(el);
 };

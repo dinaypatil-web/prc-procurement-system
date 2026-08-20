@@ -1357,6 +1357,33 @@ export function deleteRFQ(id) {
   return { success: true };
 }
 
+export function toggleRFQClose(id, isClosed) {
+  const rfqIdx = state.rfqs.findIndex(r => r.id === id);
+  if (rfqIdx === -1) return { success: false, reason: 'RFQ not found' };
+
+  const rfq = { ...state.rfqs[rfqIdx] };
+  rfq.isClosed = !!isClosed;
+  rfq.status = isClosed ? 'Closed' : 'Active';
+  rfq.updatedAt = new Date().toISOString();
+  rfq.updatedBy = state.currentUser?.name || 'App User';
+
+  const rfqs = [...state.rfqs];
+  rfqs[rfqIdx] = rfq;
+  setState({ rfqs });
+
+  // Direct Firestore write for updated RFQ
+  directSaveRFQ(_getEffectiveUid(), rfq);
+
+  addAuditLog({
+    action: 'toggle_rfq_close',
+    collection: 'RFQs',
+    docId: id,
+    changes: { isClosed: rfq.isClosed, status: rfq.status }
+  });
+
+  return { success: true, isClosed: rfq.isClosed };
+}
+
 // ── TCD OPERATIONS ────────────────────────────────────────
 
 export function getTCDdQty(rfqId, prcId, materialId) {
@@ -1372,7 +1399,11 @@ export function getTCDdQty(rfqId, prcId, materialId) {
 export function getAvailableForTCD() {
   const result = [];
   state.rfqs.forEach(rfq => {
-    if (rfq.isShortClosed || String(rfq.status || '').toLowerCase() === 'short closed') return;
+    if (rfq.isShortClosed || String(rfq.status || '').toLowerCase() === 'short closed' || String(rfq.status || '').toLowerCase() === 'short-close') return;
+
+    // Closed RFQs ONLY will be eligible for TCD creation
+    const isClosed = !!(rfq.isClosed || String(rfq.status || '').trim().toLowerCase() === 'closed');
+    if (!isClosed) return;
     rfq.items.forEach(item => {
       if (item.isShortClosed || String(item.status || '').toLowerCase() === 'short closed') return;
       // Exclude PRCs tagged as Future PRC, Wrong PRC, or Short Closed
