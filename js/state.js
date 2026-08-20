@@ -802,14 +802,22 @@ export function getFilteredPRCs() {
 
   const f = state.filters;
   if (f.status) {
-    if (f.status === 'Authorised' || f.status === 'Authorized') {
-      list = list.filter(p => isPRCAuthorised(p) || calculateStatus(p) === 'Authorised' || p.status === 'Authorised' || p.prStatus === 'Authorised');
+    const target = f.status.trim().toLowerCase();
+    if (target === 'authorised' || target === 'authorized') {
+      list = list.filter(p => isPRCAuthorised(p) || calculateStatus(p).toLowerCase() === 'authorised' || (p.status||'').toLowerCase() === 'authorised' || (p.prStatus||'').toLowerCase() === 'authorised');
     } else {
-      list = list.filter(p => calculateStatus(p) === f.status || p.status === f.status || p.prStatus === f.status);
+      list = list.filter(p =>
+        calculateStatus(p).toLowerCase() === target ||
+        (p.status || '').toLowerCase() === target ||
+        (p.prStatus || '').toLowerCase() === target
+      );
     }
   }
   if (f.isOverdue) {
-    list = list.filter(p => getPRCAge(p) > 7 && !['Process Completed', 'Wrong PRC', 'PR Not Approved', 'Short-Close'].includes(p.status));
+    list = list.filter(p => {
+      const st = calculateStatus(p);
+      return getPRCAge(p) > 7 && !['Process Completed', 'Wrong PRC', 'PR Not Approved', 'Short-Close'].includes(st);
+    });
   }
   if (f.poToday) {
     const todayStr = new Date().toISOString().split('T')[0];

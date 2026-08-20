@@ -1192,16 +1192,21 @@ function renderPRCTable() {
           ? docSummary.vendors.map(v => `<div style="font-size:13px">${highlight(v, q)}</div>`).join('')
           : '<span class="text-tertiary">—</span>';
 
+        const computedStatus = calculateStatus(p);
+
         return `<tr onclick="openPRCDetail('${p.id}')" style="cursor:pointer">
           <td><span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(p.prNumber,q)}</span><span class="copy-icon">📋</span></span></td>
           <td>${highlight(p.department,q)}</td>
           <td><span class="chip ${priorityChipClass(p.priority)}">${p.priority}</span></td>
           <td onclick="event.stopPropagation()">
-            <div style="display:flex;align-items:center;gap:6px">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <span class="chip ${getStatusChipClass(computedStatus)}">
+                <span class="chip-dot"></span>${computedStatus}
+              </span>
               <select class="form-control form-control-xs font-semibold"
-                      style="padding:3px 6px;font-size:11px;border-radius:12px;cursor:pointer;background:var(--color-surface-2);border:1px solid var(--color-border);width:auto"
+                      style="padding:2px 4px;font-size:10px;border-radius:8px;cursor:pointer;background:var(--color-surface-2);border:1px solid var(--color-border);width:auto"
                       onchange="handlePRCStatusChange('${p.id}', this.value)"
-                      title="Click to Change PRC Status">
+                      title="PR Approval / Override Status">
                 <option value="Authorised" ${(isAuth||currentPrStatus==='Authorised'||currentPrStatus==='Approved')?'selected':''}>✅ Authorised</option>
                 <option value="Pending" ${(!isAuth&&currentPrStatus==='Pending')?'selected':''}>🕐 Pending</option>
                 <option value="In Review" ${currentPrStatus==='In Review'?'selected':''}>🔍 In Review</option>
