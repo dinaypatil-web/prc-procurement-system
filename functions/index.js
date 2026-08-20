@@ -15,7 +15,7 @@ const msg = getMessaging();
 
 // ── STATUS ENGINE (server-side mirror) ─────────────────────
 function calculateStatus(prc, materials = []) {
-  if (prc.isShortClosed)    return 'Short Closed';
+  if (prc.isShortClosed)    return 'Short-Close';
   if (prc.isWrongPRC)       return 'Wrong PRC';
   if (prc.isPRNotApproved)  return 'PR Not Approved';
   if (prc.isFuturePRC)      return 'Future PRC';
@@ -24,14 +24,7 @@ function calculateStatus(prc, materials = []) {
       prc.inputFromEndUser  || prc.inputFromVendor)
     return 'Inputs Required';
   if (prc.rfqNumber && !prc.offersReceived) return 'Awaiting Offer';
-
-  if (materials.length > 0) {
-    const done = materials.filter(m => m.poNumber && m.poDate && m.vendor).length;
-    if (done > 0 && done < materials.length) return 'Partly Completed';
-    if (done === materials.length)           return 'Process Completed';
-  } else {
-    if (prc.poNumber && prc.poDate && prc.vendorName) return 'Process Completed';
-  }
+  if (prc.tcdNumber || prc.tcdApproved || prc.poNumber) return 'Process Completed';
   return 'Pending';
 }
 

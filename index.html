@@ -1030,7 +1030,7 @@ function renderPRCTable() {
                 <option value="In Review" ${currentPrStatus==='In Review'?'selected':''}>🔍 In Review</option>
                 <option value="Draft" ${currentPrStatus==='Draft'?'selected':''}>📝 Draft</option>
                 <option value="Rejected" ${currentPrStatus==='Rejected'?'selected':''}>❌ Rejected</option>
-                <option value="Short Closed" ${(p.isShortClosed||currentPrStatus==='Short Closed')?'selected':''}>🔒 Short Closed</option>
+                <option value="Short-Close" ${(p.isShortClosed||currentPrStatus==='Short-Close'||currentPrStatus==='Short Closed')?'selected':''}>🔒 Short-Close</option>
                 <option value="PR Not Approved" ${(p.isPRNotApproved||currentPrStatus==='PR Not Approved')?'selected':''}>🚫 PR Not Approved</option>
                 <option value="Wrong PRC" ${(p.isWrongPRC||currentPrStatus==='Wrong PRC')?'selected':''}>❌ Wrong PRC</option>
                 <option value="Future PRC" ${(p.isFuturePRC||currentPrStatus==='Future PRC')?'selected':''}>🔮 Future PRC</option>
@@ -1102,7 +1102,7 @@ window.openPRCDetail = function(id) {
         <option value="In Review" ${currentPrStatus==='In Review'?'selected':''}>🔍 In Review</option>
         <option value="Draft" ${currentPrStatus==='Draft'?'selected':''}>📝 Draft</option>
         <option value="Rejected" ${currentPrStatus==='Rejected'?'selected':''}>❌ Rejected</option>
-        <option value="Short Closed" ${(prc.isShortClosed||currentPrStatus==='Short Closed')?'selected':''}>🔒 Short Closed</option>
+        <option value="Short-Close" ${(prc.isShortClosed||currentPrStatus==='Short-Close'||currentPrStatus==='Short Closed')?'selected':''}>🔒 Short-Close</option>
         <option value="PR Not Approved" ${(prc.isPRNotApproved||currentPrStatus==='PR Not Approved')?'selected':''}>🚫 PR Not Approved</option>
         <option value="Wrong PRC" ${(prc.isWrongPRC||currentPrStatus==='Wrong PRC')?'selected':''}>❌ Wrong PRC</option>
         <option value="Future PRC" ${(prc.isFuturePRC||currentPrStatus==='Future PRC')?'selected':''}>🔮 Future PRC</option>
@@ -1148,7 +1148,7 @@ window.openPRCDetail = function(id) {
     <!-- Override Flags -->
     <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--color-border)">
       <h4 style="margin-bottom:12px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-secondary)">Override Flags</h4>
-      ${renderToggle('Short Closed', prc.isShortClosed, `setFlag('${id}','isShortClosed',this.checked)`)}
+      ${renderToggle('Short-Close', prc.isShortClosed, `setFlag('${id}','isShortClosed',this.checked)`)}
       ${renderToggle('Wrong PRC', prc.isWrongPRC, `setFlag('${id}','isWrongPRC',this.checked)`)}
       ${renderToggle('PR Not Approved', prc.isPRNotApproved, `setFlag('${id}','isPRNotApproved',this.checked)`)}
       ${renderToggle('Future PRC', prc.isFuturePRC, `setFlag('${id}','isFuturePRC',this.checked)`)}
@@ -1206,7 +1206,7 @@ window.openPRCDetail = function(id) {
               <option value="In Review" ${currentPrStatus==='In Review'?'selected':''}>🔍 In Review</option>
               <option value="Draft" ${currentPrStatus==='Draft'?'selected':''}>📝 Draft</option>
               <option value="Rejected" ${currentPrStatus==='Rejected'?'selected':''}>❌ Rejected</option>
-              <option value="Short Closed" ${(prc.isShortClosed||currentPrStatus==='Short Closed')?'selected':''}>🔒 Short Closed</option>
+              <option value="Short-Close" ${(prc.isShortClosed||currentPrStatus==='Short-Close'||currentPrStatus==='Short Closed')?'selected':''}>🔒 Short-Close</option>
               <option value="PR Not Approved" ${(prc.isPRNotApproved||currentPrStatus==='PR Not Approved')?'selected':''}>🚫 PR Not Approved</option>
               <option value="Wrong PRC" ${(prc.isWrongPRC||currentPrStatus==='Wrong PRC')?'selected':''}>❌ Wrong PRC</option>
               <option value="Future PRC" ${(prc.isFuturePRC||currentPrStatus==='Future PRC')?'selected':''}>🔮 Future PRC</option>
@@ -1612,13 +1612,13 @@ window.handlePRCStatusChange = function(id, newStatus) {
     patch.prStatus = 'Authorised';
     patch.authorizedBy = prc.authorizedBy || getState().currentUser?.name || 'App Owner';
     patch.authorizedOn = prc.authorizedOn || new Date().toISOString().split('T')[0];
-  } else if (newStatus === 'Short Closed') {
+  } else if (newStatus === 'Short-Close' || newStatus === 'Short Closed') {
     patch.isShortClosed = true;
     patch.isPRNotApproved = false;
     patch.isWrongPRC = false;
     patch.isFuturePRC = false;
     patch.isSystemIssue = false;
-    patch.prStatus = 'Short Closed';
+    patch.prStatus = 'Short-Close';
   } else if (newStatus === 'PR Not Approved') {
     patch.isShortClosed = false;
     patch.isPRNotApproved = true;

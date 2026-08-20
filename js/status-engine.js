@@ -18,7 +18,7 @@
 
 export const STATUS = {
   AUTHORISED:      'Authorised',
-  SHORT_CLOSED:    'Short Closed',
+  SHORT_CLOSED:    'Short-Close',
   WRONG_PRC:       'Wrong PRC',
   PR_NOT_APPROVED: 'PR Not Approved',
   FUTURE_PRC:      'Future PRC',
@@ -87,7 +87,7 @@ export function calculateStatus(prc, materials = []) {
   prStatus = String(prStatus).trim().toLowerCase();
 
   // 0. Short Closed (user override / PRC shortclosed)
-  if (prc.isShortClosed || prStatus === 'short closed' || prStatus === 'shortclosed') return STATUS.SHORT_CLOSED;
+  if (prc.isShortClosed || prStatus === 'short-close' || prStatus === 'short closed' || prStatus === 'shortclosed') return STATUS.SHORT_CLOSED;
 
   // 1. Wrong PRC (user override)
   if (prc.isWrongPRC || prStatus === 'wrong prc') return STATUS.WRONG_PRC;
@@ -155,7 +155,7 @@ export function calculateMaterialStatus(material) {
   const pendQty  = Math.max(0, totalQty - procQty - clsQty);
 
   const matPrStatus = String(material.prStatus || '').trim().toLowerCase();
-  if (material.isShortClosed || matPrStatus === 'short closed' || matPrStatus === 'shortclosed') return STATUS.SHORT_CLOSED;
+  if (material.isShortClosed || matPrStatus === 'short-close' || matPrStatus === 'short closed' || matPrStatus === 'shortclosed') return STATUS.SHORT_CLOSED;
   if (material.isWrongPRC || material.isCancelled || matPrStatus === 'wrong prc') return STATUS.WRONG_PRC;
   if (material.isFuturePRC || matPrStatus === 'future prc') return STATUS.FUTURE_PRC;
 
