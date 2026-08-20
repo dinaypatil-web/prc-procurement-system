@@ -803,9 +803,9 @@ export function getFilteredPRCs() {
   const f = state.filters;
   if (f.status) {
     if (f.status === 'Authorised' || f.status === 'Authorized') {
-      list = list.filter(p => isPRCAuthorised(p) || p.status === 'Authorised' || p.prStatus === 'Authorised');
+      list = list.filter(p => isPRCAuthorised(p) || calculateStatus(p) === 'Authorised' || p.status === 'Authorised' || p.prStatus === 'Authorised');
     } else {
-      list = list.filter(p => p.status === f.status || p.prStatus === f.status);
+      list = list.filter(p => calculateStatus(p) === f.status || p.status === f.status || p.prStatus === f.status);
     }
   }
   if (f.isOverdue) {
