@@ -18,6 +18,7 @@
 
 export const STATUS = {
   AUTHORISED:      'Authorised',
+  SHORT_CLOSED:    'Short Closed',
   WRONG_PRC:       'Wrong PRC',
   PR_NOT_APPROVED: 'PR Not Approved',
   FUTURE_PRC:      'Future PRC',
@@ -33,6 +34,7 @@ export const STATUS = {
 
 export const STATUS_CHIP = {
   [STATUS.AUTHORISED]:      'chip-authorised',
+  [STATUS.SHORT_CLOSED]:    'chip-shortclosed',
   [STATUS.WRONG_PRC]:       'chip-wrong',
   [STATUS.PR_NOT_APPROVED]: 'chip-pr-not',
   [STATUS.FUTURE_PRC]:      'chip-future',
@@ -48,6 +50,7 @@ export const STATUS_CHIP = {
 
 export const STATUS_ICON = {
   [STATUS.AUTHORISED]:      '✅',
+  [STATUS.SHORT_CLOSED]:    '🔒',
   [STATUS.WRONG_PRC]:       '❌',
   [STATUS.PR_NOT_APPROVED]: '🚫',
   [STATUS.FUTURE_PRC]:      '🔮',
@@ -83,6 +86,9 @@ export function calculateStatus(prc, materials = []) {
   }
   prStatus = String(prStatus).trim().toLowerCase();
 
+  // 0. Short Closed (user override / PRC shortclosed)
+  if (prc.isShortClosed || prStatus === 'short closed' || prStatus === 'shortclosed') return STATUS.SHORT_CLOSED;
+
   // 1. Wrong PRC (user override)
   if (prc.isWrongPRC || prStatus === 'wrong prc') return STATUS.WRONG_PRC;
 
@@ -105,6 +111,15 @@ export function calculateStatus(prc, materials = []) {
 
   // 6. Awaiting Offer — RFQ floated but no quotations received
   if (prc.rfqNumber && !prc.offersReceived) return STATUS.AWAITING_OFFER;
+
+  // 6.5. TCD Generated or Approved or PO issued -> Process Completed
+  if (
+    prc.tcdNumber ||
+    prc.tcdApproved ||
+    prc.poNumber ||
+    prStatus === 'process completed' ||
+    (materials.length > 0 && materials.some(m => m.tcdNumber || m.tcdApproved || m.poNumber))
+  ) return STATUS.COMPLETED;
 
   // 7 & 8: Material-level PO analysis
   if (materials.length > 0) {
@@ -140,8 +155,12 @@ export function calculateMaterialStatus(material) {
   const pendQty  = Math.max(0, totalQty - procQty - clsQty);
 
   const matPrStatus = String(material.prStatus || '').trim().toLowerCase();
+  if (material.isShortClosed || matPrStatus === 'short closed' || matPrStatus === 'shortclosed') return STATUS.SHORT_CLOSED;
   if (material.isWrongPRC || material.isCancelled || matPrStatus === 'wrong prc') return STATUS.WRONG_PRC;
   if (material.isFuturePRC || matPrStatus === 'future prc') return STATUS.FUTURE_PRC;
+
+  // TCD Created/Approved or PO issued -> Process Completed
+  if (material.tcdNumber || material.tcdApproved || material.poNumber) return STATUS.COMPLETED;
 
   // Fully completed if processed + closed equals or exceeds requested quantity, or PO is fully issued
   if (totalQty > 0 && (procQty + clsQty) >= totalQty) return STATUS.COMPLETED;
@@ -231,7 +250,7 @@ export function getAlertLevel(prc, materials) {
   const status = calculateStatus(prc, materials);
   const age = getPRCAge(prc);
 
-  if ([STATUS.WRONG_PRC, STATUS.PR_NOT_APPROVED, STATUS.SYSTEM_ISSUE].includes(status)) return null;
+  if ([STATUS.SHORT_CLOSED, STATUS.WRONG_PRC, STATUS.PR_NOT_APPROVED, STATUS.SYSTEM_ISSUE].includes(status)) return null;
   if (status === STATUS.COMPLETED) return null;
 
   if (age > 14) return 'red';
@@ -264,6 +283,27 @@ export function buildStatusSummary(prcs, materialsMap = {}) {
  * Returns timeline steps with completion state for a PRC.
  */
 export function buildTimeline(prc) {
+  if (!prc) return [];
+  const mats = prc.materials || [];
+
+  const allocNo   = prc.allocationNumber || mats.find(m => m.allocationNumber)?.allocationNumber;
+  const allocDt   = prc.allocationDate   || mats.find(m => m.allocationDate)?.allocationDate;
+
+  const rfqNo     = prc.rfqNumber || mats.find(m => m.rfqNumber)?.rfqNumber;
+  const rfqDt     = prc.rfqDate   || mats.find(m => m.rfqDate)?.rfqDate;
+
+  const offersDone = !!(prc.offersReceived || mats.some(m => m.offersReceived));
+  const offersDt   = prc.offersReceivedDate || mats.find(m => m.offersReceivedDate)?.offersReceivedDate;
+
+  const tcdNo     = prc.tcdNumber || mats.find(m => m.tcdNumber)?.tcdNumber;
+  const tcdDt     = prc.tcdDate   || mats.find(m => m.tcdDate)?.tcdDate || prc.updatedAt;
+
+  const tcdAppr   = !!(prc.tcdApproved || mats.some(m => m.tcdApproved));
+  const tcdApprDt = prc.tcdApprovedDate || mats.find(m => m.tcdApprovedDate)?.tcdApprovedDate || tcdDt;
+
+  const poNo      = prc.poNumber || mats.find(m => m.poNumber)?.poNumber;
+  const poDt      = prc.poDate   || mats.find(m => m.poDate)?.poDate || prc.updatedAt;
+
   return [
     {
       key:   'imported',
@@ -276,49 +316,49 @@ export function buildTimeline(prc) {
     {
       key:   'allocated',
       label: 'Allocated',
-      done:  !!(prc.allocationNumber && prc.allocationDate),
-      date:  prc.allocationDate,
-      user:  prc.allocatedBy,
+      done:  !!allocNo,
+      date:  allocDt,
+      user:  prc.allocatedBy || prc.buyerName,
       icon:  '📌'
     },
     {
       key:   'rfq',
       label: 'RFQ Generated',
-      done:  !!(prc.rfqNumber && prc.rfqDate),
-      date:  prc.rfqDate,
-      user:  prc.rfqBy,
+      done:  !!rfqNo,
+      date:  rfqDt,
+      user:  prc.rfqBy || prc.updatedBy,
       icon:  '📨'
     },
     {
       key:   'offers',
       label: 'Offers Received',
-      done:  !!prc.offersReceived,
-      date:  prc.offersReceivedDate,
+      done:  offersDone,
+      date:  offersDt,
       user:  prc.rfqBy,
       icon:  '📩'
     },
     {
       key:   'tcd',
       label: 'TCD Generated',
-      done:  !!(prc.tcdNumber && prc.tcdDate),
-      date:  prc.tcdDate,
-      user:  prc.tcdBy,
+      done:  !!tcdNo,
+      date:  tcdDt,
+      user:  prc.tcdBy || prc.updatedBy || 'System',
       icon:  '📊'
     },
     {
       key:   'tcdApproved',
       label: 'TCD Approved',
-      done:  !!prc.tcdApproved,
-      date:  prc.tcdApprovedDate,
-      user:  prc.tcdApprovedBy,
+      done:  tcdAppr,
+      date:  tcdApprDt,
+      user:  prc.tcdApprovedBy || prc.tcdBy,
       icon:  '✔️'
     },
     {
       key:   'po',
       label: 'PO Issued',
-      done:  !!(prc.poNumber && prc.poDate),
-      date:  prc.poDate,
-      user:  prc.poBy,
+      done:  !!poNo,
+      date:  poDt,
+      user:  prc.poBy || prc.vendorName,
       icon:  '🛒'
     }
   ];

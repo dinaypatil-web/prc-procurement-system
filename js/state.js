@@ -887,6 +887,40 @@ export function updatePRC(id, patch, cascadeToMaterials = false) {
 
   const prcs = [...state.prcs];
   prcs[idx] = updated;
+
+  // Sync Short Closed state to corresponding RFQs
+  let rfqs = state.rfqs;
+  if (patch.isShortClosed !== undefined || patch.prStatus !== undefined) {
+    const isPrcShortClosed = !!(updated.isShortClosed || String(updated.prStatus || '').toLowerCase() === 'short closed');
+    let rfqsChanged = false;
+    rfqs = state.rfqs.map(rfq => {
+      let rfqModified = false;
+      const rfqItems = (rfq.items || []).map(item => {
+        if (item.prcId === id || item.prNumber === updated.prNumber) {
+          if (!!item.isShortClosed !== isPrcShortClosed) {
+            rfqModified = true;
+            return { ...item, isShortClosed: isPrcShortClosed, status: isPrcShortClosed ? 'Short Closed' : (item.status === 'Short Closed' ? 'Active' : item.status) };
+          }
+        }
+        return item;
+      });
+
+      if (rfqModified) {
+        rfqsChanged = true;
+        const allItemsShortclosed = rfqItems.length > 0 && rfqItems.every(i => i.isShortClosed);
+        const newRfqStatus = allItemsShortclosed ? 'Short Closed' : (rfq.status === 'Short Closed' ? 'Active' : rfq.status);
+        const updatedRfq = { ...rfq, items: rfqItems, isShortClosed: allItemsShortclosed, status: newRfqStatus };
+        directSaveRFQ(_getEffectiveUid(), updatedRfq);
+        return updatedRfq;
+      }
+      return rfq;
+    });
+
+    if (rfqsChanged) {
+      setState({ rfqs });
+    }
+  }
+
   setState({ prcs, statusSummary: buildStatusSummary(prcs) });
 
   // Direct Firestore write
@@ -1017,10 +1051,10 @@ export function getAllocatedQty(prcId, materialId) {
 
 export function isPRCAuthorised(p) {
   if (!p) return false;
-  if (p.isPRNotApproved || p.isWrongPRC || p.isFuturePRC) return false;
+  if (p.isPRNotApproved || p.isWrongPRC || p.isFuturePRC || p.isShortClosed) return false;
 
   let s = String(p.prStatus || p.status || '').trim().toLowerCase();
-  if (s === 'future prc' || s === 'wrong prc' || s === 'pr not approved' || s === 'rejected') return false;
+  if (s === 'future prc' || s === 'wrong prc' || s === 'pr not approved' || s === 'rejected' || s === 'short closed' || s === 'shortclosed') return false;
 
   // If Authorised by or Authorised date/data is available, consider PRC as authorised even if prStatus shows Pending
   const hasAuthMeta = !!(
@@ -1213,30 +1247,30 @@ export function getAvailableForRFQ() {
   const result = [];
   state.allocations.forEach(alloc => {
     alloc.items.forEach(item => {
-      // Exclude PRCs tagged as Future PRC or Wrong PRC
+      // Exclude PRCs tagged as Future PRC, Wrong PRC, or Short Closed
       const prc = state.prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
       if (prc) {
-        if (prc.isFuturePRC || prc.isWrongPRC) return;
+        if (prc.isFuturePRC || prc.isWrongPRC || prc.isShortClosed) return;
         const prcStatus = String(prc.status || '').trim().toLowerCase();
         const prStatus = String(prc.prStatus || '').trim().toLowerCase();
-        if (prcStatus === 'future prc' || prcStatus === 'wrong prc' ||
-            prStatus === 'future prc' || prStatus === 'wrong prc') {
+        if (prcStatus === 'future prc' || prcStatus === 'wrong prc' || prcStatus === 'short closed' || prcStatus === 'shortclosed' ||
+            prStatus === 'future prc' || prStatus === 'wrong prc' || prStatus === 'short closed' || prStatus === 'shortclosed') {
           return;
         }
 
         // Also check material-level flags
         const mat = (prc.materials || []).find(m => m.id === item.materialId || m.matCode === item.matCode);
         if (mat) {
-          if (mat.isFuturePRC || mat.isWrongPRC) return;
+          if (mat.isFuturePRC || mat.isWrongPRC || mat.isShortClosed) return;
           const matStatus = String(mat.status || '').trim().toLowerCase();
-          if (matStatus === 'future prc' || matStatus === 'wrong prc') return;
+          if (matStatus === 'future prc' || matStatus === 'wrong prc' || matStatus === 'short closed' || matStatus === 'shortclosed') return;
         }
       }
 
       // Check item itself if flags exist directly on allocation item
-      if (item.isFuturePRC || item.isWrongPRC) return;
+      if (item.isFuturePRC || item.isWrongPRC || item.isShortClosed) return;
       const itemStatus = String(item.status || '').trim().toLowerCase();
-      if (itemStatus === 'future prc' || itemStatus === 'wrong prc') return;
+      if (itemStatus === 'future prc' || itemStatus === 'wrong prc' || itemStatus === 'short closed' || itemStatus === 'shortclosed') return;
 
       const rfqdQty = getRFQdQty(alloc.id, item.prcId, item.materialId);
       const available = (parseFloat(item.quantity) || 0) - rfqdQty;
@@ -1283,6 +1317,9 @@ export function createRFQ(data) {
       rfqNumber: data.rfqNumber,
       rfqDate: data.rfqDate
     };
+    prc.rfqNumber = data.rfqNumber;
+    prc.rfqDate = data.rfqDate;
+    prc.rfqBy = state.currentUser.name;
     prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
     prc.status = calculateStatus(prc, prc.materials);
     prc.updatedAt = new Date().toISOString();
@@ -1336,31 +1373,33 @@ export function getTCDdQty(rfqId, prcId, materialId) {
 export function getAvailableForTCD() {
   const result = [];
   state.rfqs.forEach(rfq => {
+    if (rfq.isShortClosed || String(rfq.status || '').toLowerCase() === 'short closed') return;
     rfq.items.forEach(item => {
-      // Exclude PRCs tagged as Future PRC or Wrong PRC
+      if (item.isShortClosed || String(item.status || '').toLowerCase() === 'short closed') return;
+      // Exclude PRCs tagged as Future PRC, Wrong PRC, or Short Closed
       const prc = state.prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
       if (prc) {
-        if (prc.isFuturePRC || prc.isWrongPRC) return;
+        if (prc.isFuturePRC || prc.isWrongPRC || prc.isShortClosed) return;
         const prcStatus = String(prc.status || '').trim().toLowerCase();
         const prStatus = String(prc.prStatus || '').trim().toLowerCase();
-        if (prcStatus === 'future prc' || prcStatus === 'wrong prc' ||
-            prStatus === 'future prc' || prStatus === 'wrong prc') {
+        if (prcStatus === 'future prc' || prcStatus === 'wrong prc' || prcStatus === 'short closed' || prcStatus === 'shortclosed' ||
+            prStatus === 'future prc' || prStatus === 'wrong prc' || prStatus === 'short closed' || prStatus === 'shortclosed') {
           return;
         }
 
         // Also check material-level flags
         const mat = (prc.materials || []).find(m => m.id === item.materialId || m.matCode === item.matCode);
         if (mat) {
-          if (mat.isFuturePRC || mat.isWrongPRC) return;
+          if (mat.isFuturePRC || mat.isWrongPRC || mat.isShortClosed) return;
           const matStatus = String(mat.status || '').trim().toLowerCase();
-          if (matStatus === 'future prc' || matStatus === 'wrong prc') return;
+          if (matStatus === 'future prc' || matStatus === 'wrong prc' || matStatus === 'short closed' || matStatus === 'shortclosed') return;
         }
       }
 
       // Check item itself if flags exist directly on rfq item
-      if (item.isFuturePRC || item.isWrongPRC) return;
+      if (item.isFuturePRC || item.isWrongPRC || item.isShortClosed) return;
       const itemStatus = String(item.status || '').trim().toLowerCase();
-      if (itemStatus === 'future prc' || itemStatus === 'wrong prc') return;
+      if (itemStatus === 'future prc' || itemStatus === 'wrong prc' || itemStatus === 'short closed' || itemStatus === 'shortclosed') return;
 
       const tcdQty = getTCDdQty(rfq.id, item.prcId, item.materialId);
       const available = (parseFloat(item.quantity) || 0) - tcdQty;
@@ -1409,6 +1448,10 @@ export function createTCD(data) {
         tcdNumber: data.tcdNumber,
         tcdDate: data.tcdDate
       };
+      prc.tcdNumber = data.tcdNumber;
+      prc.tcdDate = data.tcdDate;
+      prc.tcdBy = state.currentUser.name;
+      prc.prStatus = 'Process Completed';
       prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
       prc.status = calculateStatus(prc, prc.materials);
       prc.updatedAt = new Date().toISOString();
@@ -1477,10 +1520,15 @@ export function approveTCD(tcdId) {
       if (matIdx === -1) return;
       const mat = { ...prc.materials[matIdx] };
       mat.tcdApproved = true;
+      mat.tcdApprovedDate = tcd.approvedDate;
       mat.vendorName = va.vendorName;
       mat.vendor = va.vendorName;
       mat.status = calculateMaterialStatus(mat);
       prc.materials[matIdx] = mat;
+      prc.tcdApproved = true;
+      prc.tcdApprovedDate = tcd.approvedDate;
+      prc.tcdApprovedBy = tcd.approvedBy;
+      prc.prStatus = 'Process Completed';
       prc.status = calculateStatus(prc, prc.materials);
       prc.updatedAt = new Date().toISOString();
       prcs[prcIdx] = prc;
@@ -1537,9 +1585,18 @@ export function updatePOD(podId, patch) {
       mat.pendingQty = Math.max(0, totalQty - mat.processedQty - clsQty);
       mat.status = calculateMaterialStatus(mat);
       prc.materials[matIdx] = mat;
+      if (patch.poNumber) prc.poNumber = patch.poNumber;
+      if (patch.poDate) prc.poDate = patch.poDate;
+      prc.poBy = state.currentUser.name;
+      if (pod.vendorName) prc.vendorName = pod.vendorName;
+      prc.prStatus = 'Process Completed';
       prc.status = calculateStatus(prc, prc.materials);
       prc.updatedAt = new Date().toISOString();
       prcs[prcIdx] = prc;
+
+      directSavePRC(_getEffectiveUid(), prc);
+    });
+  }
 
       directSavePRC(_getEffectiveUid(), prc);
     });

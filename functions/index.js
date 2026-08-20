@@ -15,6 +15,7 @@ const msg = getMessaging();
 
 // ── STATUS ENGINE (server-side mirror) ─────────────────────
 function calculateStatus(prc, materials = []) {
+  if (prc.isShortClosed)    return 'Short Closed';
   if (prc.isWrongPRC)       return 'Wrong PRC';
   if (prc.isPRNotApproved)  return 'PR Not Approved';
   if (prc.isFuturePRC)      return 'Future PRC';
@@ -72,7 +73,7 @@ exports.onPRCUpdate = onDocumentWritten("prcs/{prcId}", async (event) => {
   const changes = {};
   const trackFields = [
     'allocationNumber','allocationDate','rfqNumber','rfqDate','tcdNumber','tcdDate',
-    'poNumber','poDate','vendorName','remarks','status','priority','isWrongPRC',
+    'poNumber','poDate','vendorName','remarks','status','priority','isShortClosed','isWrongPRC',
     'isPRNotApproved','isFuturePRC','isSystemIssue'
   ];
 
@@ -97,7 +98,7 @@ exports.dailyAgeingCheck = onSchedule("every day 08:00", async () => {
   const thresholds = { allocation: 2, rfq: 3, offer: 7, tcd: 3, po: 2 };
   const now = new Date();
   const prcsSnap = await db.collection('prcs')
-    .where('status', 'not-in', ['Process Completed', 'Wrong PRC', 'PR Not Approved'])
+    .where('status', 'not-in', ['Process Completed', 'Short Closed', 'Wrong PRC', 'PR Not Approved'])
     .get();
 
   const notifications = [];

@@ -190,7 +190,7 @@ export async function exportPDF(title = 'PRC Procurement Report') {
 
 /** Generate ageing report data calculated up to Process Completed / Partly Completed dates */
 export function getAgeingReport() {
-  const prcs = getFilteredPRCs().filter(p => !['Wrong PRC','PR Not Approved'].includes(p.status));
+  const prcs = getFilteredPRCs().filter(p => !['Short Closed','Wrong PRC','PR Not Approved'].includes(p.status));
   return prcs.map(p => {
     const ageDays = getPRCAge(p);
     return { ...p, ageDays };
