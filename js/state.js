@@ -808,6 +808,13 @@ export function getFilteredPRCs() {
       list = list.filter(p => p.status === f.status || p.prStatus === f.status);
     }
   }
+  if (f.isOverdue) {
+    list = list.filter(p => getPRCAge(p) > 7 && !['Process Completed', 'Wrong PRC', 'PR Not Approved', 'Short-Close'].includes(p.status));
+  }
+  if (f.poToday) {
+    const todayStr = new Date().toISOString().split('T')[0];
+    list = list.filter(p => p.poDate === todayStr || (p.materials || []).some(m => m.poDate === todayStr));
+  }
   if (f.department) list = list.filter(p => p.department === f.department);
   if (f.priority)   list = list.filter(p => p.priority === f.priority);
   if (f.engineer)   list = list.filter(p => p.engineer === f.engineer);
