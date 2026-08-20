@@ -878,7 +878,13 @@ export function getFilteredMaterials() {
   }
 
   const f = state.filters;
-  if (f.status) list = list.filter(m => m.status === f.status || m.prcStatus === f.status);
+  if (f.status) {
+    list = list.filter(m =>
+      m.status === f.status ||
+      m.prcStatus === f.status ||
+      calculateMaterialStatus(m) === f.status
+    );
+  }
 
   return list;
 }

@@ -72,7 +72,7 @@ export const STATUS_ICON = {
  * @param {Array}  materials - Array of material sub-documents.
  * @returns {string} Status string from STATUS enum.
  */
-export function calculateStatus(prc, materials = []) {
+export function calculateStatus(prc, materials = prc?.materials || []) {
   // If authorization metadata exists, consider the PRC as Authorised even if prStatus is Pending
   let prStatus = String(prc.prStatus || '').trim();
   const hasAuthMeta = !!(
