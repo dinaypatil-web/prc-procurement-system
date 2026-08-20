@@ -922,39 +922,6 @@ export function updatePRC(id, patch, cascadeToMaterials = false) {
   const prcs = [...state.prcs];
   prcs[idx] = updated;
 
-  // Sync Short Closed state to corresponding RFQs
-  let rfqs = state.rfqs;
-  if (patch.isShortClosed !== undefined || patch.prStatus !== undefined) {
-    const isPrcShortClosed = !!(updated.isShortClosed || String(updated.prStatus || '').toLowerCase() === 'short closed');
-    let rfqsChanged = false;
-    rfqs = state.rfqs.map(rfq => {
-      let rfqModified = false;
-      const rfqItems = (rfq.items || []).map(item => {
-        if (item.prcId === id || item.prNumber === updated.prNumber) {
-          if (!!item.isShortClosed !== isPrcShortClosed) {
-            rfqModified = true;
-            return { ...item, isShortClosed: isPrcShortClosed, status: isPrcShortClosed ? 'Short Closed' : (item.status === 'Short Closed' ? 'Active' : item.status) };
-          }
-        }
-        return item;
-      });
-
-      if (rfqModified) {
-        rfqsChanged = true;
-        const allItemsShortclosed = rfqItems.length > 0 && rfqItems.every(i => i.isShortClosed);
-        const newRfqStatus = allItemsShortclosed ? 'Short Closed' : (rfq.status === 'Short Closed' ? 'Active' : rfq.status);
-        const updatedRfq = { ...rfq, items: rfqItems, isShortClosed: allItemsShortclosed, status: newRfqStatus };
-        directSaveRFQ(_getEffectiveUid(), updatedRfq);
-        return updatedRfq;
-      }
-      return rfq;
-    });
-
-    if (rfqsChanged) {
-      setState({ rfqs });
-    }
-  }
-
   setState({ prcs, statusSummary: buildStatusSummary(prcs) });
 
   // Direct Firestore write
