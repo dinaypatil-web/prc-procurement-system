@@ -292,9 +292,6 @@ export function buildTimeline(prc) {
   const rfqNo     = prc.rfqNumber || mats.find(m => m.rfqNumber)?.rfqNumber;
   const rfqDt     = prc.rfqDate   || mats.find(m => m.rfqDate)?.rfqDate;
 
-  const offersDone = !!(prc.offersReceived || mats.some(m => m.offersReceived));
-  const offersDt   = prc.offersReceivedDate || mats.find(m => m.offersReceivedDate)?.offersReceivedDate;
-
   const tcdNo     = prc.tcdNumber || mats.find(m => m.tcdNumber)?.tcdNumber;
   const tcdDt     = prc.tcdDate   || mats.find(m => m.tcdDate)?.tcdDate || prc.updatedAt;
 
@@ -303,6 +300,9 @@ export function buildTimeline(prc) {
 
   const poNo      = prc.poNumber || mats.find(m => m.poNumber)?.poNumber;
   const poDt      = prc.poDate   || mats.find(m => m.poDate)?.poDate || prc.updatedAt;
+
+  const offersDone = !!(prc.offersReceived || mats.some(m => m.offersReceived) || tcdNo || tcdAppr || poNo);
+  const offersDt   = prc.offersReceivedDate || mats.find(m => m.offersReceivedDate)?.offersReceivedDate || tcdDt || rfqDt;
 
   return [
     {

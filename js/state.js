@@ -394,6 +394,37 @@ export function reconcileAllocationRouting(prcs = state.prcs, allocations = stat
     }
 
     const mats = prcCopy.materials || [];
+
+    // Reconcile top-level PRC workflow fields from materials if missing on PRC
+    if (!prcCopy.allocationNumber) { const val = mats.find(m => m.allocationNumber)?.allocationNumber; if (val) { prcCopy.allocationNumber = val; prcModified = true; } }
+    if (!prcCopy.allocationDate)   { const val = mats.find(m => m.allocationDate)?.allocationDate; if (val) { prcCopy.allocationDate = val; prcModified = true; } }
+    if (!prcCopy.buyerName)        { const val = mats.find(m => m.buyerName || m.allocatedBy)?.buyerName || mats.find(m => m.buyerName || m.allocatedBy)?.allocatedBy; if (val) { prcCopy.buyerName = val; prcCopy.allocatedBy = val; prcModified = true; } }
+
+    if (!prcCopy.rfqNumber) { const val = mats.find(m => m.rfqNumber)?.rfqNumber; if (val) { prcCopy.rfqNumber = val; prcModified = true; } }
+    if (!prcCopy.rfqDate)   { const val = mats.find(m => m.rfqDate)?.rfqDate; if (val) { prcCopy.rfqDate = val; prcModified = true; } }
+
+    if (!prcCopy.tcdNumber) { const val = mats.find(m => m.tcdNumber)?.tcdNumber; if (val) { prcCopy.tcdNumber = val; prcModified = true; } }
+    if (!prcCopy.tcdDate)   { const val = mats.find(m => m.tcdDate)?.tcdDate; if (val) { prcCopy.tcdDate = val; prcModified = true; } }
+
+    if (!prcCopy.tcdApproved && mats.some(m => m.tcdApproved)) {
+      prcCopy.tcdApproved = true;
+      prcCopy.tcdApprovedDate = mats.find(m => m.tcdApprovedDate)?.tcdApprovedDate || prcCopy.tcdDate;
+      prcModified = true;
+    }
+
+    if (!prcCopy.poNumber) { const val = mats.find(m => m.poNumber)?.poNumber; if (val) { prcCopy.poNumber = val; prcModified = true; } }
+    if (!prcCopy.poDate)   { const val = mats.find(m => m.poDate)?.poDate; if (val) { prcCopy.poDate = val; prcModified = true; } }
+    if (!prcCopy.vendorName) { const val = mats.find(m => m.vendor || m.vendorName)?.vendor || mats.find(m => m.vendor || m.vendorName)?.vendorName; if (val) { prcCopy.vendorName = val; prcModified = true; } }
+
+    // If TCD is generated / approved or PO issued, Offers are Received!
+    if (prcCopy.tcdNumber || prcCopy.tcdApproved || prcCopy.poNumber || mats.some(m => m.tcdNumber || m.tcdApproved || m.poNumber)) {
+      if (!prcCopy.offersReceived) {
+        prcCopy.offersReceived = true;
+        prcCopy.offersReceivedDate = prcCopy.tcdDate || prcCopy.tcdApprovedDate || prcCopy.rfqDate || prcCopy.createdAt;
+        prcModified = true;
+      }
+    }
+
     mats.forEach(m => {
       const allocNum = String(m.allocationNumber || prcCopy.allocationNumber || '').trim();
       const allocDate = String(m.allocationDate || prcCopy.allocationDate || '').trim();
@@ -421,7 +452,10 @@ export function reconcileAllocationRouting(prcs = state.prcs, allocations = stat
       }
     });
 
-    if (prcModified) prcChanged = true;
+    if (prcModified) {
+      prcCopy.status = calculateStatus(prcCopy, prcCopy.materials || []);
+      prcChanged = true;
+    }
     return prcCopy;
   });
 
@@ -1593,10 +1627,6 @@ export function updatePOD(podId, patch) {
       prc.status = calculateStatus(prc, prc.materials);
       prc.updatedAt = new Date().toISOString();
       prcs[prcIdx] = prc;
-
-      directSavePRC(_getEffectiveUid(), prc);
-    });
-  }
 
       directSavePRC(_getEffectiveUid(), prc);
     });

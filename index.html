@@ -312,7 +312,7 @@
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, createRFQ, getAvailableForRFQ, getRFQById, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache } from './js/state.js';
-import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS } from './js/status-engine.js';
+import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
@@ -1113,6 +1113,22 @@ window.openPRCDetail = function(id) {
   const timeline = buildTimeline(prc);
   const mats     = prc.materials||[];
 
+  const allocNo   = prc.allocationNumber || mats.find(m => m.allocationNumber)?.allocationNumber || '';
+  const allocDt   = prc.allocationDate   || mats.find(m => m.allocationDate)?.allocationDate || '';
+
+  const rfqNo     = prc.rfqNumber || mats.find(m => m.rfqNumber)?.rfqNumber || '';
+  const rfqDt     = prc.rfqDate   || mats.find(m => m.rfqDate)?.rfqDate || '';
+
+  const tcdNo     = prc.tcdNumber || mats.find(m => m.tcdNumber)?.tcdNumber || '';
+  const tcdDt     = prc.tcdDate   || mats.find(m => m.tcdDate)?.tcdDate || '';
+
+  const poNo      = prc.poNumber || mats.find(m => m.poNumber)?.poNumber || '';
+  const poDt      = prc.poDate   || mats.find(m => m.poDate)?.poDate || '';
+
+  const vendor    = prc.vendorName || mats.find(m => m.vendor || m.vendorName)?.vendor || mats.find(m => m.vendor || m.vendorName)?.vendorName || '';
+
+  const offersRec = !!(prc.offersReceived || mats.some(m => m.offersReceived) || tcdNo || prc.tcdApproved || mats.some(m => m.tcdApproved) || poNo);
+
   document.getElementById('prc-detail-body').innerHTML = `
 <div style="display:grid;grid-template-columns:300px 1fr;height:100%">
   <!-- LEFT: Timeline + flags -->
@@ -1164,15 +1180,15 @@ window.openPRCDetail = function(id) {
         </div>
         <h4 style="margin-bottom:12px;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-primary)">Workflow & Tracking Info</h4>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
-          ${renderProcurementField('Allocation Number', prc.allocationNumber, `updateField('${id}','allocationNumber',this.value)`)}
-          ${renderDateField('Allocation Date', prc.allocationDate, `updateField('${id}','allocationDate',this.value)`)}
-          ${renderProcurementField('RFQ Number', prc.rfqNumber, `updateField('${id}','rfqNumber',this.value)`)}
-          ${renderDateField('RFQ Date', prc.rfqDate, `updateField('${id}','rfqDate',this.value)`)}
-          ${renderProcurementField('TCD Number', prc.tcdNumber, `updateField('${id}','tcdNumber',this.value)`)}
-          ${renderDateField('TCD Date', prc.tcdDate, `updateField('${id}','tcdDate',this.value)`)}
-          ${renderProcurementField('PO Number', prc.poNumber, `updateField('${id}','poNumber',this.value)`)}
-          ${renderDateField('PO Date', prc.poDate, `updateField('${id}','poDate',this.value)`)}
-          ${renderProcurementField('Vendor Name', prc.vendorName, `updateField('${id}','vendorName',this.value)`)}
+          ${renderProcurementField('Allocation Number', allocNo, `updateField('${id}','allocationNumber',this.value)`)}
+          ${renderDateField('Allocation Date', allocDt, `updateField('${id}','allocationDate',this.value)`)}
+          ${renderProcurementField('RFQ Number', rfqNo, `updateField('${id}','rfqNumber',this.value)`)}
+          ${renderDateField('RFQ Date', rfqDt, `updateField('${id}','rfqDate',this.value)`)}
+          ${renderProcurementField('TCD Number', tcdNo, `updateField('${id}','tcdNumber',this.value)`)}
+          ${renderDateField('TCD Date', tcdDt, `updateField('${id}','tcdDate',this.value)`)}
+          ${renderProcurementField('PO Number', poNo, `updateField('${id}','poNumber',this.value)`)}
+          ${renderDateField('PO Date', poDt, `updateField('${id}','poDate',this.value)`)}
+          ${renderProcurementField('Vendor Name', vendor, `updateField('${id}','vendorName',this.value)`)}
           ${renderDateField('Expected Completion', prc.expectedCompletion, `updateField('${id}','expectedCompletion',this.value)`)}
         </div>
 
@@ -1216,7 +1232,7 @@ window.openPRCDetail = function(id) {
         <div style="margin-top:8px">
           <label class="form-label">Offers Received</label>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px">
-            <input type="checkbox" ${prc.offersReceived?'checked':''} onchange="setFlag('${id}','offersReceived',this.checked)"/>
+            <input type="checkbox" ${offersRec?'checked':''} onchange="setFlag('${id}','offersReceived',this.checked)"/>
             Vendor quotations received
           </label>
         </div>
