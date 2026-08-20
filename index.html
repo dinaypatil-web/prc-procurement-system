@@ -5109,34 +5109,71 @@ on('*', () => {
 async function init() {
   enableTableHorizontalScroll();
 
-  // 1. Initialize Firebase from config/environment
-  const app = await initFirebase();
+  // 1. Instantly preload local cache so the app opens immediately (0ms delay)
+  const initialHash = window.location.hash.slice(1) || 'dashboard';
+  const initialPage = PAGES[initialHash] ? initialHash : 'dashboard';
 
-  // 2. Automatically load all data from Cloud Firestore & start continuous real-time sync
-  await initAppData();
-  updateUserUI();
-  updateSidebarBadges();
-
-  if (isFirebaseConfigured() && app) {
-    onAuthChange(async (firebaseUser) => {
-      if (firebaseUser) {
-        await setAuthenticatedUser(firebaseUser);
-      }
-      updateUserUI();
-      updateSidebarBadges();
-    });
+  try {
+    const cached = loadFromLocalCache();
+    if (cached && Array.isArray(cached.prcs) && cached.prcs.length > 0) {
+      const state = getState();
+      state.prcs = cached.prcs;
+      state.allocations = cached.allocations || [];
+      state.rfqs = cached.rfqs || [];
+      state.tcds = cached.tcds || [];
+      state.pods = cached.pods || [];
+      state.statusSummary = buildStatusSummary(cached.prcs);
+    }
+  } catch (e) {
+    console.warn('Initial cache preload skipped:', e);
   }
 
-  // Update notification dot/badge
-  const unread = (getState().notifications || []).filter(n => n.unread).length;
-  const notifBadge = document.getElementById('nav-notif-count');
-  if (notifBadge) notifBadge.textContent = unread || '';
-  const dot = document.getElementById('notif-dot');
-  if (dot) dot.style.display = unread ? '' : 'none';
+  // Render initial page immediately
+  navigate(initialPage);
 
-  // Route to page
-  const hash = window.location.hash.slice(1) || 'dashboard';
-  navigate(PAGES[hash] ? hash : 'dashboard');
+  // 2. Perform background Cloud Firestore initialization asynchronously without blocking initial render
+  try {
+    const app = await Promise.race([
+      initFirebase(),
+      new Promise(resolve => setTimeout(() => resolve(null), 3000))
+    ]);
+
+    await Promise.race([
+      initAppData(),
+      new Promise(resolve => setTimeout(() => resolve(null), 4000))
+    ]);
+
+    updateUserUI();
+    updateSidebarBadges();
+
+    if (isFirebaseConfigured() && app) {
+      onAuthChange(async (firebaseUser) => {
+        if (firebaseUser) {
+          await setAuthenticatedUser(firebaseUser);
+        }
+        updateUserUI();
+        updateSidebarBadges();
+      });
+    }
+  } catch (err) {
+    console.error('App background init error:', err);
+  } finally {
+    const unread = (getState().notifications || []).filter(n => n.unread).length;
+    const notifBadge = document.getElementById('nav-notif-count');
+    if (notifBadge) notifBadge.textContent = unread || '';
+    const dot = document.getElementById('notif-dot');
+    if (dot) dot.style.display = unread ? '' : 'none';
+
+    updateUserUI();
+    updateSidebarBadges();
+
+    // Ensure loading screen is cleared if still present
+    const content = document.getElementById('page-content');
+    if (content && content.innerHTML.includes('Loading ProcureTrack')) {
+      const page = getState().currentPage || 'dashboard';
+      if (PAGES[page]) PAGES[page].render(content);
+    }
+  }
 }
 
 init();
