@@ -109,35 +109,59 @@ export function calculateStatus(prc, materials = []) {
     prc.inputFromVendor
   ) return STATUS.INPUTS_REQUIRED;
 
-  // 6. Awaiting Offer — RFQ floated but no quotations received
-  if (prc.rfqNumber && !prc.offersReceived) return STATUS.AWAITING_OFFER;
+  // Check RFQ & TCD status across materials and top-level fields
+  const hasRFQ = !!(
+    prc.rfqNumber ||
+    (materials.length > 0 && materials.some(m => m.rfqNumber))
+  );
 
-  // 6.5. TCD Generated or Approved or PO issued -> Process Completed
-  if (
+  const hasTCDAny = !!(
     prc.tcdNumber ||
     prc.tcdApproved ||
     prc.poNumber ||
     prStatus === 'process completed' ||
-    (materials.length > 0 && materials.some(m => m.tcdNumber || m.tcdApproved || m.poNumber))
-  ) return STATUS.COMPLETED;
+    (materials.length > 0 && materials.some(m => m.tcdNumber || m.tcdApproved || m.poNumber || (parseFloat(m.processedQty) || 0) > 0))
+  );
 
-  // 7 & 8: Material-level PO analysis
+  // Material-level TCD analysis
   if (materials.length > 0) {
-    const total    = materials.length;
-    const completed = materials.filter(m =>
-      m.poNumber && m.poDate && m.vendor
-    ).length;
+    const totalCount = materials.length;
+    const completedCount = materials.filter(m => {
+      const tot = parseFloat(m.quantity) || 0;
+      const proc = parseFloat(m.processedQty) || 0;
+      const cls = parseFloat(m.closedQty) || 0;
+      return (
+        m.tcdNumber ||
+        m.tcdApproved ||
+        m.poNumber ||
+        (tot > 0 && (proc + cls) >= tot)
+      );
+    }).length;
 
-    if (completed > 0 && completed < total) return STATUS.PARTLY_COMPLETED;
-    if (completed === total)               return STATUS.COMPLETED;
+    // Rule 1: TCD/TCDs Created for all items & Complete Required Quantity of PRC -> Process Completed
+    if (completedCount === totalCount && totalCount > 0) {
+      return STATUS.COMPLETED;
+    }
+
+    // Rule 2: TCD/TCDs created for Some Items/Item or some Quantity -> Partly Completed
+    if (hasTCDAny || completedCount > 0) {
+      return STATUS.PARTLY_COMPLETED;
+    }
+
+    // Rule 3: RFQ Generated but TCD not created -> Awaiting Offer
+    if (hasRFQ && !hasTCDAny) {
+      return STATUS.AWAITING_OFFER;
+    }
   } else {
-    // No materials — check top-level PO fields
+    // Top-level check
     if (prc.poNumber && prc.poDate && prc.vendorName) return STATUS.COMPLETED;
+    if (hasTCDAny) return STATUS.COMPLETED;
+    if (hasRFQ) return STATUS.AWAITING_OFFER;
   }
 
   if (prStatus === 'authorised' || prStatus === 'approved') return STATUS.AUTHORISED;
 
-  // 9. Default
+  // Default
   return STATUS.PENDING;
 }
 
@@ -159,20 +183,23 @@ export function calculateMaterialStatus(material) {
   if (material.isWrongPRC || material.isCancelled || matPrStatus === 'wrong prc') return STATUS.WRONG_PRC;
   if (material.isFuturePRC || matPrStatus === 'future prc') return STATUS.FUTURE_PRC;
 
-  // TCD Created/Approved or PO issued -> Process Completed
-  if (material.tcdNumber || material.tcdApproved || material.poNumber) return STATUS.COMPLETED;
+  // 1. Process Completed: TCD created/approved or PO fully issued for complete required quantity
+  if (material.tcdApproved || (material.tcdNumber && pendQty === 0) || (totalQty > 0 && (procQty + clsQty) >= totalQty)) {
+    return STATUS.COMPLETED;
+  }
 
-  // Fully completed if processed + closed equals or exceeds requested quantity, or PO is fully issued
-  if (totalQty > 0 && (procQty + clsQty) >= totalQty) return STATUS.COMPLETED;
-  if (material.poNumber && material.poDate && (material.vendor || material.vendorName) && pendQty === 0) return STATUS.COMPLETED;
+  // 2. Partly Completed: TCD created for partial quantity or some processed qty with pending balance
+  if (material.tcdNumber || (procQty > 0 && pendQty > 0)) {
+    return STATUS.PARTLY_COMPLETED;
+  }
 
-  // Partial completed if partial quantity has been processed with pending balance, or TCD approved
-  if (procQty > 0 && pendQty > 0) return STATUS.PARTLY_COMPLETED;
-  if (material.poNumber && material.poDate && pendQty > 0) return STATUS.PARTLY_COMPLETED;
-  if (material.tcdApproved || (material.tcdNumber && material.tcdDate)) return STATUS.PARTLY_COMPLETED;
+  // 3. Awaiting Offer: RFQ generated but TCD not created yet
+  if (material.rfqNumber && !material.tcdNumber && !material.tcdApproved && !material.poNumber && procQty === 0) {
+    return STATUS.AWAITING_OFFER;
+  }
 
-  if (material.offersReceived || (material.rfqNumber && material.rfqDate)) return STATUS.AWAITING_OFFER;
-  if (material.allocationNumber && material.allocationDate) return STATUS.PENDING;
+  if (matPrStatus === 'authorised' || matPrStatus === 'approved') return STATUS.AUTHORISED;
+
   return STATUS.PENDING;
 }
 
