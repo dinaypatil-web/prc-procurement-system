@@ -2,44 +2,62 @@
 // UTILITY HELPERS
 // =========================================================
 
+/** Parse any date representation into a valid Date object or null */
+export function parseDateObj(d) {
+  if (!d) return null;
+  if (d instanceof Date) return isNaN(d.getTime()) ? null : d;
+
+  const s = String(d).trim();
+  if (!s || s === '—' || s === 'undefined' || s === 'null') return null;
+
+  // 1. Try ISO / YYYY-MM-DD or standard parse first
+  let dt = new Date(s);
+  if (!isNaN(dt.getTime())) return dt;
+
+  // 2. Handle DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const dmYMatch = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+  if (dmYMatch) {
+    const day = parseInt(dmYMatch[1], 10);
+    const month = parseInt(dmYMatch[2], 10) - 1;
+    const year = parseInt(dmYMatch[3], 10);
+    dt = new Date(year, month, day);
+    if (!isNaN(dt.getTime())) return dt;
+  }
+
+  // 3. Handle DD MMM YYYY (e.g. "01 Aug 2026" or "1 Aug 2026")
+  const dMmmYMatch = s.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})/);
+  if (dMmmYMatch) {
+    dt = new Date(`${dMmmYMatch[2]} ${dMmmYMatch[1]}, ${dMmmYMatch[3]}`);
+    if (!isNaN(dt.getTime())) return dt;
+  }
+
+  return null;
+}
+
 /** Format date as DD/MM/YYYY */
 export function fmtDate(d) {
   if (!d) return '—';
-  const dt = new Date(d);
-  if (isNaN(dt)) return d;
+  const dt = parseDateObj(d);
+  if (!dt) return String(d);
   return dt.toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
 }
 
 /** Convert any raw date string to YYYY-MM-DD for HTML input type="date" */
 export function toInputDateVal(d) {
   if (!d) return '';
-  const s = String(d).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.split('T')[0];
-  
-  const dmYMatch = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (dmYMatch) {
-    const day = dmYMatch[1].padStart(2, '0');
-    const month = dmYMatch[2].padStart(2, '0');
-    const year = dmYMatch[3];
-    return `${year}-${month}-${day}`;
-  }
-
-  const dt = new Date(d);
-  if (!isNaN(dt.getTime())) {
-    const year = dt.getFullYear();
-    const month = String(dt.getMonth() + 1).padStart(2, '0');
-    const day = String(dt.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-  return '';
+  const dt = parseDateObj(d);
+  if (!dt) return '';
+  const year = dt.getFullYear();
+  const month = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /** Format datetime as DD MMM YYYY HH:MM */
 export function fmtDateTime(d) {
   if (!d) return '—';
-  const dt = new Date(d);
-  if (isNaN(dt)) return d;
+  const dt = parseDateObj(d);
+  if (!dt) return String(d);
   return dt.toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 
@@ -227,9 +245,14 @@ export function groupBy(arr, key) {
 export function monthlyDistribution(prcs, dateField = 'createdAt') {
   const months = {};
   prcs.forEach(p => {
-    if (!p[dateField]) return;
-    const m = p[dateField].slice(0, 7); // YYYY-MM
-    months[m] = (months[m] || 0) + 1;
+    const raw = p[dateField] || p.allocationDate || p.prDate || p.createdAt;
+    const dt = parseDateObj(raw);
+    if (!dt) return;
+
+    const year = dt.getFullYear();
+    const month = String(dt.getMonth() + 1).padStart(2, '0');
+    const key = `${year}-${month}`;
+    months[key] = (months[key] || 0) + 1;
   });
   return Object.entries(months).sort(([a],[b]) => a.localeCompare(b));
 }

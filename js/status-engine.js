@@ -1,3 +1,5 @@
+import { parseDateObj } from './utils.js';
+
 // =========================================================
 // STATUS CALCULATION ENGINE
 // Priority order — evaluates in strict sequence
@@ -229,10 +231,9 @@ export function getStatusIcon(status) {
  */
 export function calcAgeDays(startDate, endDate = null) {
   if (!startDate) return 0;
-  const start = new Date(startDate);
-  const end   = endDate ? new Date(endDate) : new Date();
-  if (isNaN(start.getTime())) return 0;
-  if (isNaN(end.getTime())) return 0;
+  const start = parseDateObj(startDate);
+  const end   = endDate ? parseDateObj(endDate) : new Date();
+  if (!start || !end) return 0;
   const diffDays = Math.floor((end - start) / (1000 * 60 * 60 * 24));
   return Math.max(0, diffDays);
 }

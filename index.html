@@ -629,7 +629,13 @@ function initDashboardCharts(prcs, s) {
   charts['monthly'] = new Chart(document.getElementById('chart-monthly-trend'), {
     type: 'line',
     data: {
-      labels: monthly.map(([m])=>{ const d=new Date(m+'-01'); return d.toLocaleDateString('en',{month:'short',year:'2-digit'}); }),
+      labels: monthly.map(([m]) => {
+        const [y, mm] = m.split('-');
+        const dt = new Date(parseInt(y, 10), parseInt(mm, 10) - 1, 1);
+        return !isNaN(dt.getTime())
+          ? dt.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+          : m;
+      }),
       datasets: [{ label:'PRCs Created', data: monthly.map(([,c])=>c), fill:true,
         backgroundColor:'rgba(59,130,246,0.12)', borderColor:'#3b82f6', borderWidth:2,
         pointBackgroundColor:'#3b82f6', pointRadius:4, tension:0.4 }]
