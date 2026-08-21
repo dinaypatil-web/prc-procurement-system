@@ -59,6 +59,7 @@ const state = {
   sidebarCollapsed: false,
   currentPage: 'dashboard',
   viewLevel: 'prc',
+  expandedPRCIds: [],
   searchQuery: '',
   filters: {},
   sortField: 'createdAt',
@@ -1669,3 +1670,32 @@ export function addAuditLog(entry) {
 
   directSaveActivityLog(_getEffectiveUid(), log);
 }
+
+// ── PRC TREEVIEW EXPAND / COLLAPSE ───────────────────────
+
+export function isPRCExpanded(prcId) {
+  return (state.expandedPRCIds || []).includes(prcId);
+}
+
+export function togglePRCExpanded(prcId) {
+  const list = state.expandedPRCIds || [];
+  let updated;
+  if (list.includes(prcId)) {
+    updated = list.filter(id => id !== prcId);
+  } else {
+    updated = [...list, prcId];
+  }
+  setState({ expandedPRCIds: updated });
+}
+
+export function expandAllPRCs(prcIds) {
+  if (!prcIds) {
+    prcIds = (state.prcs || []).map(p => p.id);
+  }
+  setState({ expandedPRCIds: [...new Set(prcIds)] });
+}
+
+export function collapseAllPRCs() {
+  setState({ expandedPRCIds: [] });
+}
+

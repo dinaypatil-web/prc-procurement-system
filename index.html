@@ -311,7 +311,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, createRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, createRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, getPODById, updatePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
@@ -795,9 +795,13 @@ function renderPRCList(container) {
     </div>
     <div class="flex gap-3 flex-wrap items-center">
       <div style="display:flex;gap:4px;background:var(--color-surface-2);padding:4px;border-radius:8px;border:1px solid var(--color-border)">
-        <button class="btn ${state.viewLevel==='prc'?'btn-primary':'btn-ghost'} btn-sm" onclick="switchViewLevel('prc')">📦 PRC Level View</button>
-        <button class="btn ${state.viewLevel==='material'?'btn-primary':'btn-ghost'} btn-sm" onclick="switchViewLevel('material')">🔩 Material Item Level View</button>
+        <button class="btn ${state.viewLevel==='prc'?'btn-primary':'btn-ghost'} btn-sm" onclick="switchViewLevel('prc')">🌳 Parent-Child Tree View</button>
+        <button class="btn ${state.viewLevel==='material'?'btn-primary':'btn-ghost'} btn-sm" onclick="switchViewLevel('material')">🔩 Flat Material Grid</button>
       </div>
+      ${state.viewLevel==='prc' ? `
+        <button class="btn btn-secondary btn-sm" onclick="handleExpandAllPRCs()" title="Expand All Material Child Views">📂 Expand All</button>
+        <button class="btn btn-secondary btn-sm" onclick="handleCollapseAllPRCs()" title="Collapse All Material Child Views">📁 Collapse All</button>
+      ` : ''}
       <button class="btn btn-secondary btn-sm" onclick="exportCSV()" title="Export CSV">📄 CSV</button>
       <button class="btn btn-secondary btn-sm" onclick="exportExcel()" title="Export Excel">📊 Excel</button>
       <button class="btn btn-secondary btn-sm" onclick="exportPDF()" title="Export PDF">🖨️ PDF</button>
@@ -899,6 +903,22 @@ function renderPRCList(container) {
 window.switchViewLevel = function(level) {
   setState({ viewLevel: level, currentPage_num: 1 });
   renderPRCList(document.getElementById('page-content'));
+};
+
+window.togglePRCTreeRow = function(prcId) {
+  togglePRCExpanded(prcId);
+  renderPRCTable();
+};
+
+window.handleExpandAllPRCs = function() {
+  const { items } = getPaginatedPRCs();
+  expandAllPRCs(items.map(p => p.id));
+  renderPRCTable();
+};
+
+window.handleCollapseAllPRCs = function() {
+  collapseAllPRCs();
+  renderPRCTable();
 };
 
 window.applyFilters = function() {
@@ -1119,6 +1139,7 @@ function renderPRCTable() {
     const thead = document.querySelector('#prc-table thead');
     if (thead) {
       thead.innerHTML = `<tr>
+        <th style="width:40px;text-align:center"></th>
         <th onclick="sortTable('prNumber')">PR Number <span class="sort-icon">↕</span></th>
         <th onclick="sortTable('department')">Department <span class="sort-icon">↕</span></th>
         <th onclick="sortTable('priority')">Priority <span class="sort-icon">↕</span></th>
@@ -1138,7 +1159,7 @@ function renderPRCTable() {
     if(!tbody) return;
 
     if(!items.length) {
-      tbody.innerHTML = `<tr><td colspan="12"><div class="empty-state" style="padding:48px">
+      tbody.innerHTML = `<tr><td colspan="13"><div class="empty-state" style="padding:48px">
         <div class="empty-state-icon">🔍</div>
         <div class="empty-state-title">No PRCs found</div>
         <div class="empty-state-text">Try adjusting your filters or search query.</div>
@@ -1151,6 +1172,15 @@ function renderPRCTable() {
         const isAuth = isPRCAuthorised(p);
         const currentPrStatus = p.prStatus || (isAuth ? 'Authorised' : p.status);
         const docSummary = getPRCDocumentSummary(p);
+        const materials = p.materials || [];
+
+        let isExpanded = isPRCExpanded(p.id);
+        if (q && materials.some(m =>
+          (m.matCode && m.matCode.toLowerCase().includes(q.toLowerCase())) ||
+          (m.description && m.description.toLowerCase().includes(q.toLowerCase()))
+        )) {
+          isExpanded = true;
+        }
 
         const rfqCell = docSummary.rfqs.length > 0
           ? docSummary.rfqs.map(r => `
@@ -1194,8 +1224,15 @@ function renderPRCTable() {
 
         const computedStatus = calculateStatus(p);
 
-        return `<tr onclick="openPRCDetail('${p.id}')" style="cursor:pointer">
-          <td><span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(p.prNumber,q)}</span><span class="copy-icon">📋</span></span></td>
+        const parentRowHtml = `<tr class="parent-row ${isExpanded ? 'is-expanded' : ''}" onclick="togglePRCTreeRow('${p.id}')" style="cursor:pointer">
+          <td onclick="event.stopPropagation(); togglePRCTreeRow('${p.id}')" style="text-align:center">
+            <button class="row-expand-btn ${isExpanded ? 'is-expanded' : ''}" title="${isExpanded ? 'Collapse Material Child Items' : 'Expand Material Child Items'}">▶</button>
+          </td>
+          <td>
+            <span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(p.prNumber,q)}</span><span class="copy-icon">📋</span></span>
+            <br>
+            <span class="item-count-badge" title="${materials.length} material items recorded">🔩 ${materials.length} items</span>
+          </td>
           <td>${highlight(p.department,q)}</td>
           <td><span class="chip ${priorityChipClass(p.priority)}">${p.priority}</span></td>
           <td onclick="event.stopPropagation()">
@@ -1233,6 +1270,74 @@ function renderPRCTable() {
             <button class="btn btn-ghost btn-sm btn-icon" onclick="handleDeletePRC('${p.id}')" title="Delete PRC" style="color:var(--color-danger)">🗑️</button>
           </td>
         </tr>`;
+
+        const childRowHtml = `<tr class="child-row-container ${isExpanded ? '' : 'hidden'}" id="child-row-${p.id}">
+          <td colspan="13" class="child-row-cell" style="padding:0">
+            <div class="child-materials-wrapper">
+              <div class="child-materials-header">
+                <span class="font-semibold text-xs text-secondary">🔩 Material Items for PRC: <strong style="color:var(--color-text-primary)">${p.prNumber}</strong> (${materials.length} items)</span>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <button class="btn btn-primary btn-xs" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation(); openAddMaterialModal('${p.id}')">+ Add Material</button>
+                  <button class="btn btn-ghost btn-xs" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation(); openPRCDetail('${p.id}')">Full PRC View →</button>
+                </div>
+              </div>
+              ${materials.length === 0 ? `
+                <div style="padding:14px;text-align:center;color:var(--color-text-tertiary);font-size:12px">No material items recorded under this PRC. Click "+ Add Material" to add item.</div>
+              ` : `
+                <table class="child-materials-table">
+                  <thead>
+                    <tr>
+                      <th>Sl</th>
+                      <th>Mat Code</th>
+                      <th>Description</th>
+                      <th>Req Qty</th>
+                      <th>Proc Qty</th>
+                      <th>Pending Qty</th>
+                      <th>Closed Qty</th>
+                      <th>Status</th>
+                      <th>Allocation</th>
+                      <th>RFQ</th>
+                      <th>TCD</th>
+                      <th>PO Info</th>
+                      <th>Delivery Date</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${materials.map(m => {
+                      const tot = parseFloat(m.quantity) || 0;
+                      const proc = parseFloat(m.processedQty) || 0;
+                      const cls = parseFloat(m.closedQty) || 0;
+                      const pend = Math.max(0, tot - proc - cls);
+                      const mStatus = calculateMaterialStatus(m);
+
+                      return `<tr>
+                        <td>${m.serialNumber || '—'}</td>
+                        <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono font-semibold">${highlight(m.matCode,q)}</span><span class="copy-icon">📋</span></span></td>
+                        <td><strong>${highlight(m.description,q)}</strong></td>
+                        <td class="font-semibold">${tot} ${m.unit||''}</td>
+                        <td><span class="text-brand font-semibold">${proc}</span></td>
+                        <td><span class="${pend>0?'text-warning font-semibold':'text-secondary'}">${pend}</span></td>
+                        <td><span class="${cls>0?'text-danger':'text-secondary'}">${cls}</span></td>
+                        <td><span class="chip ${getStatusChipClass(mStatus)}"><span class="chip-dot"></span>${mStatus}</span></td>
+                        <td>${m.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber}','Allocation Number',event)"><strong>${m.allocationNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.allocationDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+                        <td>${m.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.rfqNumber}','RFQ Number',event)"><strong>${highlight(m.rfqNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.rfqDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+                        <td>${m.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.tcdNumber}','TCD Number',event)"><strong>${m.tcdNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.tcdDate)}</span>` : '<span class="text-tertiary">—</span>'}</td>
+                        <td>${m.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.poNumber}','PO Number',event)"><strong class="text-brand">${highlight(m.poNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.poDate)}${m.vendorName||m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''}</span>` : '<span class="text-tertiary">—</span>'}</td>
+                        <td>${fmtDate(m.deliveryDate||m.deliveryEndDate)}</td>
+                        <td onclick="event.stopPropagation()">
+                          <button class="btn btn-primary btn-xs" style="padding:3px 7px;font-size:10px" onclick="openEditMaterialWorkflow('${p.id}','${m.id}')" title="Edit Material Record">✏️ Edit Material</button>
+                        </td>
+                      </tr>`;
+                    }).join('')}
+                  </tbody>
+                </table>
+              `}
+            </div>
+          </td>
+        </tr>`;
+
+        return parentRowHtml + childRowHtml;
       }).join('');
     }
 
