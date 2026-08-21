@@ -528,6 +528,23 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .data-table tbody tr:hover { background: var(--color-primary-light); }
 .data-table tbody tr.selected { background: rgba(59,130,246,0.08); }
 
+/* ── PROCESS COMPLETED RECORDS HIGHLIGHT ───────────────── */
+tr.row-process-completed {
+  background-color: #ecfdf5 !important;
+  border-left: 4px solid #059669 !important;
+}
+tr.row-process-completed:hover {
+  background-color: #d1fae5 !important;
+}
+
+[data-theme="dark"] tr.row-process-completed {
+  background-color: rgba(5, 150, 105, 0.16) !important;
+  border-left: 4px solid #10b981 !important;
+}
+[data-theme="dark"] tr.row-process-completed:hover {
+  background-color: rgba(5, 150, 105, 0.26) !important;
+}
+
 /* ── PARENT-CHILD TREEVIEW STYLES ────────────────────────── */
 .row-expand-btn {
   display: inline-flex;

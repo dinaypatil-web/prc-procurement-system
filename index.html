@@ -1093,8 +1093,9 @@ function renderPRCTable() {
         const proc = parseFloat(m.processedQty) || 0;
         const cls = parseFloat(m.closedQty) || 0;
         const pend = Math.max(0, tot - proc - cls);
+        const isCompleted = m.status === 'Process Completed' || m.status === STATUS.COMPLETED;
 
-        return `<tr onclick="openPRCDetail('${m.prcId}')" style="cursor:pointer">
+        return `<tr onclick="openPRCDetail('${m.prcId}')" class="${isCompleted ? 'row-process-completed' : ''}" style="cursor:pointer">
           <td><span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(m.prNumber,q)}</span><span class="copy-icon">📋</span></span></td>
           <td>${m.serialNumber||'—'}</td>
           <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono text-sm font-semibold">${highlight(m.matCode,q)}</span><span class="copy-icon">📋</span></span></td>
@@ -1223,8 +1224,9 @@ function renderPRCTable() {
           : '<span class="text-tertiary">—</span>';
 
         const computedStatus = calculateStatus(p);
+        const isPrcCompleted = computedStatus === 'Process Completed' || computedStatus === STATUS.COMPLETED || p.status === 'Process Completed';
 
-        const parentRowHtml = `<tr class="parent-row ${isExpanded ? 'is-expanded' : ''}" onclick="togglePRCTreeRow('${p.id}')" style="cursor:pointer">
+        const parentRowHtml = `<tr class="parent-row ${isExpanded ? 'is-expanded' : ''} ${isPrcCompleted ? 'row-process-completed' : ''}" onclick="togglePRCTreeRow('${p.id}')" style="cursor:pointer">
           <td onclick="event.stopPropagation(); togglePRCTreeRow('${p.id}')" style="text-align:center">
             <button class="row-expand-btn ${isExpanded ? 'is-expanded' : ''}" title="${isExpanded ? 'Collapse Material Child Items' : 'Expand Material Child Items'}">▶</button>
           </td>
@@ -1310,8 +1312,9 @@ function renderPRCTable() {
                       const cls = parseFloat(m.closedQty) || 0;
                       const pend = Math.max(0, tot - proc - cls);
                       const mStatus = calculateMaterialStatus(m);
+                      const isChildCompleted = mStatus === 'Process Completed' || mStatus === STATUS.COMPLETED || m.status === 'Process Completed';
 
-                      return `<tr>
+                      return `<tr class="${isChildCompleted ? 'row-process-completed' : ''}">
                         <td>${m.serialNumber || '—'}</td>
                         <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono font-semibold">${highlight(m.matCode,q)}</span><span class="copy-icon">📋</span></span></td>
                         <td><strong>${highlight(m.description,q)}</strong></td>
@@ -1552,8 +1555,8 @@ window.openPRCDetail = function(id) {
               <th>Allocation</th><th>RFQ</th><th>TCD</th><th>PO Info</th><th>Delivery Date</th>
               <th>Action</th>
             </tr></thead>
-            <tbody>${mats.map(m=>`
-              <tr>
+            <tbody>${mats.map(m => `
+              <tr class="${(m.status === 'Process Completed' || m.status === STATUS.COMPLETED) ? 'row-process-completed' : ''}">
                 <td><input type="checkbox" class="mat-checkbox-${id}" value="${m.id}"/></td>
                 <td>${m.serialNumber||'—'}</td>
                 <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono text-sm">${m.matCode}</span><span class="copy-icon">📋</span></span></td>
