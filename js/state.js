@@ -6,6 +6,7 @@
 import { calculateStatus, calculateMaterialStatus, buildStatusSummary } from './status-engine.js';
 import {
   loadAllUserData,
+  saveAllUserData,
   saveCollection as firestoreSaveCollection,
   subscribeToRealtimeUserData,
   unsubscribeRealtimeUserData,
@@ -102,6 +103,7 @@ function saveToLocalCache() {
         lastSavedBy: state.currentUser?.name || 'Unknown',
         uid: state.firebaseUser?.uid || state.currentUser?.uid || 'guest'
       },
+      currentUser: state.currentUser,
       prcs: state.prcs,
       allocations: state.allocations,
       rfqs: state.rfqs,
@@ -659,19 +661,23 @@ export async function setAuthenticatedUser(firebaseUser) {
     state.activityLogs = [];
   }
 
+  // Attempt to load cached data for this user
+  const cached = loadFromLocalCache();
+  const cachedUser = cached?.currentUser || {};
+
   state.firebaseUser = firebaseUser;
   state.isAuthenticated = true;
   state.currentUser = {
     id: firebaseUser.uid,
     uid: firebaseUser.uid,
-    name: firebaseUser.name || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-    email: firebaseUser.email || '',
-    role: firebaseUser.role || 'User',
-    avatar: firebaseUser.avatar || (firebaseUser.name || firebaseUser.email || 'U').slice(0, 2).toUpperCase()
+    name: firebaseUser.name || firebaseUser.displayName || cachedUser.name || firebaseUser.email?.split('@')[0] || 'User',
+    email: firebaseUser.email || cachedUser.email || '',
+    role: firebaseUser.role || cachedUser.role || 'User',
+    avatar: firebaseUser.avatar || cachedUser.avatar || (firebaseUser.name || firebaseUser.email || 'U').slice(0, 2).toUpperCase(),
+    department: firebaseUser.department || cachedUser.department || '',
+    title: firebaseUser.title || cachedUser.title || '',
+    phone: firebaseUser.phone || cachedUser.phone || ''
   };
-
-  // Attempt to load cached data for this user
-  const cached = loadFromLocalCache();
   if (cached) {
     state.prcs = cached.prcs || [];
     state.allocations = cached.allocations || [];
@@ -769,6 +775,50 @@ export function clearAuthenticatedUser() {
   state.statusSummary = {};
   state.totalMaterials = 0;
   emit('*');
+}
+
+export function updateUserProfile(patch) {
+  if (!patch) return false;
+
+  state.currentUser = {
+    ...state.currentUser,
+    ...patch
+  };
+
+  // If avatar is blank or default fallback, compute from name
+  if (!state.currentUser.avatar || state.currentUser.avatar === 'GU' || state.currentUser.avatar === 'U') {
+    const fn = (state.currentUser.name || state.currentUser.email || 'U').trim();
+    const parts = fn.split(' ');
+    state.currentUser.avatar = parts.length > 1
+      ? (parts[0][0] + parts[1][0]).toUpperCase()
+      : fn.slice(0, 2).toUpperCase();
+  }
+
+  // Update in state.users list
+  const userIdx = state.users.findIndex(u =>
+    (u.id && u.id === state.currentUser.id) ||
+    (u.uid && u.uid === state.currentUser.uid) ||
+    (u.email && u.email.toLowerCase() === (state.currentUser.email || '').toLowerCase())
+  );
+  if (userIdx >= 0) {
+    state.users[userIdx] = { ...state.users[userIdx], ...state.currentUser };
+  } else {
+    state.users.push({ ...state.currentUser });
+  }
+
+  // Save to local cache
+  saveToLocalCache();
+
+  // Save to Firestore if connected
+  if (isFirebaseConfigured()) {
+    const uid = _getEffectiveUid();
+    saveAllUserData(uid, state).catch(err => console.warn('Firestore profile sync error:', err));
+  }
+
+  emit('currentUser');
+  emit('users');
+  emit('*');
+  return true;
 }
 
 // ── PRC OPERATIONS ────────────────────────────────────────
