@@ -188,9 +188,9 @@ export async function exportPDF(title = 'PRC Procurement Report') {
   toast('PDF exported!', 'success');
 }
 
-/** Generate ageing report data calculated up to Process Completed / Partly Completed dates */
+/** Generate ageing report data calculated from Allocation date to TCD Creation date or current date */
 export function getAgeingReport() {
-  const prcs = getFilteredPRCs().filter(p => !['Short-Close','Short Closed','Wrong PRC','PR Not Approved'].includes(p.status));
+  const prcs = getFilteredPRCs().filter(p => !['Short-Close','Short Closed','Wrong PRC','PR Not Approved','Future PRC','System Issue'].includes(p.status));
   return prcs.map(p => {
     const ageDays = getPRCAge(p);
     return { ...p, ageDays };

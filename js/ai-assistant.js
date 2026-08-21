@@ -4,7 +4,7 @@
 import { GEMINI_API_KEY, GEMINI_MODEL } from './firebase-config.js';
 import { getState } from './state.js';
 import { fmtDate, fmtNum } from './utils.js';
-import { STATUS } from './status-engine.js';
+import { STATUS, getPRCAge } from './status-engine.js';
 
 // Pre-built query suggestions
 export const AI_SUGGESTIONS = [
@@ -30,10 +30,8 @@ function buildContext() {
   const vendors = (state.vendors || []).slice(0, 10);
 
   const overdue = prcs.filter(p => {
-    const age = p.allocationDate
-      ? Math.floor((Date.now() - new Date(p.allocationDate)) / 86400000)
-      : 0;
-    return age > 7 && ![STATUS.COMPLETED, STATUS.WRONG_PRC, STATUS.PR_NOT_APPROVED].includes(p.status);
+    const age = getPRCAge(p);
+    return age > 7 && ![STATUS.COMPLETED, STATUS.WRONG_PRC, STATUS.PR_NOT_APPROVED, STATUS.FUTURE_PRC, STATUS.SYSTEM_ISSUE].includes(p.status);
   });
 
   const pendingRFQ = prcs.filter(p => !p.rfqNumber && p.allocationNumber && !p.poNumber);
@@ -125,7 +123,7 @@ function getDemoResponse(question) {
 
   if (q.includes('overdue')) {
     const overdue = prcs.filter(p => {
-      const age = Math.floor((Date.now() - new Date(p.allocationDate || p.createdAt)) / 86400000);
+      const age = getPRCAge(p);
       return age > 7 && p.status !== STATUS.COMPLETED;
     });
     return `📊 **Overdue PRCs (>7 days)**\n\nFound **${overdue.length}** overdue PRCs:\n${

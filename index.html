@@ -757,7 +757,7 @@ function initDashboardCharts(prcs, s) {
 
   // Ageing
   const ageBuckets = {'0-3 days':0,'4-7 days':0,'8-14 days':0,'15-30 days':0,'>30 days':0};
-  prcs.filter(p => !['Process Completed', 'Wrong PRC', 'PR Not Approved', 'Short-Close'].includes(p.status)).forEach(p => {
+  prcs.filter(p => !['Process Completed', 'Wrong PRC', 'PR Not Approved', 'Future PRC', 'System Issue', 'Short-Close'].includes(p.status)).forEach(p => {
     const age = getPRCAge(p);
     if(age<=3) ageBuckets['0-3 days']++;
     else if(age<=7) ageBuckets['4-7 days']++;

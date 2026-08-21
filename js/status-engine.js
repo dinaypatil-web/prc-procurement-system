@@ -239,20 +239,54 @@ export function calcAgeDays(startDate, endDate = null) {
 }
 
 /**
- * Calculates the exact PRC age in days up to completion / partial completion date.
+ * Calculates the exact PRC age in days.
+ * Rule: Calculated from Allocation date to TCD Creation date or 0 if it is marked
+ * Wrong PRC, PR Not approved, Future PRC or System Issue. If TCD not created, then from allocation date to current date.
  * @param {Object} prc
  * @returns {number}
  */
 export function getPRCAge(prc) {
   if (!prc) return 0;
-  const start = prc.allocationDate || prc.prDate || prc.createdAt;
-  let end = null;
 
-  if (prc.status === STATUS.COMPLETED) {
-    end = prc.poDate || prc.completedDate || prc.updatedAt;
-  } else if (prc.status === STATUS.PARTLY_COMPLETED) {
-    end = prc.poDate || prc.tcdDate || prc.updatedAt;
+  // Return 0 if marked Wrong PRC, PR Not approved, Future PRC or System Issue
+  const currentStatus = prc.status || calculateStatus(prc, prc.materials || []);
+  const prStatus = String(prc.prStatus || '').trim().toLowerCase();
+
+  const zeroAgeStatuses = [
+    STATUS.WRONG_PRC,
+    STATUS.PR_NOT_APPROVED,
+    STATUS.FUTURE_PRC,
+    STATUS.SYSTEM_ISSUE
+  ];
+
+  const zeroAgePRStatus = [
+    'wrong prc',
+    'pr not approved',
+    'future prc',
+    'system issue'
+  ];
+
+  if (
+    prc.isWrongPRC ||
+    prc.isPRNotApproved ||
+    prc.isFuturePRC ||
+    prc.isSystemIssue ||
+    zeroAgeStatuses.includes(currentStatus) ||
+    zeroAgePRStatus.includes(prStatus)
+  ) {
+    return 0;
   }
+
+  // Start date: Allocation date
+  const mats = prc.materials || [];
+  const start = prc.allocationDate || prc.allocatedDate || mats.find(m => m.allocationDate)?.allocationDate;
+  if (!start) return 0;
+
+  // End date: TCD Creation date if TCD created, otherwise current date (null -> new Date())
+  const tcdDt = prc.tcdDate || prc.tcdCreationDate || prc.tcdCreatedDate || mats.find(m => m.tcdDate)?.tcdDate;
+  const hasTCD = !!(prc.tcdNumber || tcdDt || mats.some(m => m.tcdNumber || m.tcdDate));
+
+  const end = (hasTCD && tcdDt) ? tcdDt : null;
 
   return calcAgeDays(start, end);
 }
@@ -278,7 +312,7 @@ export function getAlertLevel(prc, materials) {
   const status = calculateStatus(prc, materials);
   const age = getPRCAge(prc);
 
-  if ([STATUS.SHORT_CLOSED, STATUS.WRONG_PRC, STATUS.PR_NOT_APPROVED, STATUS.SYSTEM_ISSUE].includes(status)) return null;
+  if ([STATUS.SHORT_CLOSED, STATUS.WRONG_PRC, STATUS.PR_NOT_APPROVED, STATUS.FUTURE_PRC, STATUS.SYSTEM_ISSUE].includes(status)) return null;
   if (status === STATUS.COMPLETED) return null;
 
   if (age > 14) return 'red';

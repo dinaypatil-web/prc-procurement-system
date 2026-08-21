@@ -813,7 +813,7 @@ export function getFilteredPRCs() {
   if (f.isOverdue) {
     list = list.filter(p => {
       const st = calculateStatus(p);
-      return getPRCAge(p) > 7 && !['Process Completed', 'Wrong PRC', 'PR Not Approved', 'Short-Close'].includes(st);
+      return getPRCAge(p) > 7 && !['Process Completed', 'Wrong PRC', 'PR Not Approved', 'Future PRC', 'System Issue', 'Short-Close'].includes(st);
     });
   }
   if (f.poToday) {
