@@ -89,8 +89,8 @@ export function getState() { return state; }
 // ── LOCALSTORAGE CACHE ────────────────────────────────────
 
 function _getCacheKey() {
-  const uid = state.firebaseUser?.uid;
-  return uid ? `${LOCAL_CACHE_KEY}_${uid}` : LOCAL_CACHE_KEY;
+  const uid = state.firebaseUser?.uid || state.currentUser?.uid || state.currentUser?.id || 'guest';
+  return `${LOCAL_CACHE_KEY}_${uid}`;
 }
 
 function saveToLocalCache() {
@@ -99,7 +99,7 @@ function saveToLocalCache() {
       meta: {
         lastSavedAt: new Date().toISOString(),
         lastSavedBy: state.currentUser?.name || 'Unknown',
-        uid: state.firebaseUser?.uid || null
+        uid: state.firebaseUser?.uid || state.currentUser?.uid || 'guest'
       },
       prcs: state.prcs,
       allocations: state.allocations,
@@ -111,10 +111,8 @@ function saveToLocalCache() {
       notifications: state.notifications,
       activityLogs: state.activityLogs
     };
-    // Save to user-scoped key
+    // Save ONLY to current user-scoped key to prevent cross-user data leakage
     localStorage.setItem(_getCacheKey(), JSON.stringify(dataToSave));
-    // Also save to global cache fallback
-    localStorage.setItem(LOCAL_CACHE_KEY, JSON.stringify(dataToSave));
   } catch (err) {
     console.error('Failed to save local cache:', err);
   }
@@ -122,49 +120,18 @@ function saveToLocalCache() {
 
 export function loadFromLocalCache() {
   try {
-    // Collect all candidate cache entries — check every possible key
-    const candidates = [];
-
-    // 1. Try user-scoped key (current UID)
     const uidKey = _getCacheKey();
     const uidRaw = localStorage.getItem(uidKey);
     if (uidRaw) {
       try {
         const parsed = JSON.parse(uidRaw);
-        if (parsed && Array.isArray(parsed.prcs)) candidates.push(parsed);
-      } catch(e) {}
-    }
-
-    // 2. Try global/guest fallback key
-    const globalRaw = localStorage.getItem(LOCAL_CACHE_KEY);
-    if (globalRaw) {
-      try {
-        const parsed = JSON.parse(globalRaw);
-        if (parsed && Array.isArray(parsed.prcs)) candidates.push(parsed);
-      } catch(e) {}
-    }
-
-    // 3. Scan ALL localStorage keys for any PRC cache data
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && (key.startsWith('PRC_PROCUREMENT') || key.includes('CACHE'))) {
-        if (key === uidKey || key === LOCAL_CACHE_KEY) continue; // already checked
-        const val = localStorage.getItem(key);
-        if (val && val.length > 10) {
-          try {
-            const parsed = JSON.parse(val);
-            if (parsed && Array.isArray(parsed.prcs)) candidates.push(parsed);
-          } catch(e) {}
+        if (parsed && Array.isArray(parsed.prcs)) {
+          console.info(`📦 Local cache loaded for current user key (${uidKey}): ${parsed.prcs?.length || 0} PRCs`);
+          return parsed;
         }
-      }
+      } catch(e) {}
     }
-
-    // Return the candidate with the most PRCs
-    if (candidates.length === 0) return null;
-    candidates.sort((a, b) => (b.prcs?.length || 0) - (a.prcs?.length || 0));
-    const best = candidates[0];
-    console.info(`📦 Local cache loaded: ${best.prcs?.length || 0} PRCs, ${best.allocations?.length || 0} allocations, ${best.rfqs?.length || 0} RFQs`);
-    return best;
+    return null;
   } catch (err) {
     console.error('Failed to load from local cache:', err);
     return null;
@@ -678,6 +645,19 @@ export const initDemoData = initAppData;
 // ── AUTH STATE SETTERS ────────────────────────────────────
 
 export async function setAuthenticatedUser(firebaseUser) {
+  if (state.firebaseUser?.uid !== firebaseUser.uid) {
+    // Clear previous user's in-memory data arrays when switching accounts
+    state.prcs = [];
+    state.allocations = [];
+    state.rfqs = [];
+    state.tcds = [];
+    state.pods = [];
+    state.vendors = [];
+    state.users = [];
+    state.notifications = [];
+    state.activityLogs = [];
+  }
+
   state.firebaseUser = firebaseUser;
   state.isAuthenticated = true;
   state.currentUser = {
@@ -688,11 +668,28 @@ export async function setAuthenticatedUser(firebaseUser) {
     role: firebaseUser.role || 'User',
     avatar: firebaseUser.avatar || (firebaseUser.name || firebaseUser.email || 'U').slice(0, 2).toUpperCase()
   };
+
+  // Attempt to load cached data for this user
+  const cached = loadFromLocalCache();
+  if (cached) {
+    state.prcs = cached.prcs || [];
+    state.allocations = cached.allocations || [];
+    state.rfqs = cached.rfqs || [];
+    state.tcds = cached.tcds || [];
+    state.pods = cached.pods || [];
+    state.vendors = cached.vendors || [];
+    state.users = cached.users || [];
+    state.notifications = cached.notifications || [];
+    state.activityLogs = cached.activityLogs || [];
+    state.statusSummary = buildStatusSummary(state.prcs);
+    state.totalMaterials = state.prcs.reduce((acc, p) => acc + (p.materials || []).length, 0);
+  }
+
   emit('currentUser');
   emit('isAuthenticated');
   emit('*');
 
-  // Start Real-Time Multi-Device Sync with Firestore
+  // Start Real-Time Multi-Device Sync with Firestore for THIS user
   if (isFirebaseConfigured() && firebaseUser.uid) {
     subscribeToRealtimeUserData(firebaseUser.uid, (colName, items) => {
       handleRealtimeUpdate(colName, items);

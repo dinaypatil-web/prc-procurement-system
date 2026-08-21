@@ -345,7 +345,8 @@ export async function testFirestoreConnection() {
     }
 
     const { doc, getDoc, setDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-    const pingRef = doc(_db, 'workspaces/default/diagnostics/ping');
+    const pingUid = _auth?.currentUser?.uid || 'guest';
+    const pingRef = doc(_db, `users/${pingUid}/diagnostics/ping`);
     const start = Date.now();
 
     const pingOp = (async () => {

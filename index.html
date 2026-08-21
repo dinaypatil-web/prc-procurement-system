@@ -2561,8 +2561,11 @@ function renderSettings(container) {
             <input type="text" id="cfg-project-id" class="form-input" style="font-size:12px" value="${FIREBASE_CONFIG.projectId || ''}" placeholder="e.g. procuretrack-3cb1c"/>
           </div>
           <div>
-            <label class="form-label" style="font-size:11.5px">API Key</label>
-            <input type="text" id="cfg-api-key" class="form-input" style="font-size:12px" value="${FIREBASE_CONFIG.apiKey || ''}" placeholder="e.g. AIzaSy..."/>
+            <label class="form-label" style="font-size:11.5px">API Key 🔒</label>
+            <div style="position:relative;display:flex;align-items:center">
+              <input type="password" id="cfg-api-key" class="form-input" style="font-size:12px;padding-right:36px" value="${FIREBASE_CONFIG.apiKey || ''}" placeholder="e.g. AIzaSy..." autocomplete="off"/>
+              <button type="button" class="btn btn-ghost btn-xs" style="position:absolute;right:4px;padding:2px 6px;font-size:12px;color:var(--color-text-secondary);cursor:pointer;border:none;background:transparent" onclick="toggleApiKeyVisibility(event)" title="Toggle API Key visibility">👁️</button>
+            </div>
           </div>
           <div>
             <label class="form-label" style="font-size:11.5px">Auth Domain</label>
@@ -2839,6 +2842,18 @@ window.handleResetCustomFirebaseConfig = async function() {
   toast("Reset to default environment Firebase config. Reconnecting...", "info");
   await initAppData();
   window.handleTestFirestoreConnection();
+};
+window.toggleApiKeyVisibility = function(e) {
+  const input = document.getElementById('cfg-api-key');
+  const btn = (e && e.currentTarget) || (e && e.target);
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    if (btn) btn.textContent = '🙈';
+  } else {
+    input.type = 'password';
+    if (btn) btn.textContent = '👁️';
+  }
 };
 window.updateTopBarDbBadge = function(isConnected) {
   const dot = document.getElementById('topbar-db-dot');

@@ -1,28 +1,30 @@
 rules_version = '2';
 // ============================================================================
 // PRC PROCUREMENT SYSTEM — FIRESTORE SECURITY RULES
-// Seamless multi-user real-time synchronization across devices and workspaces
+// Strict Per-User Data Isolation Strategy
 // ============================================================================
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Shared procurement workspace collections
-    match /workspaces/{workspaceId}/{document=**} {
-      allow read, write: if true;
-    }
-
-    // User-scoped collections
+    // Authenticated User-scoped documents (Strictly private to each user)
     match /users/{userId}/{document=**} {
-      allow read, write: if true;
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // System settings & global data
+    // Guest / unauthenticated fallback isolation
+    match /users/guest/{document=**} {
+      allow read, write: if request.auth == null;
+    }
+
+    // System settings
     match /settings/{settingId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if request.auth != null;
     }
 
+    // Default deny for all other collections to block unauthorized cross-user access
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
