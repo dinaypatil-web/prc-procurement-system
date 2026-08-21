@@ -1048,6 +1048,78 @@ window.getPRCDocumentSummary = function(p) {
   };
 };
 
+// ── PROGRESS STARS ──────────────────────────────────────────
+// Renders 5 stars for: Allocation, RFQ, RFQ Close, TCD, PO
+// For PRC-level: checks any material OR PRC-level fields
+// For material-level: checks material fields directly
+window.renderProgressStars = function(item, isPRC) {
+  const stages = [
+    { key: 'alloc',    label: 'Allocation',  filled: false },
+    { key: 'rfq',      label: 'RFQ',         filled: false },
+    { key: 'rfqclose', label: 'RFQ Close',   filled: false },
+    { key: 'tcd',      label: 'TCD',         filled: false },
+    { key: 'po',       label: 'PO',          filled: false }
+  ];
+
+  if (isPRC) {
+    // PRC-level: check PRC fields and any material having the stage
+    const mats = item.materials || [];
+    const state = getState();
+    const allocs = state.allocations || [];
+    const rfqs = state.rfqs || [];
+
+    // Allocation
+    stages[0].filled = !!(item.allocationNumber || item.allocationDate || item.buyerName ||
+      mats.some(m => m.allocationNumber || m.allocationDate) ||
+      allocs.some(a => (a.prcIds || []).includes(item.id)));
+
+    // RFQ
+    stages[1].filled = !!(item.rfqNumber ||
+      mats.some(m => m.rfqNumber) ||
+      rfqs.some(r => (r.materials || []).some(rm => mats.some(mm => mm.id === rm.materialId))));
+
+    // RFQ Close — check if any linked RFQ is closed
+    const prcRfqNumbers = new Set();
+    if (item.rfqNumber) prcRfqNumbers.add(String(item.rfqNumber).trim());
+    mats.forEach(m => { if (m.rfqNumber) prcRfqNumbers.add(String(m.rfqNumber).trim()); });
+    stages[2].filled = rfqs.some(r =>
+      prcRfqNumbers.has(String(r.rfqNumber || r.id || '').trim()) &&
+      !!(r.isClosed || String(r.status || '').trim().toLowerCase() === 'closed')
+    );
+
+    // TCD
+    stages[3].filled = !!(item.tcdNumber ||
+      mats.some(m => m.tcdNumber));
+
+    // PO
+    stages[4].filled = !!(item.poNumber ||
+      mats.some(m => m.poNumber));
+  } else {
+    // Material-level
+    const state = getState();
+    const rfqs = state.rfqs || [];
+
+    stages[0].filled = !!(item.allocationNumber || item.allocationDate);
+    stages[1].filled = !!(item.rfqNumber);
+
+    // RFQ Close for material
+    if (item.rfqNumber) {
+      const matRfqNum = String(item.rfqNumber).trim();
+      stages[2].filled = rfqs.some(r =>
+        String(r.rfqNumber || r.id || '').trim() === matRfqNum &&
+        !!(r.isClosed || String(r.status || '').trim().toLowerCase() === 'closed')
+      );
+    }
+
+    stages[3].filled = !!(item.tcdNumber);
+    stages[4].filled = !!(item.poNumber);
+  }
+
+  return `<span class="progress-stars">${stages.map(s =>
+    `<span class="progress-star ${s.filled ? 'star-' + s.key : 'star-empty'}" title="${s.label}: ${s.filled ? '✅ Completed' : '⬜ Pending'}">★</span>`
+  ).join('')}</span>`;
+};
+
 function renderPRCTable() {
   const state = getState();
   const countEl = document.getElementById('prc-list-count');
@@ -1096,7 +1168,7 @@ function renderPRCTable() {
         const isCompleted = m.status === 'Process Completed' || m.status === STATUS.COMPLETED;
 
         return `<tr onclick="openPRCDetail('${m.prcId}')" class="${isCompleted ? 'row-process-completed' : ''}" style="cursor:pointer">
-          <td><span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(m.prNumber,q)}</span><span class="copy-icon">📋</span></span></td>
+          <td><span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(m.prNumber,q)}</span><span class="copy-icon">📋</span></span><br>${renderProgressStars(m, false)}</td>
           <td>${m.serialNumber||'—'}</td>
           <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono text-sm font-semibold">${highlight(m.matCode,q)}</span><span class="copy-icon">📋</span></span></td>
           <td><strong>${highlight(m.description,q)}</strong></td>
@@ -1234,6 +1306,8 @@ function renderPRCTable() {
             <span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(p.prNumber,q)}</span><span class="copy-icon">📋</span></span>
             <br>
             <span class="item-count-badge" title="${materials.length} material items recorded">🔩 ${materials.length} items</span>
+            <br>
+            ${renderProgressStars(p, true)}
           </td>
           <td>${highlight(p.department,q)}</td>
           <td><span class="chip ${priorityChipClass(p.priority)}">${p.priority}</span></td>
@@ -1316,7 +1390,7 @@ function renderPRCTable() {
 
                       return `<tr class="${isChildCompleted ? 'row-process-completed' : ''}">
                         <td>${m.serialNumber || '—'}</td>
-                        <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono font-semibold">${highlight(m.matCode,q)}</span><span class="copy-icon">📋</span></span></td>
+                        <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono font-semibold">${highlight(m.matCode,q)}</span><span class="copy-icon">📋</span></span><br>${renderProgressStars(m, false)}</td>
                         <td><strong>${highlight(m.description,q)}</strong></td>
                         <td class="font-semibold">${tot} ${m.unit||''}</td>
                         <td><span class="text-brand font-semibold">${proc}</span></td>
