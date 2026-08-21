@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>ProcureTrack — Enterprise Procurement Management System</title>
   <meta name="description" content="AI-powered enterprise procurement tracking and workflow management system for tracking PRCs from allocation to PO issuance."/>
-  <meta name="theme-color" content="#1e293b"/>
+  <meta name="theme-color" content="#f8fafc"/>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232563eb'/><text y='.9em' font-size='70' x='50%' text-anchor='middle'>📦</text></svg>"/>
 
   <!-- Fonts -->
@@ -399,7 +399,7 @@ window.toggleTheme = function() {
   setState({ theme: next });
 };
 // Apply saved theme
-document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'dark');
+document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light');
 
 // ── GLOBAL SEARCH ──────────────────────────────────────────
 const searchInput = document.getElementById('global-search');

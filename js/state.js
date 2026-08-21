@@ -42,7 +42,7 @@ const state = {
   currentUser: { ...DEFAULT_USER },
   isAuthenticated: false,
   firebaseUser: null,
-  theme: localStorage.getItem('theme') || 'dark',
+  theme: localStorage.getItem('theme') || 'light',
 
   // Core Data Collections
   prcs: [],

@@ -24,17 +24,17 @@
   --accent-500: #8b5cf6;
   --accent-600: #7c3aed;
 
-  /* Semantic colours – light */
-  --color-bg:           #f0f4f8;
+  /* Semantic colours – light & elegant baseline */
+  --color-bg:           #f8fafc;
   --color-surface:      #ffffff;
-  --color-surface-2:    #f8fafc;
-  --color-surface-3:    #f1f5f9;
+  --color-surface-2:    #f1f5f9;
+  --color-surface-3:    #e2e8f0;
   --color-border:       #e2e8f0;
   --color-border-focus: var(--brand-500);
 
   --color-text-primary:   #0f172a;
   --color-text-secondary: #475569;
-  --color-text-tertiary:  #94a3b8;
+  --color-text-tertiary:  #64748b;
   --color-text-inverse:   #ffffff;
 
   --color-primary:      var(--brand-600);
@@ -53,48 +53,52 @@
   --color-purple:   #8b5cf6;
   --color-purple-bg:#f5f3ff;
 
-  /* Status chip palette */
-  --status-completed:     #059669;
+  /* Status chip palette - High contrast & crisp */
+  --status-completed:     #047857;
   --status-completed-bg:  #d1fae5;
-  --status-partly:        #0891b2;
+  --status-partly:        #0e7490;
   --status-partly-bg:     #cffafe;
-  --status-pending:       #d97706;
+  --status-pending:       #b45309;
   --status-pending-bg:    #fef3c7;
-  --status-awaiting:      #7c3aed;
+  --status-awaiting:      #6d28d9;
   --status-awaiting-bg:   #ede9fe;
-  --status-inputs:        #ea580c;
+  --status-inputs:        #c2410c;
   --status-inputs-bg:     #ffedd5;
-  --status-wrong:         #dc2626;
+  --status-wrong:         #b91c1c;
   --status-wrong-bg:      #fee2e2;
-  --status-future:        #0284c7;
+  --status-future:        #0369a1;
   --status-future-bg:     #e0f2fe;
-  --status-pr-not:        #9333ea;
+  --status-pr-not:        #7e22ce;
   --status-pr-not-bg:     #f3e8ff;
   --status-system:        #475569;
   --status-system-bg:     #f1f5f9;
 
-  /* Sidebar */
-  --sidebar-bg:         #1e293b;
-  --sidebar-text:       #94a3b8;
-  --sidebar-text-active:#f8fafc;
-  --sidebar-hover:      rgba(255,255,255,0.06);
-  --sidebar-active-bg:  rgba(59,130,246,0.15);
-  --sidebar-active-border: var(--brand-500);
+  /* Sidebar – Clean Executive Light Sidebar */
+  --sidebar-bg:         #ffffff;
+  --sidebar-border:     #e2e8f0;
+  --sidebar-text:       #475569;
+  --sidebar-text-active:#2563eb;
+  --sidebar-hover:      #f1f5f9;
+  --sidebar-active-bg:  #eff6ff;
+  --sidebar-active-border: var(--brand-600);
+  --sidebar-logo-title: #0f172a;
+  --sidebar-logo-sub:   #64748b;
+  --sidebar-user-name:  #0f172a;
   --sidebar-width:      260px;
   --sidebar-collapsed:  72px;
 
   /* Elevation / Shadows */
-  --shadow-xs:  0 1px 2px rgba(0,0,0,0.05);
-  --shadow-sm:  0 1px 3px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-md:  0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
-  --shadow-lg:  0 10px 15px rgba(0,0,0,0.10), 0 4px 6px rgba(0,0,0,0.05);
-  --shadow-xl:  0 20px 25px rgba(0,0,0,0.10), 0 10px 10px rgba(0,0,0,0.04);
-  --shadow-2xl: 0 25px 50px rgba(0,0,0,0.15);
-  --shadow-glow:0 0 20px rgba(59,130,246,0.25);
+  --shadow-xs:  0 1px 2px rgba(15,23,42,0.04);
+  --shadow-sm:  0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+  --shadow-md:  0 4px 12px -2px rgba(15,23,42,0.06), 0 2px 4px -1px rgba(15,23,42,0.04);
+  --shadow-lg:  0 10px 25px -5px rgba(15,23,42,0.08), 0 8px 10px -6px rgba(15,23,42,0.04);
+  --shadow-xl:  0 20px 30px -10px rgba(15,23,42,0.10);
+  --shadow-2xl: 0 25px 50px -12px rgba(15,23,42,0.15);
+  --shadow-glow:0 0 20px rgba(37,99,235,0.15);
 
   /* Glassmorphism */
-  --glass-bg:     rgba(255,255,255,0.72);
-  --glass-border: rgba(255,255,255,0.50);
+  --glass-bg:     rgba(255,255,255,0.85);
+  --glass-border: rgba(226,232,240,0.80);
   --glass-blur:   blur(16px);
 
   /* Spacing scale */
@@ -172,15 +176,35 @@
   --color-info-bg:    rgba(6,182,212,0.12);
   --color-purple-bg:  rgba(139,92,246,0.12);
 
+  --status-completed:     #10b981;
   --status-completed-bg:  rgba(5,150,105,0.15);
+  --status-partly:        #06b6d4;
   --status-partly-bg:     rgba(8,145,178,0.15);
+  --status-pending:       #f59e0b;
   --status-pending-bg:    rgba(217,119,6,0.15);
+  --status-awaiting:      #8b5cf6;
   --status-awaiting-bg:   rgba(124,58,237,0.15);
+  --status-inputs:        #ea580c;
   --status-inputs-bg:     rgba(234,88,12,0.15);
+  --status-wrong:         #ef4444;
   --status-wrong-bg:      rgba(220,38,38,0.15);
+  --status-future:        #0284c7;
   --status-future-bg:     rgba(2,132,199,0.15);
+  --status-pr-not:        #9333ea;
   --status-pr-not-bg:     rgba(147,51,234,0.15);
+  --status-system:        #94a3b8;
   --status-system-bg:     rgba(71,85,105,0.15);
+
+  --sidebar-bg:         #111827;
+  --sidebar-border:     #1e293b;
+  --sidebar-text:       #94a3b8;
+  --sidebar-text-active:#f8fafc;
+  --sidebar-hover:      rgba(255,255,255,0.06);
+  --sidebar-active-bg:  rgba(59,130,246,0.15);
+  --sidebar-active-border: var(--brand-500);
+  --sidebar-logo-title: #ffffff;
+  --sidebar-logo-sub:   #94a3b8;
+  --sidebar-user-name:  #ffffff;
 
   --glass-bg:     rgba(17,24,39,0.80);
   --glass-border: rgba(255,255,255,0.08);
