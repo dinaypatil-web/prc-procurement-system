@@ -3669,8 +3669,8 @@ window.expandAllAllocPRCTree = function(expand) {
 window.getSelectedAllocMaterials = function() {
   const modalContainer = document.getElementById('alloc-tree-container-modal');
   const pageContainer = document.getElementById('alloc-tree-container');
-  // Prefer modal container if visible in DOM, otherwise page container
-  const container = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : pageContainer;
+  const isModalOpen = modalContainer && document.body.contains(modalContainer) && modalContainer.closest('.modal-overlay');
+  const container = isModalOpen ? modalContainer : pageContainer;
   const scope = container || document;
 
   const checkedBoxes = scope.querySelectorAll('.alloc-tree-mat-cb:checked:not(:disabled)');
@@ -3688,7 +3688,8 @@ window.getSelectedAllocMaterials = function() {
 window.selectAllAllocPRCTree = function(select) {
   const modalContainer = document.getElementById('alloc-tree-container-modal');
   const pageContainer = document.getElementById('alloc-tree-container');
-  const container = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : pageContainer;
+  const isModalOpen = modalContainer && document.body.contains(modalContainer) && modalContainer.closest('.modal-overlay');
+  const container = isModalOpen ? modalContainer : pageContainer;
   const scope = container || document;
 
   scope.querySelectorAll('.alloc-tree-mat-cb:not(:disabled)').forEach(cb => {
@@ -4239,7 +4240,7 @@ function renderRFQTreeHTML(allocEntries, query = '', preselectedSet = null) {
                     <button type="button" class="tree-expander-btn" onclick="event.stopPropagation();toggleTreeNode('${allocNodeId}')" title="Toggle allocation">
                       <svg class="tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
                     </button>
-                    <input type="checkbox" class="rfq-alloc-cb" data-alloc-node="${allocNodeId}" ${allChecked ? 'checked' : ''} onclick="event.stopPropagation();onRFQAllocCheck('${allocNodeId}', this.checked)"/>
+                    <input type="checkbox" class="rfq-alloc-cb" data-alloc-node="${allocNodeId}" ${allChecked ? 'checked' : ''} onclick="event.stopPropagation();onRFQAllocCheck('${allocNodeId}', this.checked, event)"/>
                     <span class="tree-icon-badge tree-icon-prc" title="Allocation Document">
                       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                     </span>
@@ -4262,10 +4263,10 @@ function renderRFQTreeHTML(allocEntries, query = '', preselectedSet = null) {
 
                     return `
                     <li class="rfq-tree-mat">
-                      <div class="tree-node-item" onclick="toggleRFQMatCheck('${allocNodeId}', ${m._idx})">
+                      <div class="tree-node-item" onclick="toggleRFQMatCheck('${allocNodeId}', ${m._idx}, event)">
                         <div class="tree-node-left">
                           <span class="tree-expander-spacer"></span>
-                          <input type="checkbox" class="rfq-mat-cb" data-idx="${m._idx}" data-alloc-node="${allocNodeId}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onRFQMatCheck('${allocNodeId}')"/>
+                          <input type="checkbox" class="rfq-mat-cb" data-idx="${m._idx}" data-alloc-node="${allocNodeId}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onRFQMatCheck('${allocNodeId}', event)"/>
                           <span class="tree-icon-badge tree-icon-mat" title="Material Item">
                             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
                           </span>
@@ -4323,7 +4324,8 @@ window.expandAllRFQTree = function(expand) {
 
 window.selectAllRFQTree = function(select) {
   const modalContainer = document.getElementById('create-rfq-modal');
-  const scope = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : document;
+  const isModalOpen = modalContainer && document.body.contains(modalContainer);
+  const scope = isModalOpen ? modalContainer : (document.getElementById('rfq-tree-container') || document);
   scope.querySelectorAll('.rfq-mat-cb').forEach(cb => cb.checked = select);
   scope.querySelectorAll('.rfq-alloc-cb').forEach(cb => {
     cb.checked = select;
@@ -4332,17 +4334,23 @@ window.selectAllRFQTree = function(select) {
   updateRFQTreeSummary();
 };
 
-window.toggleRFQMatCheck = function(allocNodeId, idx) {
-  const cb = document.querySelector(`.rfq-mat-cb[data-idx="${idx}"][data-alloc-node="${allocNodeId}"]`);
+window.toggleRFQMatCheck = function(allocNodeId, idx, evt) {
+  const modalContainer = document.getElementById('create-rfq-modal');
+  const isModalOpen = modalContainer && document.body.contains(modalContainer);
+  const scope = evt?.target?.closest('#create-rfq-modal, #rfq-tree-container') || (isModalOpen ? modalContainer : (document.getElementById('rfq-tree-container') || document));
+  const cb = scope.querySelector(`.rfq-mat-cb[data-idx="${idx}"][data-alloc-node="${allocNodeId}"]`);
   if (cb && !cb.disabled) {
     cb.checked = !cb.checked;
-    onRFQMatCheck(allocNodeId);
+    onRFQMatCheck(allocNodeId, evt);
   }
 };
 
-window.onRFQAllocCheck = function(allocNodeId, isChecked) {
-  document.querySelectorAll(`.rfq-mat-cb[data-alloc-node="${allocNodeId}"]`).forEach(cb => cb.checked = isChecked);
-  const node = document.getElementById(allocNodeId);
+window.onRFQAllocCheck = function(allocNodeId, isChecked, evt) {
+  const modalContainer = document.getElementById('create-rfq-modal');
+  const isModalOpen = modalContainer && document.body.contains(modalContainer);
+  const scope = evt?.target?.closest('#create-rfq-modal, #rfq-tree-container') || (isModalOpen ? modalContainer : (document.getElementById('rfq-tree-container') || document));
+  scope.querySelectorAll(`.rfq-mat-cb[data-alloc-node="${allocNodeId}"]`).forEach(cb => cb.checked = isChecked);
+  const node = scope.querySelector(`#${allocNodeId}`);
   if (node && isChecked) {
     node.classList.add('open');
     const expander = node.querySelector(':scope > .tree-node-item > .tree-expander');
@@ -4351,10 +4359,13 @@ window.onRFQAllocCheck = function(allocNodeId, isChecked) {
   updateRFQTreeSummary();
 };
 
-window.onRFQMatCheck = function(allocNodeId) {
-  const allocCb = document.querySelector(`.rfq-alloc-cb[data-alloc-node="${allocNodeId}"]`);
-  const allMats = document.querySelectorAll(`.rfq-mat-cb[data-alloc-node="${allocNodeId}"]`);
-  const checkedMats = document.querySelectorAll(`.rfq-mat-cb[data-alloc-node="${allocNodeId}"]:checked`);
+window.onRFQMatCheck = function(allocNodeId, evt) {
+  const modalContainer = document.getElementById('create-rfq-modal');
+  const isModalOpen = modalContainer && document.body.contains(modalContainer);
+  const scope = evt?.target?.closest('#create-rfq-modal, #rfq-tree-container') || (isModalOpen ? modalContainer : (document.getElementById('rfq-tree-container') || document));
+  const allocCb = scope.querySelector(`.rfq-alloc-cb[data-alloc-node="${allocNodeId}"]`);
+  const allMats = scope.querySelectorAll(`.rfq-mat-cb[data-alloc-node="${allocNodeId}"]`);
+  const checkedMats = scope.querySelectorAll(`.rfq-mat-cb[data-alloc-node="${allocNodeId}"]:checked`);
   if (allocCb) {
     allocCb.checked = allMats.length > 0 && checkedMats.length === allMats.length;
     allocCb.indeterminate = checkedMats.length > 0 && checkedMats.length < allMats.length;
@@ -4364,20 +4375,33 @@ window.onRFQMatCheck = function(allocNodeId) {
 
 window.updateRFQTreeSummary = function() {
   const modalContainer = document.getElementById('create-rfq-modal');
-  const scope = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : document;
+  const isModalOpen = modalContainer && document.body.contains(modalContainer);
+  const scope = isModalOpen ? modalContainer : (document.getElementById('rfq-tree-container') || document);
   const checkedMats = scope.querySelectorAll('.rfq-mat-cb:checked');
   const allocSet = new Set();
   checkedMats.forEach(cb => allocSet.add(cb.dataset.allocNode));
-  const summaryEl = document.getElementById('rfq-tree-summary');
+
+  const modalSummaryEl = modalContainer?.querySelector('#rfq-tree-summary');
   const pageSummaryEl = document.getElementById('rfq-page-tree-summary');
-  const footerStatus = document.getElementById('rfq-footer-status');
+  const modalFooterStatus = modalContainer?.querySelector('#rfq-footer-status');
+  const pageFooterStatus = document.getElementById('rfq-footer-status');
+
   const text = `${checkedMats.length} material(s) selected from ${allocSet.size} allocation(s)`;
-  if (summaryEl) summaryEl.textContent = text;
-  if (pageSummaryEl) pageSummaryEl.textContent = text;
-  if (footerStatus) {
-    footerStatus.textContent = checkedMats.length > 0
-      ? `✅ Ready to create RFQ with ${checkedMats.length} material(s) from ${allocSet.size} allocation(s)`
-      : 'Select materials from allocations to create RFQ.';
+
+  if (isModalOpen) {
+    if (modalSummaryEl) modalSummaryEl.textContent = text;
+    if (modalFooterStatus) {
+      modalFooterStatus.textContent = checkedMats.length > 0
+        ? `✅ Ready to create RFQ with ${checkedMats.length} material(s) from ${allocSet.size} allocation(s)`
+        : 'Select materials from allocations to create RFQ.';
+    }
+  } else {
+    if (pageSummaryEl) pageSummaryEl.textContent = text;
+    if (pageFooterStatus) {
+      pageFooterStatus.textContent = checkedMats.length > 0
+        ? `✅ Ready to create RFQ with ${checkedMats.length} material(s) from ${allocSet.size} allocation(s)`
+        : 'Select materials from allocations to create RFQ.';
+    }
   }
 };
 
@@ -4389,7 +4413,8 @@ window.submitCreateRFQ = function() {
 
   const available = window._rfqAvailable || [];
   const modalContainer = document.getElementById('create-rfq-modal');
-  const scope = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : document;
+  const isModalOpen = modalContainer && document.body.contains(modalContainer);
+  const scope = isModalOpen ? modalContainer : (document.getElementById('rfq-tree-container') || document);
   const checkedCbs = scope.querySelectorAll('.rfq-mat-cb:checked');
   if (!checkedCbs.length) { toast('Please select at least one material from the allocation tree', 'warning'); return; }
 
@@ -4776,7 +4801,7 @@ function renderTCDTreeHTML(rfqEntries, query = '', preselectedSet = null) {
                     <button type="button" class="tree-expander-btn" onclick="event.stopPropagation();toggleTreeNode('${rfqNodeId}')" title="Toggle RFQ materials">
                       <svg class="tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
                     </button>
-                    <input type="checkbox" class="tcd-rfq-cb" data-rfq-node="${rfqNodeId}" ${allChecked ? 'checked' : ''} onclick="event.stopPropagation();onTCDRFQCheck('${rfqNodeId}', this.checked)"/>
+                    <input type="checkbox" class="tcd-rfq-cb" data-rfq-node="${rfqNodeId}" ${allChecked ? 'checked' : ''} onclick="event.stopPropagation();onTCDRFQCheck('${rfqNodeId}', this.checked, event)"/>
                     <span class="tree-icon-badge tree-icon-prc" title="RFQ Document">
                       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                     </span>
@@ -4799,10 +4824,10 @@ function renderTCDTreeHTML(rfqEntries, query = '', preselectedSet = null) {
 
                     return `
                     <li class="tcd-tree-mat">
-                      <div class="tree-node-item" onclick="toggleTCDMatCheck('${rfqNodeId}', ${m._idx})">
+                      <div class="tree-node-item" onclick="toggleTCDMatCheck('${rfqNodeId}', ${m._idx}, event)">
                         <div class="tree-node-left">
                           <span class="tree-expander-spacer"></span>
-                          <input type="checkbox" class="tcd-mat-cb" data-idx="${m._idx}" data-rfq-node="${rfqNodeId}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onTCDMatCheck('${rfqNodeId}')"/>
+                          <input type="checkbox" class="tcd-mat-cb" data-idx="${m._idx}" data-rfq-node="${rfqNodeId}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onTCDMatCheck('${rfqNodeId}', event)"/>
                           <span class="tree-icon-badge tree-icon-mat" title="Material Item">
                             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
                           </span>
@@ -4864,7 +4889,8 @@ window.expandAllTCDTree = function(expand) {
 
 window.selectAllTCDTree = function(select) {
   const modalContainer = document.getElementById('create-tcd-modal');
-  const scope = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : document;
+  const isModalOpen = modalContainer && document.body.contains(modalContainer);
+  const scope = isModalOpen ? modalContainer : (document.getElementById('tcd-tree-container') || document);
   scope.querySelectorAll('.tcd-mat-cb').forEach(cb => cb.checked = select);
   scope.querySelectorAll('.tcd-rfq-cb').forEach(cb => {
     cb.checked = select;
@@ -4873,17 +4899,23 @@ window.selectAllTCDTree = function(select) {
   updateTCDTreeSummary();
 };
 
-window.toggleTCDMatCheck = function(rfqNodeId, idx) {
-  const cb = document.querySelector(`.tcd-mat-cb[data-idx="${idx}"][data-rfq-node="${rfqNodeId}"]`);
+window.toggleTCDMatCheck = function(rfqNodeId, idx, evt) {
+  const modalContainer = document.getElementById('create-tcd-modal');
+  const isModalOpen = modalContainer && document.body.contains(modalContainer);
+  const scope = evt?.target?.closest('#create-tcd-modal, #tcd-tree-container') || (isModalOpen ? modalContainer : (document.getElementById('tcd-tree-container') || document));
+  const cb = scope.querySelector(`.tcd-mat-cb[data-idx="${idx}"][data-rfq-node="${rfqNodeId}"]`);
   if (cb && !cb.disabled) {
     cb.checked = !cb.checked;
-    onTCDMatCheck(rfqNodeId);
+    onTCDMatCheck(rfqNodeId, evt);
   }
 };
 
-window.onTCDRFQCheck = function(rfqNodeId, isChecked) {
-  document.querySelectorAll(`.tcd-mat-cb[data-rfq-node="${rfqNodeId}"]`).forEach(cb => cb.checked = isChecked);
-  const node = document.getElementById(rfqNodeId);
+window.onTCDRFQCheck = function(rfqNodeId, isChecked, evt) {
+  const modalContainer = document.getElementById('create-tcd-modal');
+  const isModalOpen = modalContainer && document.body.contains(modalContainer);
+  const scope = evt?.target?.closest('#create-tcd-modal, #tcd-tree-container') || (isModalOpen ? modalContainer : (document.getElementById('tcd-tree-container') || document));
+  scope.querySelectorAll(`.tcd-mat-cb[data-rfq-node="${rfqNodeId}"]`).forEach(cb => cb.checked = isChecked);
+  const node = scope.querySelector(`#${rfqNodeId}`);
   if (node && isChecked) {
     node.classList.add('open');
     const expander = node.querySelector(':scope > .tree-node-item > .tree-expander');
@@ -4892,10 +4924,13 @@ window.onTCDRFQCheck = function(rfqNodeId, isChecked) {
   updateTCDTreeSummary();
 };
 
-window.onTCDMatCheck = function(rfqNodeId) {
-  const rfqCb = document.querySelector(`.tcd-rfq-cb[data-rfq-node="${rfqNodeId}"]`);
-  const allMats = document.querySelectorAll(`.tcd-mat-cb[data-rfq-node="${rfqNodeId}"]`);
-  const checkedMats = document.querySelectorAll(`.tcd-mat-cb[data-rfq-node="${rfqNodeId}"]:checked`);
+window.onTCDMatCheck = function(rfqNodeId, evt) {
+  const modalContainer = document.getElementById('create-tcd-modal');
+  const isModalOpen = modalContainer && document.body.contains(modalContainer);
+  const scope = evt?.target?.closest('#create-tcd-modal, #tcd-tree-container') || (isModalOpen ? modalContainer : (document.getElementById('tcd-tree-container') || document));
+  const rfqCb = scope.querySelector(`.tcd-rfq-cb[data-rfq-node="${rfqNodeId}"]`);
+  const allMats = scope.querySelectorAll(`.tcd-mat-cb[data-rfq-node="${rfqNodeId}"]`);
+  const checkedMats = scope.querySelectorAll(`.tcd-mat-cb[data-rfq-node="${rfqNodeId}"]:checked`);
   if (rfqCb) {
     rfqCb.checked = allMats.length > 0 && checkedMats.length === allMats.length;
     rfqCb.indeterminate = checkedMats.length > 0 && checkedMats.length < allMats.length;
@@ -4905,20 +4940,33 @@ window.onTCDMatCheck = function(rfqNodeId) {
 
 window.updateTCDTreeSummary = function() {
   const modalContainer = document.getElementById('create-tcd-modal');
-  const scope = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : document;
+  const isModalOpen = modalContainer && document.body.contains(modalContainer);
+  const scope = isModalOpen ? modalContainer : (document.getElementById('tcd-tree-container') || document);
   const checkedMats = scope.querySelectorAll('.tcd-mat-cb:checked');
   const rfqSet = new Set();
   checkedMats.forEach(cb => rfqSet.add(cb.dataset.rfqNode));
-  const summaryEl = document.getElementById('tcd-tree-summary');
+
+  const modalSummaryEl = modalContainer?.querySelector('#tcd-tree-summary');
   const pageSummaryEl = document.getElementById('tcd-page-tree-summary');
-  const footerStatus = document.getElementById('tcd-footer-status');
+  const modalFooterStatus = modalContainer?.querySelector('#tcd-footer-status');
+  const pageFooterStatus = document.getElementById('tcd-footer-status');
+
   const text = `${checkedMats.length} material(s) selected from ${rfqSet.size} RFQ(s)`;
-  if (summaryEl) summaryEl.textContent = text;
-  if (pageSummaryEl) pageSummaryEl.textContent = text;
-  if (footerStatus) {
-    footerStatus.textContent = checkedMats.length > 0
-      ? `✅ Ready to create TCD with ${checkedMats.length} material(s) from ${rfqSet.size} RFQ(s)`
-      : 'Select materials from RFQs to create TCD.';
+
+  if (isModalOpen) {
+    if (modalSummaryEl) modalSummaryEl.textContent = text;
+    if (modalFooterStatus) {
+      modalFooterStatus.textContent = checkedMats.length > 0
+        ? `✅ Ready to create TCD with ${checkedMats.length} material(s) from ${rfqSet.size} RFQ(s)`
+        : 'Select materials from RFQs to create TCD.';
+    }
+  } else {
+    if (pageSummaryEl) pageSummaryEl.textContent = text;
+    if (pageFooterStatus) {
+      pageFooterStatus.textContent = checkedMats.length > 0
+        ? `✅ Ready to create TCD with ${checkedMats.length} material(s) from ${rfqSet.size} RFQ(s)`
+        : 'Select materials from RFQs to create TCD.';
+    }
   }
 };
 
@@ -4930,7 +4978,8 @@ window.submitCreateTCD = function() {
 
   const available = window._tcdAvailable || [];
   const modalContainer = document.getElementById('create-tcd-modal');
-  const scope = (modalContainer && modalContainer.offsetParent !== null) ? modalContainer : document;
+  const isModalOpen = modalContainer && document.body.contains(modalContainer);
+  const scope = isModalOpen ? modalContainer : (document.getElementById('tcd-tree-container') || document);
   const checkedCbs = scope.querySelectorAll('.tcd-mat-cb:checked');
   if (!checkedCbs.length) { toast('Please select at least one material from the RFQ tree', 'warning'); return; }
 
