@@ -3207,11 +3207,8 @@ window.switchAllocPageTab = function(tab) {
 
 window.openAllocationModalWithSelected = function() {
   const selectedMats = getSelectedAllocMaterials();
-  let selectedPrcId = null;
-  if (selectedMats.length > 0) {
-    selectedPrcId = selectedMats[0].prcId;
-  }
-  showCreateAllocationModal(selectedPrcId);
+  const selectedPrcIds = new Set(selectedMats.map(item => item.prcId));
+  showCreateAllocationModal(selectedPrcIds);
 };
 
 window.showCreateAllocationModal = function(preselectedPrcId = null) {
@@ -3339,6 +3336,9 @@ window.showCreateAllocationModal = function(preselectedPrcId = null) {
 
 function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
   const q = (query || '').toLowerCase().trim();
+  const preselectedSet = (preselectedPrcId instanceof Set)
+    ? preselectedPrcId
+    : (preselectedPrcId ? new Set(Array.isArray(preselectedPrcId) ? preselectedPrcId : [preselectedPrcId]) : new Set());
 
   // Filter PRCs purely based on Authorised status, unallocated materials and search query (if any)
   const filteredPrcs = prcs.filter(p => {
@@ -3454,7 +3454,7 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
                     });
 
                     const prcNodeId = `prc-node-${p.id}`;
-                    const isPreselected = preselectedPrcId === p.id;
+                    const isPreselected = preselectedSet.has(p.id) || preselectedSet.has(p.prNumber);
                     const isOpen = isPreselected || !!q || prcList.length <= 5;
 
                     return `
@@ -4093,9 +4093,25 @@ window.switchRFQPageTab = function(tab) {
   }
 };
 
-window.showCreateRFQModal = function() {
+window.showCreateRFQModal = function(preselectedParam = null) {
   const available = getAvailableForRFQ();
   if (!available.length) { toast('No allocated materials available for RFQ. Create allocations first.', 'warning'); return; }
+
+  let selSet = new Set();
+  if (preselectedParam instanceof Set) {
+    selSet = preselectedParam;
+  } else if (Array.isArray(preselectedParam)) {
+    selSet = new Set(preselectedParam);
+  } else if (preselectedParam) {
+    selSet = new Set([preselectedParam]);
+  } else {
+    document.querySelectorAll('#rfq-tree-container .rfq-mat-cb:checked, #alloc-tree-container .alloc-tree-mat-cb:checked').forEach(cb => {
+      if (cb.dataset.idx !== undefined) selSet.add(parseInt(cb.dataset.idx));
+      if (cb.dataset.prc) selSet.add(cb.dataset.prc);
+      if (cb.dataset.alloc) selSet.add(cb.dataset.alloc);
+      if (cb.dataset.mat) selSet.add(cb.dataset.mat);
+    });
+  }
 
   // Group by Allocation Number
   const allocMap = {};
@@ -4153,7 +4169,7 @@ window.showCreateRFQModal = function() {
 
         <!-- Treeview Container -->
         <div id="rfq-tree-container-modal">
-          ${renderRFQTreeHTML(allocEntries)}
+          ${renderRFQTreeHTML(allocEntries, '', selSet)}
         </div>
       </div>
       <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
@@ -4170,8 +4186,11 @@ window.showCreateRFQModal = function() {
   updateRFQTreeSummary();
 };
 
-function renderRFQTreeHTML(allocEntries, query = '') {
+function renderRFQTreeHTML(allocEntries, query = '', preselectedSet = null) {
   const q = (query || '').toLowerCase().trim();
+  const selSet = (preselectedSet instanceof Set)
+    ? preselectedSet
+    : (preselectedSet ? new Set(Array.isArray(preselectedSet) ? preselectedSet : [preselectedSet]) : null);
 
   const filtered = allocEntries.map(([allocKey, data]) => {
     const items = data.items.filter(m => {
@@ -4209,6 +4228,9 @@ function renderRFQTreeHTML(allocEntries, query = '') {
           ${filtered.map(([allocKey, data], allocIdx) => {
             const allocNodeId = `rfq-alloc-node-${allocIdx}`;
             const totalItems = data.items.length;
+            const allChecked = selSet && totalItems > 0 && data.items.every(m =>
+              selSet.has(m._idx) || selSet.has(m.materialId) || selSet.has(m.prcId) || selSet.has(m.prNumber) || selSet.has(m.allocationNumber) || selSet.has(m.allocationId)
+            );
 
             return `
               <li class="open" id="${allocNodeId}">
@@ -4217,7 +4239,7 @@ function renderRFQTreeHTML(allocEntries, query = '') {
                     <button type="button" class="tree-expander-btn" onclick="event.stopPropagation();toggleTreeNode('${allocNodeId}')" title="Toggle allocation">
                       <svg class="tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
                     </button>
-                    <input type="checkbox" class="rfq-alloc-cb" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation();onRFQAllocCheck('${allocNodeId}', this.checked)"/>
+                    <input type="checkbox" class="rfq-alloc-cb" data-alloc-node="${allocNodeId}" ${allChecked ? 'checked' : ''} onclick="event.stopPropagation();onRFQAllocCheck('${allocNodeId}', this.checked)"/>
                     <span class="tree-icon-badge tree-icon-prc" title="Allocation Document">
                       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                     </span>
@@ -4233,12 +4255,17 @@ function renderRFQTreeHTML(allocEntries, query = '') {
                   </div>
                 </div>
                 <ul class="tree-children">
-                  ${data.items.map(m => `
+                  ${data.items.map(m => {
+                    const isChecked = selSet ? (
+                      selSet.has(m._idx) || selSet.has(m.materialId) || selSet.has(m.prcId) || selSet.has(m.prNumber) || selSet.has(m.allocationNumber) || selSet.has(m.allocationId)
+                    ) : false;
+
+                    return `
                     <li class="rfq-tree-mat">
                       <div class="tree-node-item" onclick="toggleRFQMatCheck('${allocNodeId}', ${m._idx})">
                         <div class="tree-node-left">
                           <span class="tree-expander-spacer"></span>
-                          <input type="checkbox" class="rfq-mat-cb" data-idx="${m._idx}" data-alloc-node="${allocNodeId}" onclick="event.stopPropagation()" onchange="onRFQMatCheck('${allocNodeId}')"/>
+                          <input type="checkbox" class="rfq-mat-cb" data-idx="${m._idx}" data-alloc-node="${allocNodeId}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onRFQMatCheck('${allocNodeId}')"/>
                           <span class="tree-icon-badge tree-icon-mat" title="Material Item">
                             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
                           </span>
@@ -4261,7 +4288,8 @@ function renderRFQTreeHTML(allocEntries, query = '') {
                           </span>
                         </div>
                       </div>
-                    </li>`).join('')}
+                    </li>`;
+                  }).join('')}
                 </ul>
               </li>`;
           }).join('')}
@@ -4602,9 +4630,25 @@ window.switchTCDPageTab = function(tab) {
   }
 };
 
-window.showCreateTCDModal = function() {
+window.showCreateTCDModal = function(preselectedParam = null) {
   const available = getAvailableForTCD();
   if (!available.length) { toast('No RFQ materials available for TCD. Create RFQs first.', 'warning'); return; }
+
+  let selSet = new Set();
+  if (preselectedParam instanceof Set) {
+    selSet = preselectedParam;
+  } else if (Array.isArray(preselectedParam)) {
+    selSet = new Set(preselectedParam);
+  } else if (preselectedParam) {
+    selSet = new Set([preselectedParam]);
+  } else {
+    document.querySelectorAll('#tcd-tree-container .tcd-mat-cb:checked, #rfq-tree-container .rfq-mat-cb:checked').forEach(cb => {
+      if (cb.dataset.idx !== undefined) selSet.add(parseInt(cb.dataset.idx));
+      if (cb.dataset.prc) selSet.add(cb.dataset.prc);
+      if (cb.dataset.rfq) selSet.add(cb.dataset.rfq);
+      if (cb.dataset.mat) selSet.add(cb.dataset.mat);
+    });
+  }
 
   // Group by RFQ Number
   const rfqMap = {};
@@ -4662,7 +4706,7 @@ window.showCreateTCDModal = function() {
 
         <!-- Treeview Container -->
         <div id="tcd-tree-container-modal">
-          ${renderTCDTreeHTML(rfqEntries)}
+          ${renderTCDTreeHTML(rfqEntries, '', selSet)}
         </div>
       </div>
       <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
@@ -4679,8 +4723,11 @@ window.showCreateTCDModal = function() {
   updateTCDTreeSummary();
 };
 
-function renderTCDTreeHTML(rfqEntries, query = '') {
+function renderTCDTreeHTML(rfqEntries, query = '', preselectedSet = null) {
   const q = (query || '').toLowerCase().trim();
+  const selSet = (preselectedSet instanceof Set)
+    ? preselectedSet
+    : (preselectedSet ? new Set(Array.isArray(preselectedSet) ? preselectedSet : [preselectedSet]) : null);
 
   const filtered = rfqEntries.map(([rfqKey, data]) => {
     const items = data.items.filter(m => {
@@ -4718,6 +4765,9 @@ function renderTCDTreeHTML(rfqEntries, query = '') {
           ${filtered.map(([rfqKey, data], rfqIdx) => {
             const rfqNodeId = `tcd-rfq-node-${rfqIdx}`;
             const totalItems = data.items.length;
+            const allChecked = selSet && totalItems > 0 && data.items.every(m =>
+              selSet.has(m._idx) || selSet.has(m.materialId) || selSet.has(m.prcId) || selSet.has(m.prNumber) || selSet.has(m.rfqNumber) || selSet.has(m.rfqId)
+            );
 
             return `
               <li class="open" id="${rfqNodeId}">
@@ -4726,7 +4776,7 @@ function renderTCDTreeHTML(rfqEntries, query = '') {
                     <button type="button" class="tree-expander-btn" onclick="event.stopPropagation();toggleTreeNode('${rfqNodeId}')" title="Toggle RFQ materials">
                       <svg class="tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7"/></svg>
                     </button>
-                    <input type="checkbox" class="tcd-rfq-cb" data-rfq-node="${rfqNodeId}" onclick="event.stopPropagation();onTCDRFQCheck('${rfqNodeId}', this.checked)"/>
+                    <input type="checkbox" class="tcd-rfq-cb" data-rfq-node="${rfqNodeId}" ${allChecked ? 'checked' : ''} onclick="event.stopPropagation();onTCDRFQCheck('${rfqNodeId}', this.checked)"/>
                     <span class="tree-icon-badge tree-icon-prc" title="RFQ Document">
                       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
                     </span>
@@ -4742,12 +4792,17 @@ function renderTCDTreeHTML(rfqEntries, query = '') {
                   </div>
                 </div>
                 <ul class="tree-children">
-                  ${data.items.map(m => `
+                  ${data.items.map(m => {
+                    const isChecked = selSet ? (
+                      selSet.has(m._idx) || selSet.has(m.materialId) || selSet.has(m.prcId) || selSet.has(m.prNumber) || selSet.has(m.rfqNumber) || selSet.has(m.rfqId)
+                    ) : false;
+
+                    return `
                     <li class="tcd-tree-mat">
                       <div class="tree-node-item" onclick="toggleTCDMatCheck('${rfqNodeId}', ${m._idx})">
                         <div class="tree-node-left">
                           <span class="tree-expander-spacer"></span>
-                          <input type="checkbox" class="tcd-mat-cb" data-idx="${m._idx}" data-rfq-node="${rfqNodeId}" onclick="event.stopPropagation()" onchange="onTCDMatCheck('${rfqNodeId}')"/>
+                          <input type="checkbox" class="tcd-mat-cb" data-idx="${m._idx}" data-rfq-node="${rfqNodeId}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onTCDMatCheck('${rfqNodeId}')"/>
                           <span class="tree-icon-badge tree-icon-mat" title="Material Item">
                             <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
                           </span>
@@ -4774,7 +4829,8 @@ function renderTCDTreeHTML(rfqEntries, query = '') {
                           </span>
                         </div>
                       </div>
-                    </li>`).join('')}
+                    </li>`;
+                  }).join('')}
                 </ul>
               </li>`;
           }).join('')}
