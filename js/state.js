@@ -17,7 +17,9 @@ import {
   directSaveRFQ,
   directDeleteRFQ,
   directSaveTCD,
+  directDeleteTCD,
   directSavePOD,
+  directDeletePOD,
   directSaveActivityLog
 } from './firestore-db.js';
 import { isFirebaseConfigured } from './firebase-config.js';
@@ -1649,10 +1651,118 @@ export function approveTCD(tcdId) {
   return { success: true, pods: generatedPODs };
 }
 
+export function deleteTCD(id) {
+  const hasPODs = state.pods.some(p => p.tcdId === id && p.poNumber);
+  if (hasPODs) {
+    return { success: false, reason: 'Cannot delete TCD — it has downstream issued Purchase Orders.' };
+  }
+  const tcds = state.tcds.filter(t => t.id !== id);
+  // Also remove un-issued generated pods for this TCD
+  const pods = state.pods.filter(p => p.tcdId !== id);
+  setState({ tcds, pods });
+
+  directDeleteTCD(_getEffectiveUid(), id);
+
+  addAuditLog({ action: 'delete_tcd', collection: 'TCDs', docId: id, changes: {} });
+  return { success: true };
+}
+
 // ── POD OPERATIONS ────────────────────────────────────────
 
 export function getPODById(id) {
   return state.pods.find(p => p.id === id) || null;
+}
+
+export function getAvailableForPOD() {
+  const result = [];
+  state.tcds.forEach(tcd => {
+    if (!tcd.approved) return;
+    (tcd.vendorAllocations || []).forEach(va => {
+      const vendorName = va.vendorName;
+      va.items.forEach(item => {
+        const prc = state.prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
+        if (prc && (prc.isFuturePRC || prc.isWrongPRC || prc.isShortClosed)) return;
+
+        result.push({
+          ...item,
+          tcdId: tcd.id,
+          tcdNumber: tcd.tcdNumber,
+          tcdDate: tcd.tcdDate,
+          vendorName
+        });
+      });
+    });
+  });
+  return result;
+}
+
+export function createPOD(data) {
+  const pod = {
+    id: `pod-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+    poNumber: data.poNumber || '',
+    poDate: data.poDate || '',
+    vendorName: data.vendorName || '',
+    tcdId: data.tcdId || '',
+    tcdNumber: data.tcdNumber || '',
+    items: (data.items || []).map(i => ({ ...i })),
+    createdAt: new Date().toISOString(),
+    createdBy: state.currentUser.name,
+    status: data.poNumber ? 'Issued' : 'Pending PO Number'
+  };
+
+  const pods = [pod, ...state.pods];
+  const prcs = [...state.prcs];
+
+  if (pod.poNumber || pod.poDate) {
+    pod.items.forEach(item => {
+      const prcIdx = prcs.findIndex(p => p.id === item.prcId);
+      if (prcIdx === -1) return;
+      const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
+      const matIdx = prc.materials.findIndex(m => m.id === item.materialId);
+      if (matIdx === -1) return;
+      const mat = { ...prc.materials[matIdx] };
+      if (pod.poNumber) mat.poNumber = pod.poNumber;
+      if (pod.poDate) mat.poDate = pod.poDate;
+      mat.vendorName = pod.vendorName;
+      mat.vendor = pod.vendorName;
+      mat.processedQty = (parseFloat(mat.processedQty) || 0) + (parseFloat(item.quantity) || 0);
+      const totalQty = parseFloat(mat.quantity) || 0;
+      const clsQty = parseFloat(mat.closedQty) || 0;
+      mat.pendingQty = Math.max(0, totalQty - mat.processedQty - clsQty);
+      mat.status = calculateMaterialStatus(mat);
+      prc.materials[matIdx] = mat;
+      if (pod.poNumber) prc.poNumber = pod.poNumber;
+      if (pod.poDate) prc.poDate = pod.poDate;
+      prc.poBy = state.currentUser.name;
+      if (pod.vendorName) prc.vendorName = pod.vendorName;
+      prc.prStatus = 'Process Completed';
+      prc.status = calculateStatus(prc, prc.materials);
+      prc.updatedAt = new Date().toISOString();
+      prcs[prcIdx] = prc;
+
+      directSavePRC(_getEffectiveUid(), prc);
+    });
+  }
+
+  setState({ pods, prcs, statusSummary: buildStatusSummary(prcs) });
+  directSavePOD(_getEffectiveUid(), pod);
+
+  addAuditLog({
+    action: 'create_pod', collection: 'PODs', docId: pod.id,
+    changes: { poNumber: pod.poNumber, vendorName: pod.vendorName, itemCount: pod.items.length }
+  });
+
+  return pod;
+}
+
+export function deletePOD(id) {
+  const pods = state.pods.filter(p => p.id !== id);
+  setState({ pods });
+
+  directDeletePOD(_getEffectiveUid(), id);
+
+  addAuditLog({ action: 'delete_pod', collection: 'PODs', docId: id, changes: {} });
+  return { success: true };
 }
 
 export function updatePOD(podId, patch) {

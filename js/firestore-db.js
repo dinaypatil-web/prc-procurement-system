@@ -112,8 +112,16 @@ export async function directSaveTCD(uid, tcd) {
   return directSaveDoc(uid, 'tcds', tcd.id || tcd.tcdNumber, tcd);
 }
 
+export async function directDeleteTCD(uid, tcdId) {
+  return directDeleteDoc(uid, 'tcds', tcdId);
+}
+
 export async function directSavePOD(uid, pod) {
   return directSaveDoc(uid, 'pods', pod.id || pod.poNumber, pod);
+}
+
+export async function directDeletePOD(uid, podId) {
+  return directDeleteDoc(uid, 'pods', podId);
 }
 
 export async function directSaveActivityLog(uid, log) {
