@@ -1121,12 +1121,35 @@ export function getAllocatedQty(prcId, materialId) {
   }, 0);
 }
 
+export function isPRCShortClosed(p) {
+  if (!p) return false;
+  if (p.isShortClosed === true || p.shortClosed === true) return true;
+  const s = String(p.status || '').trim().toLowerCase();
+  const prs = String(p.prStatus || '').trim().toLowerCase();
+  const shortKeywords = ['short-close', 'short-closed', 'short close', 'short closed', 'shortclose', 'shortclosed'];
+  if (shortKeywords.includes(s) || shortKeywords.includes(prs)) return true;
+  return false;
+}
+
+export function isMaterialShortClosed(m, prc) {
+  if (!m) return false;
+  if (prc && isPRCShortClosed(prc)) return true;
+  if (m.isShortClosed === true || m.shortClosed === true) return true;
+  const s = String(m.status || '').trim().toLowerCase();
+  const prs = String(m.prStatus || '').trim().toLowerCase();
+  const shortKeywords = ['short-close', 'short-closed', 'short close', 'short closed', 'shortclose', 'shortclosed'];
+  if (shortKeywords.includes(s) || shortKeywords.includes(prs)) return true;
+  return false;
+}
+
 export function isPRCAuthorised(p) {
   if (!p) return false;
-  if (p.isPRNotApproved || p.isWrongPRC || p.isFuturePRC || p.isShortClosed) return false;
+  if (isPRCShortClosed(p)) return false;
+  if (p.isPRNotApproved || p.isWrongPRC || p.isFuturePRC) return false;
 
   let s = String(p.prStatus || p.status || '').trim().toLowerCase();
-  if (s === 'future prc' || s === 'wrong prc' || s === 'pr not approved' || s === 'rejected' || s === 'short closed' || s === 'shortclosed') return false;
+  if (s === 'future prc' || s === 'wrong prc' || s === 'pr not approved' || s === 'rejected' ||
+      s === 'short-close' || s === 'short close' || s === 'short closed' || s === 'shortclosed') return false;
 
   // If Authorised by or Authorised date/data is available, consider PRC as authorised even if prStatus shows Pending
   const hasAuthMeta = !!(
@@ -1145,6 +1168,7 @@ export function isPRCAuthorised(p) {
 
 export function getAvailablePRCsForAllocation() {
   return (state.prcs || []).filter(p => {
+    if (isPRCShortClosed(p)) return false;
     // Only PRCs in Authorised status are eligible for allocation
     if (!isPRCAuthorised(p)) return false;
 
@@ -1152,6 +1176,7 @@ export function getAvailablePRCsForAllocation() {
     if (!mats.length) return false;
 
     const availableMats = mats.filter(m => {
+      if (isMaterialShortClosed(m, p)) return false;
       const allocd = getAllocatedQty(p.id, m.id);
       const totalQty = parseFloat(m.quantity) || 0;
       return allocd < totalQty || totalQty === 0;
@@ -1320,27 +1345,27 @@ export function getAvailableForRFQ() {
       // Exclude PRCs tagged as Future PRC, Wrong PRC, or Short Closed
       const prc = state.prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
       if (prc) {
-        if (prc.isFuturePRC || prc.isWrongPRC || prc.isShortClosed) return;
+        if (isPRCShortClosed(prc) || prc.isFuturePRC || prc.isWrongPRC) return;
         const prcStatus = String(prc.status || '').trim().toLowerCase();
         const prStatus = String(prc.prStatus || '').trim().toLowerCase();
-        if (prcStatus === 'future prc' || prcStatus === 'wrong prc' || prcStatus === 'short closed' || prcStatus === 'shortclosed' ||
-            prStatus === 'future prc' || prStatus === 'wrong prc' || prStatus === 'short closed' || prStatus === 'shortclosed') {
+        if (prcStatus === 'future prc' || prcStatus === 'wrong prc' ||
+            prStatus === 'future prc' || prStatus === 'wrong prc') {
           return;
         }
 
         // Also check material-level flags
         const mat = (prc.materials || []).find(m => m.id === item.materialId || m.matCode === item.matCode);
         if (mat) {
-          if (mat.isFuturePRC || mat.isWrongPRC || mat.isShortClosed) return;
+          if (isMaterialShortClosed(mat, prc) || mat.isFuturePRC || mat.isWrongPRC) return;
           const matStatus = String(mat.status || '').trim().toLowerCase();
-          if (matStatus === 'future prc' || matStatus === 'wrong prc' || matStatus === 'short closed' || matStatus === 'shortclosed') return;
+          if (matStatus === 'future prc' || matStatus === 'wrong prc') return;
         }
       }
 
       // Check item itself if flags exist directly on allocation item
-      if (item.isFuturePRC || item.isWrongPRC || item.isShortClosed) return;
+      if (isMaterialShortClosed(item, prc) || item.isFuturePRC || item.isWrongPRC) return;
       const itemStatus = String(item.status || '').trim().toLowerCase();
-      if (itemStatus === 'future prc' || itemStatus === 'wrong prc' || itemStatus === 'short closed' || itemStatus === 'shortclosed') return;
+      if (itemStatus === 'future prc' || itemStatus === 'wrong prc') return;
 
       const rfqdQty = getRFQdQty(alloc.id, item.prcId, item.materialId);
       const available = (parseFloat(item.quantity) || 0) - rfqdQty;
@@ -1470,37 +1495,36 @@ export function getTCDdQty(rfqId, prcId, materialId) {
 export function getAvailableForTCD() {
   const result = [];
   state.rfqs.forEach(rfq => {
-    if (rfq.isShortClosed || String(rfq.status || '').toLowerCase() === 'short closed' || String(rfq.status || '').toLowerCase() === 'short-close') return;
+    if (isPRCShortClosed(rfq) || rfq.isShortClosed || String(rfq.status || '').toLowerCase() === 'short closed' || String(rfq.status || '').toLowerCase() === 'short-close') return;
 
     // Closed RFQs ONLY will be eligible for TCD creation
     const isClosed = !!(rfq.isClosed || String(rfq.status || '').trim().toLowerCase() === 'closed');
     if (!isClosed) return;
     rfq.items.forEach(item => {
-      if (item.isShortClosed || String(item.status || '').toLowerCase() === 'short closed') return;
       // Exclude PRCs tagged as Future PRC, Wrong PRC, or Short Closed
       const prc = state.prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
       if (prc) {
-        if (prc.isFuturePRC || prc.isWrongPRC || prc.isShortClosed) return;
+        if (isPRCShortClosed(prc) || prc.isFuturePRC || prc.isWrongPRC) return;
         const prcStatus = String(prc.status || '').trim().toLowerCase();
         const prStatus = String(prc.prStatus || '').trim().toLowerCase();
-        if (prcStatus === 'future prc' || prcStatus === 'wrong prc' || prcStatus === 'short closed' || prcStatus === 'shortclosed' ||
-            prStatus === 'future prc' || prStatus === 'wrong prc' || prStatus === 'short closed' || prStatus === 'shortclosed') {
+        if (prcStatus === 'future prc' || prcStatus === 'wrong prc' ||
+            prStatus === 'future prc' || prStatus === 'wrong prc') {
           return;
         }
 
         // Also check material-level flags
         const mat = (prc.materials || []).find(m => m.id === item.materialId || m.matCode === item.matCode);
         if (mat) {
-          if (mat.isFuturePRC || mat.isWrongPRC || mat.isShortClosed) return;
+          if (isMaterialShortClosed(mat, prc) || mat.isFuturePRC || mat.isWrongPRC) return;
           const matStatus = String(mat.status || '').trim().toLowerCase();
-          if (matStatus === 'future prc' || matStatus === 'wrong prc' || matStatus === 'short closed' || matStatus === 'shortclosed') return;
+          if (matStatus === 'future prc' || matStatus === 'wrong prc') return;
         }
       }
 
       // Check item itself if flags exist directly on rfq item
-      if (item.isFuturePRC || item.isWrongPRC || item.isShortClosed) return;
+      if (isMaterialShortClosed(item, prc) || item.isFuturePRC || item.isWrongPRC) return;
       const itemStatus = String(item.status || '').trim().toLowerCase();
-      if (itemStatus === 'future prc' || itemStatus === 'wrong prc' || itemStatus === 'short closed' || itemStatus === 'shortclosed') return;
+      if (itemStatus === 'future prc' || itemStatus === 'wrong prc') return;
 
       const tcdQty = getTCDdQty(rfq.id, item.prcId, item.materialId);
       const available = (parseFloat(item.quantity) || 0) - tcdQty;
@@ -1681,7 +1705,8 @@ export function getAvailableForPOD() {
       const vendorName = va.vendorName;
       va.items.forEach(item => {
         const prc = state.prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
-        if (prc && (prc.isFuturePRC || prc.isWrongPRC || prc.isShortClosed)) return;
+        if (prc && (isPRCShortClosed(prc) || prc.isFuturePRC || prc.isWrongPRC)) return;
+        if (isMaterialShortClosed(item, prc)) return;
 
         result.push({
           ...item,
