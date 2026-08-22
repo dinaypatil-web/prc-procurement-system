@@ -3304,31 +3304,31 @@ function renderAllocationsPage(container) {
 </div>
 
 <!-- Summary Metrics Bar -->
-<div class="grid grid-cols-3 gap-4" style="margin-bottom:20px">
-  <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px;background:var(--color-surface-1)">
-    <div style="width:44px;height:44px;border-radius:10px;background:rgba(59,130,246,0.12);color:var(--color-primary);display:flex;align-items:center;justify-content:center;font-size:22px">📦</div>
-    <div>
-      <div style="font-size:22px;font-weight:800;color:var(--color-text-primary)">${allocs.length}</div>
-      <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">Created Allocations</div>
+<div class="summary-metrics-bar">
+  <div class="summary-stat-card">
+    <div class="summary-stat-icon" style="background:rgba(59,130,246,0.12);color:var(--color-primary)">📦</div>
+    <div class="summary-stat-info">
+      <div class="summary-stat-val">${allocs.length}</div>
+      <div class="summary-stat-lbl">Created Allocations</div>
     </div>
   </div>
-  <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px;background:var(--color-surface-1)">
-    <div style="width:44px;height:44px;border-radius:10px;background:rgba(16,185,129,0.12);color:var(--color-success);display:flex;align-items:center;justify-content:center;font-size:22px">📑</div>
-    <div>
-      <div style="font-size:22px;font-weight:800;color:var(--color-text-primary)">${totalAllocatedItems}</div>
-      <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">Allocated Materials</div>
+  <div class="summary-stat-card">
+    <div class="summary-stat-icon" style="background:rgba(16,185,129,0.12);color:var(--color-success)">📑</div>
+    <div class="summary-stat-info">
+      <div class="summary-stat-val">${totalAllocatedItems}</div>
+      <div class="summary-stat-lbl">Allocated Materials</div>
     </div>
   </div>
-  <div class="card" style="padding:16px;display:flex;align-items:center;justify-content:space-between;background:var(--color-surface-1)">
-    <div style="display:flex;align-items:center;gap:14px">
-      <div style="width:44px;height:44px;border-radius:10px;background:rgba(245,158,11,0.12);color:var(--color-warning);display:flex;align-items:center;justify-content:center;font-size:22px">🌳</div>
-      <div>
-        <div style="font-size:22px;font-weight:800;color:var(--color-text-primary)">${availablePrcs.length}</div>
-        <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">Pending Authorised PRCs</div>
+  <div class="summary-stat-card" style="justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:12px;min-width:0">
+      <div class="summary-stat-icon" style="background:rgba(245,158,11,0.12);color:var(--color-warning)">🌳</div>
+      <div class="summary-stat-info">
+        <div class="summary-stat-val">${availablePrcs.length}</div>
+        <div class="summary-stat-lbl">Pending Authorised PRCs</div>
       </div>
     </div>
     ${availablePrcs.length > 0 ? `
-      <button class="btn btn-secondary btn-xs" onclick="navigate('create-allocation')" title="Allocate Pending PRCs">Allocate Now &rarr;</button>
+      <button class="btn btn-secondary btn-xs" onclick="navigate('create-allocation')" title="Allocate Pending PRCs">Allocate &rarr;</button>
     ` : ''}
   </div>
 </div>
@@ -4085,27 +4085,27 @@ function renderRFQsPage(container) {
 </div>
 
 <!-- Summary Metrics Bar -->
-<div class="grid grid-cols-3 gap-4" style="margin-bottom:20px">
-  <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px;background:var(--color-surface-1)">
-    <div style="width:44px;height:44px;border-radius:10px;background:rgba(59,130,246,0.12);color:var(--color-primary);display:flex;align-items:center;justify-content:center;font-size:22px">📨</div>
-    <div>
-      <div style="font-size:22px;font-weight:800;color:var(--color-text-primary)">${rfqs.length}</div>
-      <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">Total RFQs (${activeRFQs.length} Active, ${closedRFQs.length} Closed)</div>
+<div class="summary-metrics-bar">
+  <div class="summary-stat-card">
+    <div class="summary-stat-icon" style="background:rgba(59,130,246,0.12);color:var(--color-primary)">📨</div>
+    <div class="summary-stat-info">
+      <div class="summary-stat-val">${rfqs.length}</div>
+      <div class="summary-stat-lbl">Total RFQs (${activeRFQs.length} Active, ${closedRFQs.length} Closed)</div>
     </div>
   </div>
-  <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px;background:var(--color-surface-1)">
-    <div style="width:44px;height:44px;border-radius:10px;background:rgba(16,185,129,0.12);color:var(--color-success);display:flex;align-items:center;justify-content:center;font-size:22px">🔒</div>
-    <div>
-      <div style="font-size:22px;font-weight:800;color:var(--color-text-primary)">${closedRFQs.length}</div>
-      <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">Closed (TCD Eligible)</div>
+  <div class="summary-stat-card">
+    <div class="summary-stat-icon" style="background:rgba(16,185,129,0.12);color:var(--color-success)">🔒</div>
+    <div class="summary-stat-info">
+      <div class="summary-stat-val">${closedRFQs.length}</div>
+      <div class="summary-stat-lbl">Closed (TCD Eligible)</div>
     </div>
   </div>
-  <div class="card" style="padding:16px;display:flex;align-items:center;justify-content:space-between;background:var(--color-surface-1)">
-    <div style="display:flex;align-items:center;gap:14px">
-      <div style="width:44px;height:44px;border-radius:10px;background:rgba(245,158,11,0.12);color:var(--color-warning);display:flex;align-items:center;justify-content:center;font-size:22px">📦</div>
-      <div>
-        <div style="font-size:22px;font-weight:800;color:var(--color-text-primary)">${available.length}</div>
-        <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">Allocated Materials Pending RFQ</div>
+  <div class="summary-stat-card" style="justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:12px;min-width:0">
+      <div class="summary-stat-icon" style="background:rgba(245,158,11,0.12);color:var(--color-warning)">📦</div>
+      <div class="summary-stat-info">
+        <div class="summary-stat-val">${available.length}</div>
+        <div class="summary-stat-lbl">Allocated Materials Pending RFQ</div>
       </div>
     </div>
     ${available.length > 0 ? `
@@ -4620,27 +4620,27 @@ function renderTCDsPage(container) {
 </div>
 
 <!-- Summary Metrics Bar -->
-<div class="grid grid-cols-3 gap-4" style="margin-bottom:20px">
-  <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px;background:var(--color-surface-1)">
-    <div style="width:44px;height:44px;border-radius:10px;background:rgba(59,130,246,0.12);color:var(--color-primary);display:flex;align-items:center;justify-content:center;font-size:22px">📊</div>
-    <div>
-      <div style="font-size:22px;font-weight:800;color:var(--color-text-primary)">${tcds.length}</div>
-      <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">Total TCDs (${approvedTCDs.length} Approved, ${pendingTCDs.length} Pending)</div>
+<div class="summary-metrics-bar">
+  <div class="summary-stat-card">
+    <div class="summary-stat-icon" style="background:rgba(59,130,246,0.12);color:var(--color-primary)">📊</div>
+    <div class="summary-stat-info">
+      <div class="summary-stat-val">${tcds.length}</div>
+      <div class="summary-stat-lbl">Total TCDs (${approvedTCDs.length} Approved, ${pendingTCDs.length} Pending)</div>
     </div>
   </div>
-  <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px;background:var(--color-surface-1)">
-    <div style="width:44px;height:44px;border-radius:10px;background:rgba(16,185,129,0.12);color:var(--color-success);display:flex;align-items:center;justify-content:center;font-size:22px">✅</div>
-    <div>
-      <div style="font-size:22px;font-weight:800;color:var(--color-text-primary)">${approvedTCDs.length}</div>
-      <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">Approved TCDs (PO Generated)</div>
+  <div class="summary-stat-card">
+    <div class="summary-stat-icon" style="background:rgba(16,185,129,0.12);color:var(--color-success)">✅</div>
+    <div class="summary-stat-info">
+      <div class="summary-stat-val">${approvedTCDs.length}</div>
+      <div class="summary-stat-lbl">Approved TCDs (PO Generated)</div>
     </div>
   </div>
-  <div class="card" style="padding:16px;display:flex;align-items:center;justify-content:space-between;background:var(--color-surface-1)">
-    <div style="display:flex;align-items:center;gap:14px">
-      <div style="width:44px;height:44px;border-radius:10px;background:rgba(245,158,11,0.12);color:var(--color-warning);display:flex;align-items:center;justify-content:center;font-size:22px">📦</div>
-      <div>
-        <div style="font-size:22px;font-weight:800;color:var(--color-text-primary)">${available.length}</div>
-        <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">RFQ Materials Pending TCD</div>
+  <div class="summary-stat-card" style="justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:12px;min-width:0">
+      <div class="summary-stat-icon" style="background:rgba(245,158,11,0.12);color:var(--color-warning)">📦</div>
+      <div class="summary-stat-info">
+        <div class="summary-stat-val">${available.length}</div>
+        <div class="summary-stat-lbl">RFQ Materials Pending TCD</div>
       </div>
     </div>
     ${available.length > 0 ? `
@@ -5167,27 +5167,27 @@ function renderPODsPage(container) {
 </div>
 
 <!-- Summary Metrics Bar -->
-<div class="grid grid-cols-3 gap-4" style="margin-bottom:20px">
-  <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px;background:var(--color-surface-1)">
-    <div style="width:44px;height:44px;border-radius:10px;background:rgba(59,130,246,0.12);color:var(--color-primary);display:flex;align-items:center;justify-content:center;font-size:22px">🛒</div>
-    <div>
-      <div style="font-size:22px;font-weight:800;color:var(--color-text-primary)">${pods.length}</div>
-      <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">Total Purchase Orders</div>
+<div class="summary-metrics-bar">
+  <div class="summary-stat-card">
+    <div class="summary-stat-icon" style="background:rgba(59,130,246,0.12);color:var(--color-primary)">🛒</div>
+    <div class="summary-stat-info">
+      <div class="summary-stat-val">${pods.length}</div>
+      <div class="summary-stat-lbl">Total Purchase Orders</div>
     </div>
   </div>
-  <div class="card" style="padding:16px;display:flex;align-items:center;gap:14px;background:var(--color-surface-1)">
-    <div style="width:44px;height:44px;border-radius:10px;background:rgba(16,185,129,0.12);color:var(--color-success);display:flex;align-items:center;justify-content:center;font-size:22px">📑</div>
-    <div>
-      <div style="font-size:22px;font-weight:800;color:var(--color-text-primary)">${issuedPOs.length}</div>
-      <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">Issued POs (PO # Assigned)</div>
+  <div class="summary-stat-card">
+    <div class="summary-stat-icon" style="background:rgba(16,185,129,0.12);color:var(--color-success)">📑</div>
+    <div class="summary-stat-info">
+      <div class="summary-stat-val">${issuedPOs.length}</div>
+      <div class="summary-stat-lbl">Issued POs (PO # Assigned)</div>
     </div>
   </div>
-  <div class="card" style="padding:16px;display:flex;align-items:center;justify-content:space-between;background:var(--color-surface-1)">
-    <div style="display:flex;align-items:center;gap:14px">
-      <div style="width:44px;height:44px;border-radius:10px;background:rgba(245,158,11,0.12);color:var(--color-warning);display:flex;align-items:center;justify-content:center;font-size:22px">📝</div>
-      <div>
-        <div style="font-size:22px;font-weight:800;color:var(--color-text-primary)">${pendingSetPOs.length}</div>
-        <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">Pending PO Number</div>
+  <div class="summary-stat-card" style="justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:12px;min-width:0">
+      <div class="summary-stat-icon" style="background:rgba(245,158,11,0.12);color:var(--color-warning)">📝</div>
+      <div class="summary-stat-info">
+        <div class="summary-stat-val">${pendingSetPOs.length}</div>
+        <div class="summary-stat-lbl">Pending PO Number</div>
       </div>
     </div>
     ${pendingSetPOs.length > 0 ? `
