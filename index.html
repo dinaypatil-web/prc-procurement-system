@@ -412,6 +412,18 @@ function quickCreatePOD(tcdNumber, tcdId, vendorName, prcId) {
 }
 window.quickCreatePOD = quickCreatePOD;
 
+// Expose utilities & page renderers to window for inline HTML events
+window.copyToClipboard = copyToClipboard;
+window.renderCreatePODPage = renderCreatePODPage;
+window.renderCreateTCDPage = renderCreateTCDPage;
+window.renderCreateRFQPage = renderCreateRFQPage;
+window.renderCreateAllocationPage = renderCreateAllocationPage;
+window.renderSettings = renderSettings;
+window.changePageSize = function(val) {
+  setState({ pageSize: parseInt(val) || 25, currentPage_num: 1 });
+  renderPRCTable();
+};
+
 // ── SIDEBAR ────────────────────────────────────────────────
 window.toggleSidebar = function() {
   const sidebar = document.getElementById('sidebar');
@@ -5771,7 +5783,7 @@ function updatePODTreeSummary() {
 }
 window.updatePODTreeSummary = updatePODTreeSummary;
 
-function submitCreatePODPage() {
+window.submitCreatePODPage = function() {
   const poNumber = document.getElementById('create-po-number')?.value.trim();
   const poDate = document.getElementById('create-po-date')?.value;
   const vendorName = document.getElementById('create-po-vendor')?.value.trim();
@@ -5784,6 +5796,11 @@ function submitCreatePODPage() {
   const items = window._podAvailableItems || [];
   const scope = document.getElementById('pod-tree-container') || document;
   const checkedCbs = scope.querySelectorAll('.pod-mat-cb:checked');
+
+  if (!checkedCbs.length) {
+    toast('Please select at least one material to create a Purchase Order', 'warning');
+    return;
+  }
 
   const selectedItems = [];
   checkedCbs.forEach(cb => {
@@ -5803,6 +5820,11 @@ function submitCreatePODPage() {
       });
     }
   });
+
+  if (!selectedItems.length) {
+    toast('No valid materials selected for Purchase Order', 'warning');
+    return;
+  }
 
   createPOD({ poNumber, poDate, vendorName, tcdNumber, items: selectedItems });
   toast(`Purchase Order ${poNumber} created successfully!`, 'success');

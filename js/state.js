@@ -1552,7 +1552,7 @@ export function createTCD(data) {
     vendorAllocations: data.vendorAllocations || data.vendors || [],
     vendors: data.vendors || data.vendorAllocations || [],
     createdAt: new Date().toISOString(),
-    createdBy: state.currentUser.name,
+    createdBy: state.currentUser?.name || 'Admin',
     status: 'Pending Approval',
     approved: false,
     approvedDate: null,
@@ -1576,7 +1576,7 @@ export function createTCD(data) {
       };
       prc.tcdNumber = data.tcdNumber;
       prc.tcdDate = data.tcdDate;
-      prc.tcdBy = state.currentUser.name;
+      prc.tcdBy = state.currentUser?.name || 'Admin';
       prc.prStatus = 'Process Completed';
       prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
       prc.status = calculateStatus(prc, prc.materials);
@@ -1593,7 +1593,7 @@ export function createTCD(data) {
 
   addAuditLog({
     action: 'create_tcd', collection: 'TCDs', docId: tcd.id,
-    changes: { tcdNumber: data.tcdNumber, vendorCount: data.vendorAllocations.length }
+    changes: { tcdNumber: data.tcdNumber, vendorCount: tcd.vendorAllocations.length }
   });
 
   return tcd;
@@ -1612,7 +1612,7 @@ export function approveTCD(tcdId) {
 
   tcd.approved = true;
   tcd.approvedDate = new Date().toISOString();
-  tcd.approvedBy = state.currentUser.name;
+  tcd.approvedBy = state.currentUser?.name || 'Admin';
   tcd.status = 'Approved';
 
   const tcds = [...state.tcds];
@@ -1631,7 +1631,7 @@ export function approveTCD(tcdId) {
       tcdNumber: tcd.tcdNumber,
       items: va.items.map(i => ({ ...i })),
       createdAt: new Date().toISOString(),
-      createdBy: state.currentUser.name,
+      createdBy: state.currentUser?.name || 'Admin',
       status: 'Pending PO Number'
     };
     generatedPODs.push(pod);
@@ -1733,7 +1733,7 @@ export function createPOD(data) {
     tcdNumber: data.tcdNumber || '',
     items: (data.items || []).map(i => ({ ...i })),
     createdAt: new Date().toISOString(),
-    createdBy: state.currentUser.name,
+    createdBy: state.currentUser?.name || 'Admin',
     status: data.poNumber ? 'Issued' : 'Pending PO Number'
   };
 
@@ -1750,8 +1750,9 @@ export function createPOD(data) {
       const mat = { ...prc.materials[matIdx] };
       if (pod.poNumber) mat.poNumber = pod.poNumber;
       if (pod.poDate) mat.poDate = pod.poDate;
-      mat.vendorName = pod.vendorName;
-      mat.vendor = pod.vendorName;
+      mat.vendorName = item.vendorName || pod.vendorName;
+      mat.vendor = item.vendorName || pod.vendorName;
+      if (item.tcdNumber || pod.tcdNumber) mat.tcdNumber = item.tcdNumber || pod.tcdNumber;
       mat.processedQty = (parseFloat(mat.processedQty) || 0) + (parseFloat(item.quantity) || 0);
       const totalQty = parseFloat(mat.quantity) || 0;
       const clsQty = parseFloat(mat.closedQty) || 0;
@@ -1760,8 +1761,9 @@ export function createPOD(data) {
       prc.materials[matIdx] = mat;
       if (pod.poNumber) prc.poNumber = pod.poNumber;
       if (pod.poDate) prc.poDate = pod.poDate;
-      prc.poBy = state.currentUser.name;
+      prc.poBy = state.currentUser?.name || 'Admin';
       if (pod.vendorName) prc.vendorName = pod.vendorName;
+      if (item.tcdNumber || pod.tcdNumber) prc.tcdNumber = item.tcdNumber || pod.tcdNumber;
       prc.prStatus = 'Process Completed';
       prc.status = calculateStatus(prc, prc.materials);
       prc.updatedAt = new Date().toISOString();
@@ -1799,7 +1801,7 @@ export function updatePOD(podId, patch) {
   const pod = { ...state.pods[podIdx], ...patch };
   if (patch.poNumber) pod.status = 'Issued';
   pod.updatedAt = new Date().toISOString();
-  pod.updatedBy = state.currentUser.name;
+  pod.updatedBy = state.currentUser?.name || 'Admin';
 
   const pods = [...state.pods];
   pods[podIdx] = pod;
@@ -1823,7 +1825,7 @@ export function updatePOD(podId, patch) {
       prc.materials[matIdx] = mat;
       if (patch.poNumber) prc.poNumber = patch.poNumber;
       if (patch.poDate) prc.poDate = patch.poDate;
-      prc.poBy = state.currentUser.name;
+      prc.poBy = state.currentUser?.name || 'Admin';
       if (pod.vendorName) prc.vendorName = pod.vendorName;
       prc.prStatus = 'Process Completed';
       prc.status = calculateStatus(prc, prc.materials);
