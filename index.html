@@ -343,7 +343,7 @@ const PAGES = {
   settings:            { title:'Settings',                 breadcrumb:'Home › Settings',                       render: renderSettings }
 };
 
-window.navigate = function(page, context) {
+function navigate(page, context) {
   const state = getState();
   // Store navigation context (e.g., prcId, rfqNumber, tcdNumber) for creation pages to filter by
   window._navigateContext = context || null;
@@ -389,23 +389,28 @@ window.navigate = function(page, context) {
       window.scrollTo(0,0);
     });
   }
-};
+}
+window.navigate = navigate;
 
-window.quickCreateAllocation = function(prcId) {
-  window.navigate('create-allocation', prcId ? { prcId } : null);
-};
+function quickCreateAllocation(prcId) {
+  navigate('create-allocation', prcId ? { prcId } : null);
+}
+window.quickCreateAllocation = quickCreateAllocation;
 
-window.quickCreateRFQ = function(prcId, allocNumber, allocId) {
-  window.navigate('create-rfq', { prcId: prcId || '', allocationNumber: allocNumber || '', allocationId: allocId || '' });
-};
+function quickCreateRFQ(prcId, allocNumber, allocId) {
+  navigate('create-rfq', { prcId: prcId || '', allocationNumber: allocNumber || '', allocationId: allocId || '' });
+}
+window.quickCreateRFQ = quickCreateRFQ;
 
-window.quickCreateTCD = function(rfqNumber, rfqId, prcId) {
-  window.navigate('create-tcd', { rfqNumber: rfqNumber || '', rfqId: rfqId || '', prcId: prcId || '' });
-};
+function quickCreateTCD(rfqNumber, rfqId, prcId) {
+  navigate('create-tcd', { rfqNumber: rfqNumber || '', rfqId: rfqId || '', prcId: prcId || '' });
+}
+window.quickCreateTCD = quickCreateTCD;
 
-window.quickCreatePOD = function(tcdNumber, tcdId, vendorName, prcId) {
-  window.navigate('create-pod', { tcdNumber: tcdNumber || '', tcdId: tcdId || '', vendorName: vendorName || '', prcId: prcId || '' });
-};
+function quickCreatePOD(tcdNumber, tcdId, vendorName, prcId) {
+  navigate('create-pod', { tcdNumber: tcdNumber || '', tcdId: tcdId || '', vendorName: vendorName || '', prcId: prcId || '' });
+}
+window.quickCreatePOD = quickCreatePOD;
 
 // ── SIDEBAR ────────────────────────────────────────────────
 window.toggleSidebar = function() {
