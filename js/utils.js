@@ -257,21 +257,19 @@ export function monthlyDistribution(prcs, dateField = 'createdAt') {
   return Object.entries(months).sort(([a],[b]) => a.localeCompare(b));
 }
 
-/** Enable mouse wheel horizontal scrolling on scrollable tables & containers */
+/** Enable mouse wheel horizontal scrolling when holding Shift on scrollable tables & containers */
 export function enableTableHorizontalScroll() {
   document.addEventListener('wheel', (e) => {
-    const wrapper = e.target.closest('.table-wrapper, [data-scrollable="true"], .overflow-x-auto, table');
-    const scrollTarget = wrapper ? (wrapper.classList?.contains('table-wrapper') ? wrapper : wrapper.closest('.table-wrapper') || wrapper.parentElement) : null;
-    if (!scrollTarget) return;
+    // Only scroll horizontally when Shift key is pressed (standard OS convention)
+    if (e.shiftKey && e.deltaY !== 0) {
+      const wrapper = e.target.closest('.table-wrapper, [data-scrollable="true"], .overflow-x-auto, table');
+      const scrollTarget = wrapper ? (wrapper.classList?.contains('table-wrapper') ? wrapper : wrapper.closest('.table-wrapper') || wrapper.parentElement) : null;
+      if (!scrollTarget) return;
 
-    const maxScrollLeft = scrollTarget.scrollWidth - scrollTarget.clientWidth;
-    if (maxScrollLeft > 1) {
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && !e.shiftKey) {
-        const current = scrollTarget.scrollLeft;
-        if ((e.deltaY > 0 && current < maxScrollLeft - 1) || (e.deltaY < 0 && current > 1)) {
-          if (e.cancelable) e.preventDefault();
-          scrollTarget.scrollLeft += e.deltaY;
-        }
+      const maxScrollLeft = scrollTarget.scrollWidth - scrollTarget.clientWidth;
+      if (maxScrollLeft > 1) {
+        if (e.cancelable) e.preventDefault();
+        scrollTarget.scrollLeft += e.deltaY;
       }
     }
   }, { passive: false });
