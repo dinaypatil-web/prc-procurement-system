@@ -687,8 +687,53 @@ tr.row-process-completed:hover {
   transform: rotate(90deg);
 }
 
+/* ── TREEVIEW CONTROLS & CONNECTORS ───────────────────────── */
+.tree-node-btn {
+  width: 17px;
+  height: 17px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 3px;
+  border: 1px solid #94a3b8;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+.tree-node-btn:hover {
+  background: var(--color-primary);
+  color: #ffffff;
+  border-color: var(--color-primary);
+}
+.tree-node-btn.is-expanded {
+  background: var(--color-primary-light, #eff6ff);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.tree-folder-icon {
+  font-size: 16px;
+  line-height: 1;
+  user-select: none;
+  transition: transform 0.15s ease;
+}
+
+.parent-row {
+  background: var(--color-surface);
+  transition: background 0.15s ease;
+}
+.parent-row:hover {
+  background: var(--color-surface-2) !important;
+}
 .parent-row.is-expanded {
-  background: rgba(59, 130, 246, 0.06) !important;
+  background: rgba(37, 99, 235, 0.08) !important;
   border-left: 3px solid var(--color-primary);
 }
 
@@ -701,37 +746,37 @@ tr.row-process-completed:hover {
 }
 
 .child-materials-wrapper {
-  margin: 8px 12px 14px 28px;
-  padding: 12px 16px;
+  margin: 6px 12px 14px 20px;
+  padding: 10px 14px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-left: 4px solid var(--color-primary);
+  border-left: 3px solid var(--color-primary);
   border-radius: var(--radius-lg);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
 }
 
 .child-materials-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
   border-bottom: 1px dashed var(--color-border);
 }
 
 .child-materials-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0 4px;
   font-size: var(--text-xs);
   white-space: nowrap;
 }
 .child-materials-table thead {
   background: var(--color-surface-3);
-  position: static;
 }
 .child-materials-table th {
-  padding: 7px 10px;
-  font-size: 11px;
+  padding: 6px 8px;
+  font-size: 10.5px;
   font-weight: 700;
   color: var(--color-text-secondary);
   text-transform: uppercase;
@@ -739,15 +784,49 @@ tr.row-process-completed:hover {
   border-bottom: 1px solid var(--color-border);
 }
 .child-materials-table td {
-  padding: 8px 10px;
+  padding: 6px 8px;
+  background: var(--color-surface-2);
+  border-top: 1px solid var(--color-border);
   border-bottom: 1px solid var(--color-border);
   color: var(--color-text-primary);
 }
-.child-materials-table tbody tr:last-child td {
-  border-bottom: none;
+.child-materials-table tr td:first-child {
+  border-left: 1px solid var(--color-border);
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
 }
-.child-materials-table tbody tr:hover {
+.child-materials-table tr td:last-child {
+  border-right: 1px solid var(--color-border);
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+.child-materials-table tbody tr:hover td {
   background: var(--color-primary-light);
+  border-color: var(--color-primary);
+}
+
+/* Tree Branch Connector lines */
+.tree-branch-td {
+  position: relative;
+  padding-left: 26px !important;
+}
+.tree-branch-td::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 0;
+  bottom: 50%;
+  width: 12px;
+  border-left: 2px dashed #94a3b8;
+  border-bottom: 2px dashed #94a3b8;
+}
+.tree-branch-td.is-middle::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  bottom: 0;
+  border-left: 2px dashed #94a3b8;
 }
 
 .item-count-badge {

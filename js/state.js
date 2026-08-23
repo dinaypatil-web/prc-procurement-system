@@ -907,11 +907,23 @@ export function getFilteredMaterials() {
   prcs.forEach(p => {
     (p.materials || []).forEach(m => {
       allMats.push({
+        allocationNumber: p.allocationNumber || '',
+        allocationDate: p.allocationDate || '',
+        buyerName: p.buyerName || p.allocatedBy || '',
+        rfqNumber: p.rfqNumber || '',
+        rfqDate: p.rfqDate || '',
+        tcdNumber: p.tcdNumber || '',
+        tcdDate: p.tcdDate || '',
+        poNumber: p.poNumber || '',
+        poDate: p.poDate || '',
+        vendorName: p.vendorName || p.vendor || '',
+        vendor: p.vendorName || p.vendor || '',
+        deliveryDate: p.deliveryDate || p.deliveryEndDate || '',
         ...m,
         prcId: p.id,
         prNumber: p.prNumber,
         department: p.department,
-        job: p.job,
+        job: p.job || p.jobNumber,
         priority: p.priority,
         prcStatus: p.status,
         prcCreatedAt: p.createdAt

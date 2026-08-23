@@ -967,11 +967,15 @@ window.togglePRCTreeRow = function(prcId, evt) {
   if (childRow && parentRow) {
     childRow.classList.toggle('hidden', !isExpandedNow);
     parentRow.classList.toggle('is-expanded', isExpandedNow);
-    const expandBtn = parentRow.querySelector('.row-expand-btn');
+    const expandBtn = parentRow.querySelector('.tree-node-btn') || parentRow.querySelector('.row-expand-btn');
     if (expandBtn) {
       expandBtn.classList.toggle('is-expanded', isExpandedNow);
       expandBtn.title = isExpandedNow ? 'Collapse Material Child Items' : 'Expand Material Child Items';
+      const symbol = expandBtn.querySelector('.tree-node-symbol');
+      if (symbol) symbol.textContent = isExpandedNow ? '−' : '+';
     }
+    const folderIcon = parentRow.querySelector('.tree-folder-icon');
+    if (folderIcon) folderIcon.textContent = isExpandedNow ? '📂' : '📁';
   } else {
     renderPRCTable();
   }
@@ -1380,13 +1384,18 @@ function renderPRCTable() {
         const isPrcCompleted = computedStatus === 'Process Completed' || computedStatus === STATUS.COMPLETED || p.status === 'Process Completed';
 
         const parentRowHtml = `<tr class="parent-row ${isExpanded ? 'is-expanded' : ''} ${isPrcCompleted ? 'row-process-completed' : ''}" onclick="togglePRCTreeRow('${p.id}', event)" style="cursor:pointer">
-          <td onclick="event.stopPropagation(); togglePRCTreeRow('${p.id}', event)" style="text-align:center">
-            <button class="row-expand-btn ${isExpanded ? 'is-expanded' : ''}" title="${isExpanded ? 'Collapse Material Child Items' : 'Expand Material Child Items'}">▶</button>
+          <td onclick="event.stopPropagation(); togglePRCTreeRow('${p.id}', event)" style="text-align:center;width:52px;padding:6px 4px;vertical-align:middle">
+            <div style="display:inline-flex;align-items:center;gap:4px">
+              <button class="tree-node-btn ${isExpanded ? 'is-expanded' : ''}" title="${isExpanded ? 'Collapse Material Child Items' : 'Expand Material Child Items'}">
+                <span class="tree-node-symbol">${isExpanded ? '−' : '+'}</span>
+              </button>
+              <span class="tree-folder-icon">${isExpanded ? '📂' : '📁'}</span>
+            </div>
           </td>
           <td>
             <span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(p.prNumber,q)}</span><span class="copy-icon">📋</span></span>
             <br>
-            <span class="item-count-badge" title="${materials.length} material items recorded">🔩 ${materials.length} items</span>
+            <span class="item-count-badge" title="${materials.length} material items recorded">Total Items: ${materials.length}</span>
             <br>
             ${renderProgressStars(p, true)}
           </td>
@@ -1444,7 +1453,7 @@ function renderPRCTable() {
                 <table class="child-materials-table">
                   <thead>
                     <tr>
-                      <th>Sl</th>
+                      <th style="width:70px">Sl</th>
                       <th>Mat Code</th>
                       <th>Description</th>
                       <th>Req Qty</th>
@@ -1461,16 +1470,19 @@ function renderPRCTable() {
                     </tr>
                   </thead>
                   <tbody>
-                    ${materials.map(m => {
+                    ${materials.map((m, idx) => {
                       const tot = parseFloat(m.quantity) || 0;
                       const proc = parseFloat(m.processedQty) || 0;
                       const cls = parseFloat(m.closedQty) || 0;
                       const pend = Math.max(0, tot - proc - cls);
                       const mStatus = calculateMaterialStatus(m);
                       const isChildCompleted = mStatus === 'Process Completed' || mStatus === STATUS.COMPLETED || m.status === 'Process Completed';
+                      const isLast = idx === materials.length - 1;
 
                       return `<tr class="${isChildCompleted ? 'row-process-completed' : ''}">
-                        <td>${m.serialNumber || '—'}</td>
+                        <td class="tree-branch-td ${!isLast ? 'is-middle' : ''}">
+                          <span style="font-size:11px;margin-right:2px">🔩</span> ${m.serialNumber || (idx + 1)}
+                        </td>
                         <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono font-semibold">${highlight(m.matCode,q)}</span><span class="copy-icon">📋</span></span><br>${renderProgressStars(m, false)}</td>
                         <td><strong>${highlight(m.description,q)}</strong></td>
                         <td class="font-semibold">${tot} ${m.unit||''}</td>
