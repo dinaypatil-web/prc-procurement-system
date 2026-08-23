@@ -372,6 +372,23 @@ window.navigate = function(page, context) {
   // Destroy old charts
   Object.values(charts).forEach(c => c?.destroy?.());
   Object.keys(charts).forEach(k => delete charts[k]);
+
+  // Render page
+  const content = document.getElementById('page-content');
+  if (content) {
+    content.innerHTML = '<div style="padding:40px;text-align:center"><div class="loading-spinner" style="margin:auto"></div></div>';
+    requestAnimationFrame(() => {
+      if (p) {
+        content.innerHTML = '';
+        p.render(content);
+        content.classList.remove('page-enter');
+        void content.offsetWidth;
+        content.classList.add('page-enter');
+      }
+      window.location.hash = page;
+      window.scrollTo(0,0);
+    });
+  }
 };
 
 window.quickCreateAllocation = function(prcId) {
@@ -388,22 +405,6 @@ window.quickCreateTCD = function(rfqNumber, rfqId, prcId) {
 
 window.quickCreatePOD = function(tcdNumber, tcdId, vendorName, prcId) {
   window.navigate('create-pod', { tcdNumber: tcdNumber || '', tcdId: tcdId || '', vendorName: vendorName || '', prcId: prcId || '' });
-};
-
-  // Render page
-  const content = document.getElementById('page-content');
-  content.innerHTML = '<div style="padding:40px;text-align:center"><div class="loading-spinner" style="margin:auto"></div></div>';
-  requestAnimationFrame(() => {
-    if (p) {
-      content.innerHTML = '';
-      p.render(content);
-      content.classList.remove('page-enter');
-      void content.offsetWidth;
-      content.classList.add('page-enter');
-    }
-    window.location.hash = page;
-    window.scrollTo(0,0);
-  });
 };
 
 // ── SIDEBAR ────────────────────────────────────────────────
