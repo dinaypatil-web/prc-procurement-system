@@ -1869,12 +1869,16 @@ export function isPRCExpanded(prcId) {
 export function togglePRCExpanded(prcId) {
   const list = state.expandedPRCIds || [];
   let updated;
+  let isExpandedNow;
   if (list.includes(prcId)) {
     updated = list.filter(id => id !== prcId);
+    isExpandedNow = false;
   } else {
     updated = [...list, prcId];
+    isExpandedNow = true;
   }
   setState({ expandedPRCIds: updated });
+  return isExpandedNow;
 }
 
 export function expandAllPRCs(prcIds) {

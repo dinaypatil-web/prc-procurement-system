@@ -954,9 +954,27 @@ window.switchViewLevel = function(level) {
   renderPRCList(document.getElementById('page-content'));
 };
 
-window.togglePRCTreeRow = function(prcId) {
-  togglePRCExpanded(prcId);
-  renderPRCTable();
+window.togglePRCTreeRow = function(prcId, evt) {
+  if (evt) {
+    const target = evt.target;
+    if (target && (target.closest('button.btn') || target.closest('select') || target.closest('input') || target.closest('a') || target.closest('.copy-badge'))) {
+      return;
+    }
+  }
+  const isExpandedNow = togglePRCExpanded(prcId);
+  const childRow = document.getElementById(`child-row-${prcId}`);
+  const parentRow = childRow ? childRow.previousElementSibling : null;
+  if (childRow && parentRow) {
+    childRow.classList.toggle('hidden', !isExpandedNow);
+    parentRow.classList.toggle('is-expanded', isExpandedNow);
+    const expandBtn = parentRow.querySelector('.row-expand-btn');
+    if (expandBtn) {
+      expandBtn.classList.toggle('is-expanded', isExpandedNow);
+      expandBtn.title = isExpandedNow ? 'Collapse Material Child Items' : 'Expand Material Child Items';
+    }
+  } else {
+    renderPRCTable();
+  }
 };
 
 window.handleExpandAllPRCs = function() {
@@ -1183,6 +1201,9 @@ window.renderProgressStars = function(item, isPRC) {
 function renderPRCTable() {
   const state = getState();
   const countEl = document.getElementById('prc-list-count');
+  const tableWrapper = document.getElementById('prc-table-wrapper');
+  const savedScrollTop = tableWrapper ? tableWrapper.scrollTop : 0;
+  const savedScrollLeft = tableWrapper ? tableWrapper.scrollLeft : 0;
 
   if (state.viewLevel === 'material') {
     const { total, items, pages, page } = getPaginatedMaterials();
@@ -1358,8 +1379,8 @@ function renderPRCTable() {
         const computedStatus = calculateStatus(p);
         const isPrcCompleted = computedStatus === 'Process Completed' || computedStatus === STATUS.COMPLETED || p.status === 'Process Completed';
 
-        const parentRowHtml = `<tr class="parent-row ${isExpanded ? 'is-expanded' : ''} ${isPrcCompleted ? 'row-process-completed' : ''}" onclick="togglePRCTreeRow('${p.id}')" style="cursor:pointer">
-          <td onclick="event.stopPropagation(); togglePRCTreeRow('${p.id}')" style="text-align:center">
+        const parentRowHtml = `<tr class="parent-row ${isExpanded ? 'is-expanded' : ''} ${isPrcCompleted ? 'row-process-completed' : ''}" onclick="togglePRCTreeRow('${p.id}', event)" style="cursor:pointer">
+          <td onclick="event.stopPropagation(); togglePRCTreeRow('${p.id}', event)" style="text-align:center">
             <button class="row-expand-btn ${isExpanded ? 'is-expanded' : ''}" title="${isExpanded ? 'Collapse Material Child Items' : 'Expand Material Child Items'}">▶</button>
           </td>
           <td>
@@ -1493,6 +1514,18 @@ function renderPRCTable() {
       btns += `<button class="page-btn" onclick="goPage(${page+1})" ${page>=pages?'disabled':''}>›</button>`;
       paginEl.innerHTML = btns + `<span class="page-info">Showing ${(page-1)*state.pageSize+1}–${Math.min(page*state.pageSize,total)} of ${fmtNum(total)}</span>`;
     }
+  }
+
+  // Restore scroll positions so table doesn't jump to top
+  if (tableWrapper) {
+    tableWrapper.scrollTop = savedScrollTop;
+    tableWrapper.scrollLeft = savedScrollLeft;
+    requestAnimationFrame(() => {
+      if (tableWrapper) {
+        tableWrapper.scrollTop = savedScrollTop;
+        tableWrapper.scrollLeft = savedScrollLeft;
+      }
+    });
   }
 }
 
