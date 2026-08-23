@@ -345,7 +345,7 @@ const PAGES = {
 
 window.navigate = function(page, context) {
   const state = getState();
-  // Store navigation context (e.g., prcId) for creation pages to filter by
+  // Store navigation context (e.g., prcId, rfqNumber, tcdNumber) for creation pages to filter by
   window._navigateContext = context || null;
   setState({ currentPage: page });
 
@@ -372,6 +372,23 @@ window.navigate = function(page, context) {
   // Destroy old charts
   Object.values(charts).forEach(c => c?.destroy?.());
   Object.keys(charts).forEach(k => delete charts[k]);
+};
+
+window.quickCreateAllocation = function(prcId) {
+  window.navigate('create-allocation', prcId ? { prcId } : null);
+};
+
+window.quickCreateRFQ = function(prcId, allocNumber, allocId) {
+  window.navigate('create-rfq', { prcId: prcId || '', allocationNumber: allocNumber || '', allocationId: allocId || '' });
+};
+
+window.quickCreateTCD = function(rfqNumber, rfqId, prcId) {
+  window.navigate('create-tcd', { rfqNumber: rfqNumber || '', rfqId: rfqId || '', prcId: prcId || '' });
+};
+
+window.quickCreatePOD = function(tcdNumber, tcdId, vendorName, prcId) {
+  window.navigate('create-pod', { tcdNumber: tcdNumber || '', tcdId: tcdId || '', vendorName: vendorName || '', prcId: prcId || '' });
+};
 
   // Render page
   const content = document.getElementById('page-content');
@@ -1191,10 +1208,10 @@ function renderPRCTable() {
           <td><span class="${pend>0?'text-warning font-semibold':'text-secondary'}">${pend}</span></td>
           <td><span class="${cls>0?'text-danger':'text-secondary'}">${cls}</span></td>
           <td><span class="chip ${getStatusChipClass(m.status)}"><span class="chip-dot"></span>${m.status}</span></td>
-          <td>${m.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><strong>${m.allocationNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.allocationDate)}</span>` : '<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate(\'create-allocation\',{prcId:\'${m.prcId}\'})" title="Create Allocation Document">➕ Create Allocation Document</button>'}</td>
-          <td>${m.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><strong>${highlight(m.rfqNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.rfqDate)}</span>` : '<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate(\'create-rfq\',{prcId:\'${m.prcId}\'})" title="Create RFQ Document">➕ Create RFQ Document</button>'}</td>
-          <td>${m.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><strong>${m.tcdNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.tcdDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate(\'create-tcd\',${m.rfqNumber ? `{rfqNumber:\'${m.rfqNumber}\',rfqId:\'${m.rfqId||''}\'}` : `{prcId:\'${m.prcId}\'}`})" title="Create TCD Document">➕ Create TCD Document</button>`}</td>
-          <td>${m.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.poNumber}','PO Number',event)" title="Click to copy PO Number"><strong class="text-brand">${highlight(m.poNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.poDate)}${m.vendorName||m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate(\'create-pod\',${m.tcdNumber ? `{tcdNumber:\'${m.tcdNumber}\',tcdId:\'${m.tcdId||''}\',vendorName:\'${(m.vendorName||m.vendor||'').replace(/'/g, "\\'")}\'}` : `{prcId:\'${m.prcId}\'}`})" title="Create Purchase Order Document">➕ Create PO Document</button>`}</td>
+          <td>${m.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><strong>${m.allocationNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.allocationDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateAllocation('${m.prcId}')" title="Create Allocation Document">➕ Create Allocation Document</button>`}</td>
+          <td>${m.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><strong>${highlight(m.rfqNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.rfqDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateRFQ('${m.prcId}','${m.allocationNumber||''}','${m.allocationId||''}')" title="Create RFQ Document">➕ Create RFQ Document</button>`}</td>
+          <td>${m.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><strong>${m.tcdNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.tcdDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateTCD('${m.rfqNumber||''}','${m.rfqId||''}','${m.prcId}')" title="Create TCD Document">➕ Create TCD Document</button>`}</td>
+          <td>${m.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.poNumber}','PO Number',event)" title="Click to copy PO Number"><strong class="text-brand">${highlight(m.poNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.poDate)}${m.vendorName||m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreatePOD('${m.tcdNumber||''}','${m.tcdId||''}','${(m.vendorName||m.vendor||'').replace(/'/g, "\\'")}','${m.prcId}')" title="Create Purchase Order Document">➕ Create PO Document</button>`}</td>
           <td>${fmtDate(m.deliveryDate||m.deliveryEndDate)}</td>
           <td onclick="event.stopPropagation()">
             <button class="btn btn-primary btn-xs" style="padding:3px 8px;font-size:11px" onclick="openEditMaterialWorkflow('${m.prcId}','${m.id}')" title="Edit Material Item Record">✏️ Edit Material</button>
@@ -1279,7 +1296,7 @@ function renderPRCTable() {
                 ${r.date ? `<br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(r.date)}</span>` : ''}
               </div>
             `).join('')
-          : '<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate(\'create-rfq\',{prcId:\'${p.id}\'})" title="Create RFQ Document">➕ Create RFQ Document</button>';
+          : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateRFQ('${p.id}','${docSummary.allocations[0]?.number||''}')" title="Create RFQ Document">➕ Create RFQ Document</button>`;
 
         const tcdCell = docSummary.tcds.length > 0
           ? docSummary.tcds.map(t => `
@@ -1291,7 +1308,7 @@ function renderPRCTable() {
                 ${t.date ? `<br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(t.date)}</span>` : ''}
               </div>
             `).join('')
-          : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate(\'create-tcd\',${docSummary.rfqs.length > 0 ? `{rfqNumber:\'${docSummary.rfqs[0].number}\'}` : `{prcId:\'${p.id}\'}`})" title="Create TCD Document">➕ Create TCD Document</button>`;
+          : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateTCD('${docSummary.rfqs[0]?.number||''}','','${p.id}')" title="Create TCD Document">➕ Create TCD Document</button>`;
 
         const poCell = docSummary.pos.length > 0
           ? docSummary.pos.map(po => `
@@ -1303,7 +1320,7 @@ function renderPRCTable() {
                 ${po.date ? `<br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(po.date)}</span>` : ''}
               </div>
             `).join('')
-          : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate(\'create-pod\',${docSummary.tcds.length > 0 ? `{tcdNumber:\'${docSummary.tcds[0].number}\'}` : `{prcId:\'${p.id}\'}`})" title="Create Purchase Order Document">➕ Create PO Document</button>`;
+          : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreatePOD('${docSummary.tcds[0]?.number||''}','','${(docSummary.vendors[0]||'').replace(/'/g, "\\'")}','${p.id}')" title="Create Purchase Order Document">➕ Create PO Document</button>`;
 
         const vendorCell = docSummary.vendors.length > 0
           ? docSummary.vendors.map(v => `<div style="font-size:13px">${highlight(v, q)}</div>`).join('')
@@ -1411,10 +1428,10 @@ function renderPRCTable() {
                         <td><span class="${pend>0?'text-warning font-semibold':'text-secondary'}">${pend}</span></td>
                         <td><span class="${cls>0?'text-danger':'text-secondary'}">${cls}</span></td>
                         <td><span class="chip ${getStatusChipClass(mStatus)}"><span class="chip-dot"></span>${mStatus}</span></td>
-                        <td>${m.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><strong>${m.allocationNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.allocationDate)}</span>` : '<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate(\'create-allocation\',{prcId:\'${p.id}\'})" title="Create Allocation Document">➕ Create Allocation Document</button>'}</td>
-                        <td>${m.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><strong>${highlight(m.rfqNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.rfqDate)}</span>` : '<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate(\'create-rfq\',{prcId:\'${p.id}\'})" title="Create RFQ Document">➕ Create RFQ Document</button>'}</td>
-                        <td>${m.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><strong>${m.tcdNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.tcdDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate(\'create-tcd\',${m.rfqNumber ? `{rfqNumber:\'${m.rfqNumber}\',rfqId:\'${m.rfqId||''}\'}` : `{prcId:\'${p.id}\'}`})" title="Create TCD Document">➕ Create TCD Document</button>`}</td>
-                        <td>${m.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.poNumber}','PO Number',event)" title="Click to copy PO Number"><strong class="text-brand">${highlight(m.poNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.poDate)}${m.vendorName||m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate(\'create-pod\',${m.tcdNumber ? `{tcdNumber:\'${m.tcdNumber}\',tcdId:\'${m.tcdId||''}\',vendorName:\'${(m.vendorName||m.vendor||'').replace(/'/g, "\\'")}\'}` : `{prcId:\'${p.id}\'}`})" title="Create Purchase Order Document">➕ Create PO Document</button>`}</td>
+                        <td>${m.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><strong>${m.allocationNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.allocationDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateAllocation('${p.id}')" title="Create Allocation Document">➕ Create Allocation Document</button>`}</td>
+                        <td>${m.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><strong>${highlight(m.rfqNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.rfqDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateRFQ('${p.id}','${m.allocationNumber||''}','${m.allocationId||''}')" title="Create RFQ Document">➕ Create RFQ Document</button>`}</td>
+                        <td>${m.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><strong>${m.tcdNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.tcdDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateTCD('${m.rfqNumber||''}','${m.rfqId||''}','${p.id}')" title="Create TCD Document">➕ Create TCD Document</button>`}</td>
+                        <td>${m.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.poNumber}','PO Number',event)" title="Click to copy PO Number"><strong class="text-brand">${highlight(m.poNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.poDate)}${m.vendorName||m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreatePOD('${m.tcdNumber||''}','${m.tcdId||''}','${(m.vendorName||m.vendor||'').replace(/'/g, "\\'")}','${p.id}')" title="Create Purchase Order Document">➕ Create PO Document</button>`}</td>
                         <td>${fmtDate(m.deliveryDate||m.deliveryEndDate)}</td>
                         <td onclick="event.stopPropagation()">
                           <button class="btn btn-primary btn-xs" style="padding:3px 7px;font-size:10px" onclick="openEditMaterialWorkflow('${p.id}','${m.id}')" title="Edit Material Record">✏️ Edit Material</button>
@@ -1654,10 +1671,10 @@ window.openPRCDetail = function(id) {
                 <td class="${(m.pendingQty!==undefined?m.pendingQty:Math.max(0,(m.quantity||0)-(m.processedQty||0)-(m.closedQty||0)))>0?'text-warning font-semibold':''}">${m.pendingQty!==undefined?m.pendingQty:Math.max(0,(m.quantity||0)-(m.processedQty||0)-(m.closedQty||0))}</td>
                 <td class="${(m.closedQty||0)>0?'text-danger':''}">${m.closedQty||0}</td>
                 <td><span class="chip ${getStatusChipClass(m.status)}">${getStatusIcon(m.status)} ${m.status}</span></td>
-                <td>${m.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><strong>${m.allocationNumber}</strong><span class="copy-icon">📋</span></span> <span class="text-xs text-secondary">(${fmtDate(m.allocationDate)}${m.buyerName ? ' · ' + m.buyerName : ''})</span>` : '<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="closePRCDetail();navigate(\'create-allocation\',{prcId:\'${id}\'})" title="Create Allocation Document">➕ Create Allocation Document</button>'}</td>
-                <td>${m.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><strong>${m.rfqNumber}</strong><span class="copy-icon">📋</span></span> <span class="text-xs text-secondary">(${fmtDate(m.rfqDate)}${m.offersReceived ? ' · Offers In' : ''})</span>` : '<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="closePRCDetail();navigate(\'create-rfq\',{prcId:\'${id}\'})" title="Create RFQ Document">➕ Create RFQ Document</button>'}</td>
-                <td>${m.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><strong>${m.tcdNumber}</strong><span class="copy-icon">📋</span></span> <span class="text-xs text-secondary">(${fmtDate(m.tcdDate)}${m.tcdApproved ? ' · Approved' : ''})</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="closePRCDetail();navigate('create-tcd',${m.rfqNumber ? `{rfqNumber:\'${m.rfqNumber}\',rfqId:\'${m.rfqId||''}\'}` : `{prcId:\'${id}\'}`})" title="Create TCD Document">➕ Create TCD Document</button>`}</td>
-                <td>${m.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.poNumber}','PO Number',event)" title="Click to copy PO Number"><strong>${m.poNumber}</strong><span class="copy-icon">📋</span></span> <span class="text-xs text-secondary">(${fmtDate(m.poDate)}${m.vendorName || m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''})</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="closePRCDetail();navigate('create-pod',${m.tcdNumber ? `{tcdNumber:\'${m.tcdNumber}\',tcdId:\'${m.tcdId||''}\',vendorName:\'${(m.vendorName||m.vendor||'').replace(/'/g, "\\'")}\'}` : `{prcId:\'${id}\'}`})" title="Create Purchase Order Document">➕ Create PO Document</button>`}</td>
+                <td>${m.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><strong>${m.allocationNumber}</strong><span class="copy-icon">📋</span></span> <span class="text-xs text-secondary">(${fmtDate(m.allocationDate)}${m.buyerName ? ' · ' + m.buyerName : ''})</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="closePRCDetail();quickCreateAllocation('${id}')" title="Create Allocation Document">➕ Create Allocation Document</button>`}</td>
+                <td>${m.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><strong>${m.rfqNumber}</strong><span class="copy-icon">📋</span></span> <span class="text-xs text-secondary">(${fmtDate(m.rfqDate)}${m.offersReceived ? ' · Offers In' : ''})</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="closePRCDetail();quickCreateRFQ('${id}','${m.allocationNumber||''}','${m.allocationId||''}')" title="Create RFQ Document">➕ Create RFQ Document</button>`}</td>
+                <td>${m.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><strong>${m.tcdNumber}</strong><span class="copy-icon">📋</span></span> <span class="text-xs text-secondary">(${fmtDate(m.tcdDate)}${m.tcdApproved ? ' · Approved' : ''})</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="closePRCDetail();quickCreateTCD('${m.rfqNumber||''}','${m.rfqId||''}','${id}')" title="Create TCD Document">➕ Create TCD Document</button>`}</td>
+                <td>${m.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.poNumber}','PO Number',event)" title="Click to copy PO Number"><strong>${m.poNumber}</strong><span class="copy-icon">📋</span></span> <span class="text-xs text-secondary">(${fmtDate(m.poDate)}${m.vendorName || m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''})</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="closePRCDetail();quickCreatePOD('${m.tcdNumber||''}','${m.tcdId||''}','${(m.vendorName||m.vendor||'').replace(/'/g, "\\'")}','${id}')" title="Create Purchase Order Document">➕ Create PO Document</button>`}</td>
                 <td>${fmtDate(m.deliveryEndDate || m.deliveryDate)}</td>
                 <td>
                   <button class="btn btn-primary btn-xs" style="padding:3px 8px;font-size:11px" onclick="openEditMaterialWorkflow('${id}','${m.id}')">✏️ Edit Material</button>
@@ -4783,26 +4800,27 @@ function renderTCDsPage(container) {
 function renderCreateTCDPage(container) {
   const state = getState();
   const ctx = window._navigateContext || {};
-  const filterRfqNumber = ctx.rfqNumber || null;
-  const filterRfqId = ctx.rfqId || null;
-  const filterPrcId = ctx.prcId || null;
+  const filterRfqNumber = ctx.rfqNumber ? String(ctx.rfqNumber).trim() : null;
+  const filterRfqId = ctx.rfqId ? String(ctx.rfqId).trim() : null;
+  const filterPrcId = ctx.prcId ? String(ctx.prcId).trim() : null;
   let available = getAvailableForTCD();
   let filterRFQ = null;
   let filterPrc = null;
 
   if (filterRfqNumber || filterRfqId) {
-    const filtered = available.filter(m => (filterRfqNumber && m.rfqNumber === filterRfqNumber) || (filterRfqId && m.rfqId === filterRfqId));
-    if (filtered.length > 0) {
-      available = filtered;
-    }
-    filterRFQ = (state.rfqs || []).find(r => (filterRfqId && r.id === filterRfqId) || (filterRfqNumber && r.rfqNumber === filterRfqNumber));
+    filterRFQ = (state.rfqs || []).find(r => (filterRfqId && r.id === filterRfqId) || (filterRfqNumber && String(r.rfqNumber || '').trim().toLowerCase() === filterRfqNumber.toLowerCase()));
+    const targetRfqNum = filterRFQ?.rfqNumber || filterRfqNumber;
+    const targetRfqId = filterRFQ?.id || filterRfqId;
+    available = available.filter(m => 
+      (targetRfqNum && String(m.rfqNumber || '').trim().toLowerCase() === targetRfqNum.toLowerCase()) || 
+      (targetRfqId && m.rfqId === targetRfqId)
+    );
   } else if (filterPrcId) {
     filterPrc = getPRCById(filterPrcId);
-    const filtered = available.filter(m => m.prcId === filterPrcId);
-    if (filtered.length > 0) {
-      available = filtered;
-    }
+    available = available.filter(m => m.prcId === filterPrcId);
   }
+
+  const isRfqNotClosed = filterRFQ && !(filterRFQ.isClosed || String(filterRFQ.status || '').trim().toLowerCase() === 'closed');
 
   // Group by RFQ Number
   const rfqMap = {};
@@ -4831,11 +4849,21 @@ function renderCreateTCDPage(container) {
     <div style="display:flex;align-items:center;gap:10px">
       <span style="font-size:18px">📨</span>
       <div>
-        <div style="font-size:13px;font-weight:700;color:var(--color-primary)">Filtered to RFQ Context: ${rfqNum}</div>
-        <div style="font-size:11px;color:var(--color-text-secondary)">Showing only closed RFQ materials from this RFQ document. ${filterRFQ?.rfqDate ? 'Date: ' + fmtDate(filterRFQ.rfqDate) : ''} · ${available.length} item(s) ready for TCD</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-size:13px;font-weight:700;color:var(--color-primary)">Filtered to RFQ Context: ${rfqNum}</div>
+          ${filterRFQ ? `<span class="chip ${filterRFQ.isClosed || String(filterRFQ.status||'').trim().toLowerCase() === 'closed' ? 'chip-completed' : 'chip-pending'}" style="font-size:10px">${filterRFQ.isClosed || String(filterRFQ.status||'').trim().toLowerCase() === 'closed' ? '🔒 Closed RFQ' : '🔓 Active RFQ'}</span>` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">
+          ${isRfqNotClosed 
+            ? '⚠️ Note: This RFQ is currently active. Close the RFQ to enable its materials for TCD creation.' 
+            : `Showing closed RFQ materials from this document. ${filterRFQ?.rfqDate ? 'Date: ' + fmtDate(filterRFQ.rfqDate) : ''} · ${available.length} item(s) available`}
+        </div>
       </div>
     </div>
-    <button class="btn btn-secondary btn-xs" onclick="window._navigateContext=null;renderCreateTCDPage(document.getElementById('page-content'))" title="Show all items">✕ Clear Filter</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      ${isRfqNotClosed && filterRFQ ? `<button class="btn btn-primary btn-xs" onclick="handleCloseRFQAndRefreshTCD('${filterRFQ.id}','${filterRFQ.rfqNumber}')">🔒 Close RFQ Now</button>` : ''}
+      <button class="btn btn-secondary btn-xs" onclick="window._navigateContext=null;renderCreateTCDPage(document.getElementById('page-content'))" title="Show all items">✕ Clear Filter</button>
+    </div>
   </div>`;
   } else if (filterPrc) {
     filterBannerHTML = `
@@ -4844,7 +4872,7 @@ function renderCreateTCDPage(container) {
       <span style="font-size:18px">🔍</span>
       <div>
         <div style="font-size:13px;font-weight:700;color:var(--color-primary)">Filtered to PRC: ${filterPrc.prNumber}</div>
-        <div style="font-size:11px;color:var(--color-text-secondary)">Showing only RFQ materials from this PRC. ${filterPrc.department ? 'Dept: ' + filterPrc.department : ''} ${filterPrc.jobNumber ? '· Job: ' + filterPrc.jobNumber : ''}</div>
+        <div style="font-size:11px;color:var(--color-text-secondary)">Showing only RFQ materials from this PRC. ${filterPrc.department ? 'Dept: ' + filterPrc.department : ''} ${filterPrc.jobNumber ? '· Job: ' + filterPrc.jobNumber : ''} · ${available.length} item(s) available</div>
       </div>
     </div>
     <button class="btn btn-secondary btn-xs" onclick="window._navigateContext=null;renderCreateTCDPage(document.getElementById('page-content'))" title="Show all items">✕ Clear Filter</button>
@@ -5128,18 +5156,35 @@ function updateTCDRFQCheckboxState(rfqNodeId) {
   rfqCb.indeterminate = checkedMats.length > 0 && checkedMats.length < allMats.length;
 }
 
+window.handleCloseRFQAndRefreshTCD = async function(rfqId, rfqNumber) {
+  const result = toggleRFQClose(rfqId, true);
+  if (result.success) {
+    toast('RFQ closed! Materials are now available for TCD.', 'success');
+    window._navigateContext = { rfqId, rfqNumber };
+    renderCreateTCDPage(document.getElementById('page-content'));
+    updateSidebarBadges();
+  } else {
+    toast(result.reason || 'Failed to close RFQ', 'error');
+  }
+};
+
 window.filterTCDTree = function(query) {
+  const state = getState();
   const ctx = window._navigateContext || {};
-  const filterRfqNumber = ctx.rfqNumber || null;
-  const filterRfqId = ctx.rfqId || null;
-  const filterPrcId = ctx.prcId || null;
+  const filterRfqNumber = ctx.rfqNumber ? String(ctx.rfqNumber).trim() : null;
+  const filterRfqId = ctx.rfqId ? String(ctx.rfqId).trim() : null;
+  const filterPrcId = ctx.prcId ? String(ctx.prcId).trim() : null;
   let available = getAvailableForTCD();
   if (filterRfqNumber || filterRfqId) {
-    const filtered = available.filter(m => (filterRfqNumber && m.rfqNumber === filterRfqNumber) || (filterRfqId && m.rfqId === filterRfqId));
-    if (filtered.length > 0) available = filtered;
+    const filterRFQ = (state.rfqs || []).find(r => (filterRfqId && r.id === filterRfqId) || (filterRfqNumber && String(r.rfqNumber || '').trim().toLowerCase() === filterRfqNumber.toLowerCase()));
+    const targetRfqNum = filterRFQ?.rfqNumber || filterRfqNumber;
+    const targetRfqId = filterRFQ?.id || filterRfqId;
+    available = available.filter(m => 
+      (targetRfqNum && String(m.rfqNumber || '').trim().toLowerCase() === targetRfqNum.toLowerCase()) || 
+      (targetRfqId && m.rfqId === targetRfqId)
+    );
   } else if (filterPrcId) {
-    const filtered = available.filter(m => m.prcId === filterPrcId);
-    if (filtered.length > 0) available = filtered;
+    available = available.filter(m => m.prcId === filterPrcId);
   }
 
   const rfqMap = {};
@@ -5399,25 +5444,24 @@ function renderPODsPage(container) {
 function renderCreatePODPage(container) {
   const state = getState();
   const ctx = window._navigateContext || {};
-  const filterTcdNumber = ctx.tcdNumber || null;
-  const filterTcdId = ctx.tcdId || null;
-  const filterPrcId = ctx.prcId || null;
+  const filterTcdNumber = ctx.tcdNumber ? String(ctx.tcdNumber).trim() : null;
+  const filterTcdId = ctx.tcdId ? String(ctx.tcdId).trim() : null;
+  const filterPrcId = ctx.prcId ? String(ctx.prcId).trim() : null;
   let availableItems = getAvailableForPOD();
   let filterTCD = null;
   let filterPrc = null;
 
   if (filterTcdNumber || filterTcdId) {
-    const filtered = availableItems.filter(m => (filterTcdNumber && m.tcdNumber === filterTcdNumber) || (filterTcdId && m.tcdId === filterTcdId));
-    if (filtered.length > 0) {
-      availableItems = filtered;
-    }
-    filterTCD = (state.tcds || []).find(t => (filterTcdId && t.id === filterTcdId) || (filterTcdNumber && t.tcdNumber === filterTcdNumber));
+    filterTCD = (state.tcds || []).find(t => (filterTcdId && t.id === filterTcdId) || (filterTcdNumber && String(t.tcdNumber || '').trim().toLowerCase() === filterTcdNumber.toLowerCase()));
+    const targetTcdNum = filterTCD?.tcdNumber || filterTcdNumber;
+    const targetTcdId = filterTCD?.id || filterTcdId;
+    availableItems = availableItems.filter(m => 
+      (targetTcdNum && String(m.tcdNumber || '').trim().toLowerCase() === targetTcdNum.toLowerCase()) || 
+      (targetTcdId && m.tcdId === targetTcdId)
+    );
   } else if (filterPrcId) {
     filterPrc = getPRCById(filterPrcId);
-    const filtered = availableItems.filter(m => m.prcId === filterPrcId);
-    if (filtered.length > 0) {
-      availableItems = filtered;
-    }
+    availableItems = availableItems.filter(m => m.prcId === filterPrcId);
   }
 
   // Ensure index is mapped
@@ -5600,17 +5644,22 @@ function renderPODTreeHTML(items, query = '') {
 }
 
 window.filterPODTree = function(query) {
+  const state = getState();
   const ctx = window._navigateContext || {};
-  const filterTcdNumber = ctx.tcdNumber || null;
-  const filterTcdId = ctx.tcdId || null;
-  const filterPrcId = ctx.prcId || null;
+  const filterTcdNumber = ctx.tcdNumber ? String(ctx.tcdNumber).trim() : null;
+  const filterTcdId = ctx.tcdId ? String(ctx.tcdId).trim() : null;
+  const filterPrcId = ctx.prcId ? String(ctx.prcId).trim() : null;
   let items = getAvailableForPOD();
   if (filterTcdNumber || filterTcdId) {
-    const filtered = items.filter(m => (filterTcdNumber && m.tcdNumber === filterTcdNumber) || (filterTcdId && m.tcdId === filterTcdId));
-    if (filtered.length > 0) items = filtered;
+    const filterTCD = (state.tcds || []).find(t => (filterTcdId && t.id === filterTcdId) || (filterTcdNumber && String(t.tcdNumber || '').trim().toLowerCase() === filterTcdNumber.toLowerCase()));
+    const targetTcdNum = filterTCD?.tcdNumber || filterTcdNumber;
+    const targetTcdId = filterTCD?.id || filterTcdId;
+    items = items.filter(m => 
+      (targetTcdNum && String(m.tcdNumber || '').trim().toLowerCase() === targetTcdNum.toLowerCase()) || 
+      (targetTcdId && m.tcdId === targetTcdId)
+    );
   } else if (filterPrcId) {
-    const filtered = items.filter(m => m.prcId === filterPrcId);
-    if (filtered.length > 0) items = filtered;
+    items = items.filter(m => m.prcId === filterPrcId);
   }
   items = items.map((m, i) => ({ ...m, _idx: i }));
   window._podAvailableItems = items;
