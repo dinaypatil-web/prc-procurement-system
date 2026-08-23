@@ -4781,18 +4781,20 @@ function renderTCDsPage(container) {
       <thead><tr><th>TCD Number</th><th>Date</th><th>Vendors</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
       <tbody id="tcd-docs-tbody">
         ${tcds.map(t => {
-          const totalItems = (t.vendors || []).reduce((s, v) => s + (v.items || []).length, 0);
+          const tcdVendors = t.vendorAllocations || t.vendors || [];
+          const totalItems = tcdVendors.reduce((s, v) => s + (v.items || []).length, 0);
           return `
           <tr>
             <td><span class="copy-badge" onclick="copyToClipboard('${t.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><span class="font-mono font-semibold">${t.tcdNumber}</span><span class="copy-icon">📋</span></span></td>
             <td>${fmtDate(t.tcdDate)}</td>
-            <td><strong>${(t.vendors || []).length} vendor(s)</strong></td>
+            <td><strong>${tcdVendors.length} vendor(s)</strong></td>
             <td><span class="chip chip-pending">${totalItems} items</span></td>
             <td><span class="chip ${t.approved ? 'chip-completed' : 'chip-awaiting'}">${t.status || (t.approved ? 'Approved' : 'Pending Approval')}</span></td>
             <td>${fmtDate(t.createdAt)}</td>
             <td>
               <button class="btn btn-ghost btn-sm" onclick="viewTCDDetail('${t.id}')">👁️ View</button>
-              ${!t.approved ? `<button class="btn btn-primary btn-sm" onclick="handleApproveTCD('${t.id}')">✅ Approve</button>` : `<button class="btn btn-primary btn-sm" onclick="navigate('create-pod', { tcdId: '${t.id}', tcdNumber: '${t.tcdNumber}' })" title="Create Purchase Order from this TCD">🛒 Create PO</button>`}
+              ${!t.approved ? `<button class="btn btn-secondary btn-sm" onclick="handleApproveTCD('${t.id}')">✅ Approve</button>` : ''}
+              <button class="btn btn-primary btn-sm" onclick="navigate('create-pod', { tcdId: '${t.id}', tcdNumber: '${t.tcdNumber}' })" title="Create Purchase Order from this TCD">🛒 Create PO</button>
               <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleDeleteTCD('${t.id}')" title="Delete TCD">🗑️</button>
             </td>
           </tr>`;
@@ -5278,9 +5280,9 @@ window.viewTCDDetail = function(id) {
         <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
       </div>
       <div class="modal-body" style="padding:20px">
-        ${(tcd.vendors || []).map(v => `
+        ${(tcd.vendorAllocations || tcd.vendors || []).map(v => `
           <div style="margin-bottom:16px;background:var(--color-surface-2);border-radius:8px;padding:12px">
-            <h4 style="margin:0 0 8px 0;font-size:13px;font-weight:700;color:var(--color-primary)">🏢 Vendor: ${v.vendorName}</h4>
+            <h4 style="margin:0 0 8px 0;font-size:13px;font-weight:700;color:var(--color-primary)">🏢 Vendor: ${v.vendorName || v.name}</h4>
             <table class="data-table" style="font-size:12px">
               <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>TCD Qty</th><th>Unit</th></tr></thead>
               <tbody>${(v.items || []).map(i => `<tr><td><span class="copy-badge" onclick="copyToClipboard('${i.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono">${i.prNumber}</span><span class="copy-icon">📋</span></span></td><td><span class="copy-badge" onclick="copyToClipboard('${i.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${i.matCode}</span><span class="copy-icon">📋</span></span></td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
@@ -5289,7 +5291,8 @@ window.viewTCDDetail = function(id) {
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button>
-        ${!tcd.approved ? `<button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();handleApproveTCD('${tcd.id}')">✅ Approve TCD</button>` : `<button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();navigate('create-pod', { tcdId: '${tcd.id}', tcdNumber: '${tcd.tcdNumber}' })">🛒 Create PO for this TCD</button>`}
+        ${!tcd.approved ? `<button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove();handleApproveTCD('${tcd.id}')">✅ Approve TCD</button>` : ''}
+        <button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();navigate('create-pod', { tcdId: '${tcd.id}', tcdNumber: '${tcd.tcdNumber}' })">🛒 Create PO for this TCD</button>
       </div>
     </div>`;
   document.body.appendChild(el);
@@ -5481,12 +5484,18 @@ function renderCreatePODPage(container) {
     availableItems = availableItems.filter(m => m.prcId === filterPrcId);
   }
 
+  const isTcdNotApproved = filterTCD && !(filterTCD.approved || String(filterTCD.status || '').trim().toLowerCase() === 'approved');
+
+  // If TCD is pending approval, inspect its vendor allocations directly to pre-fill vendor and references
+  const tcdAllocations = filterTCD ? (filterTCD.vendorAllocations || filterTCD.vendors || []) : [];
+  const tcdVendors = tcdAllocations.map(v => v.vendorName || v.name).filter(Boolean);
+
   // Ensure index is mapped
   availableItems = availableItems.map((m, i) => ({ ...m, _idx: i }));
 
-  // Unique vendors and TCDs from available items
-  const uniqueVendors = [...new Set(availableItems.map(i => i.vendorName).filter(Boolean))];
-  const uniqueTCDs = [...new Set(availableItems.map(i => i.tcdNumber).filter(Boolean))];
+  // Unique vendors and TCDs from available items or target TCD
+  const uniqueVendors = [...new Set([...availableItems.map(i => i.vendorName), ...tcdVendors].filter(Boolean))];
+  const uniqueTCDs = [...new Set([...availableItems.map(i => i.tcdNumber), filterTCD?.tcdNumber].filter(Boolean))];
   const defaultVendor = ctx.vendorName || (uniqueVendors.length === 1 ? uniqueVendors[0] : '');
   const defaultTCDRef = filterTCD?.tcdNumber || filterTcdNumber || (uniqueTCDs.length === 1 ? uniqueTCDs[0] : '');
 
@@ -5500,11 +5509,21 @@ function renderCreatePODPage(container) {
     <div style="display:flex;align-items:center;gap:10px">
       <span style="font-size:18px">📊</span>
       <div>
-        <div style="font-size:13px;font-weight:700;color:var(--color-primary)">Filtered to TCD Context: ${tcdNum}</div>
-        <div style="font-size:11px;color:var(--color-text-secondary)">Showing only approved materials from this TCD document ready for Purchase Order issuance. ${filterTCD?.tcdDate ? 'Date: ' + fmtDate(filterTCD.tcdDate) : ''} · ${availableItems.length} item(s)</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="font-size:13px;font-weight:700;color:var(--color-primary)">Filtered to TCD Context: ${tcdNum}</div>
+          ${filterTCD ? `<span class="chip ${filterTCD.approved || String(filterTCD.status||'').trim().toLowerCase() === 'approved' ? 'chip-completed' : 'chip-pending'}" style="font-size:10px">${filterTCD.approved || String(filterTCD.status||'').trim().toLowerCase() === 'approved' ? '✅ Approved TCD' : '⏳ Pending Approval'}</span>` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">
+          ${isTcdNotApproved 
+            ? '⚠️ Note: This TCD document is currently pending approval. Approve the TCD to unlock its vendor allocations for Purchase Order issuance.' 
+            : `Showing approved materials from this TCD document ready for Purchase Order issuance. ${filterTCD?.tcdDate ? 'Date: ' + fmtDate(filterTCD.tcdDate) : ''} · ${availableItems.length} item(s)`}
+        </div>
       </div>
     </div>
-    <button class="btn btn-secondary btn-xs" onclick="window._navigateContext=null;renderCreatePODPage(document.getElementById('page-content'))" title="Show all items">✕ Clear Filter</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      ${isTcdNotApproved && filterTCD ? `<button class="btn btn-primary btn-xs" onclick="handleApproveTCDAndRefreshPO('${filterTCD.id}','${filterTCD.tcdNumber}')">✅ Approve TCD Now</button>` : ''}
+      <button class="btn btn-secondary btn-xs" onclick="window._navigateContext=null;renderCreatePODPage(document.getElementById('page-content'))" title="Show all items">✕ Clear Filter</button>
+    </div>
   </div>`;
   } else if (filterPrc) {
     filterBannerHTML = `
@@ -5513,7 +5532,7 @@ function renderCreatePODPage(container) {
       <span style="font-size:18px">🔍</span>
       <div>
         <div style="font-size:13px;font-weight:700;color:var(--color-primary)">Filtered to PRC: ${filterPrc.prNumber}</div>
-        <div style="font-size:11px;color:var(--color-text-secondary)">Showing only TCD-approved materials from this PRC. ${filterPrc.department ? 'Dept: ' + filterPrc.department : ''} ${filterPrc.jobNumber ? '· Job: ' + filterPrc.jobNumber : ''}</div>
+        <div style="font-size:11px;color:var(--color-text-secondary)">Showing only TCD-approved materials from this PRC. ${filterPrc.department ? 'Dept: ' + filterPrc.department : ''} ${filterPrc.jobNumber ? '· Job: ' + filterPrc.jobNumber : ''} · ${availableItems.length} item(s)</div>
       </div>
     </div>
     <button class="btn btn-secondary btn-xs" onclick="window._navigateContext=null;renderCreatePODPage(document.getElementById('page-content'))" title="Show all items">✕ Clear Filter</button>
@@ -5599,7 +5618,7 @@ ${filterBannerHTML}
 
   <!-- Items Table / Container -->
   <div id="pod-tree-container" class="table-wrapper" style="overflow:auto">
-    ${renderPODTreeHTML(availableItems)}
+    ${renderPODTreeHTML(availableItems, '', filterTCD)}
   </div>
 </div>
 
@@ -5615,7 +5634,20 @@ ${filterBannerHTML}
   updatePODTreeSummary();
 }
 
-function renderPODTreeHTML(items, query = '') {
+function handleApproveTCDAndRefreshPO(tcdId, tcdNumber) {
+  const result = approveTCD(tcdId);
+  if (result.success) {
+    toast('TCD approved! Materials are now ready for Purchase Order creation.', 'success');
+    window._navigateContext = { tcdId, tcdNumber };
+    renderCreatePODPage(document.getElementById('page-content'));
+    updateSidebarBadges();
+  } else {
+    toast(result.reason || 'Failed to approve TCD', 'error');
+  }
+}
+window.handleApproveTCDAndRefreshPO = handleApproveTCDAndRefreshPO;
+
+function renderPODTreeHTML(items, query = '', filterTCD = null) {
   const q = (query || '').toLowerCase().trim();
   const filtered = items.filter(m => {
     if (!q) return true;
@@ -5627,6 +5659,22 @@ function renderPODTreeHTML(items, query = '') {
   });
 
   if (!filtered.length) {
+    if (filterTCD && !(filterTCD.approved || String(filterTCD.status || '').trim().toLowerCase() === 'approved')) {
+      const tcdNum = filterTCD.tcdNumber || 'this TCD';
+      return `
+      <div class="empty-state" style="padding:36px 20px">
+        <div class="empty-state-icon">⏳</div>
+        <div class="empty-state-title">TCD ${tcdNum} is Pending Approval</div>
+        <div class="empty-state-text" style="max-width:500px;margin:8px auto;color:var(--color-text-secondary);font-size:13px">
+          Purchase Orders require an approved TCD document before items can be issued. Approve this TCD to instantly unlock and load all its vendor allocations.
+        </div>
+        <div style="margin-top:16px">
+          <button class="btn btn-primary" onclick="handleApproveTCDAndRefreshPO('${filterTCD.id}','${filterTCD.tcdNumber}')">
+            ✅ Approve TCD & Load Materials
+          </button>
+        </div>
+      </div>`;
+    }
     return `<div class="empty-state" style="padding:32px"><div class="empty-state-icon">🔍</div><div class="empty-state-title">No approved TCD materials available</div></div>`;
   }
 
@@ -5660,15 +5708,16 @@ function renderPODTreeHTML(items, query = '') {
     </table>`;
 }
 
-window.filterPODTree = function(query) {
+function filterPODTree(query) {
   const state = getState();
   const ctx = window._navigateContext || {};
   const filterTcdNumber = ctx.tcdNumber ? String(ctx.tcdNumber).trim() : null;
   const filterTcdId = ctx.tcdId ? String(ctx.tcdId).trim() : null;
   const filterPrcId = ctx.prcId ? String(ctx.prcId).trim() : null;
   let items = getAvailableForPOD();
+  let filterTCD = null;
   if (filterTcdNumber || filterTcdId) {
-    const filterTCD = (state.tcds || []).find(t => (filterTcdId && t.id === filterTcdId) || (filterTcdNumber && String(t.tcdNumber || '').trim().toLowerCase() === filterTcdNumber.toLowerCase()));
+    filterTCD = (state.tcds || []).find(t => (filterTcdId && t.id === filterTcdId) || (filterTcdNumber && String(t.tcdNumber || '').trim().toLowerCase() === filterTcdNumber.toLowerCase()));
     const targetTcdNum = filterTCD?.tcdNumber || filterTcdNumber;
     const targetTcdId = filterTCD?.id || filterTcdId;
     items = items.filter(m => 
@@ -5681,17 +5730,19 @@ window.filterPODTree = function(query) {
   items = items.map((m, i) => ({ ...m, _idx: i }));
   window._podAvailableItems = items;
   const container = document.getElementById('pod-tree-container');
-  if (container) container.innerHTML = renderPODTreeHTML(items, query);
+  if (container) container.innerHTML = renderPODTreeHTML(items, query, filterTCD);
   updatePODTreeSummary();
-};
+}
+window.filterPODTree = filterPODTree;
 
-window.selectAllPODTree = function(select) {
+function selectAllPODTree(select) {
   const scope = document.getElementById('pod-tree-container') || document;
   scope.querySelectorAll('.pod-mat-cb').forEach(cb => cb.checked = select);
   updatePODTreeSummary();
-};
+}
+window.selectAllPODTree = selectAllPODTree;
 
-window.updatePODTreeSummary = function() {
+function updatePODTreeSummary() {
   const scope = document.getElementById('pod-tree-container') || document;
   const checked = scope.querySelectorAll('.pod-mat-cb:checked');
   const count = checked.length;
@@ -5717,9 +5768,10 @@ window.updatePODTreeSummary = function() {
       if (tcdInput && !tcdInput.value) tcdInput.value = m.tcdNumber || '';
     }
   }
-};
+}
+window.updatePODTreeSummary = updatePODTreeSummary;
 
-window.submitCreatePODPage = function() {
+function submitCreatePODPage() {
   const poNumber = document.getElementById('create-po-number')?.value.trim();
   const poDate = document.getElementById('create-po-date')?.value;
   const vendorName = document.getElementById('create-po-vendor')?.value.trim();

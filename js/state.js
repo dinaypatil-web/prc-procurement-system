@@ -1701,10 +1701,11 @@ export function getPODById(id) {
 export function getAvailableForPOD() {
   const result = [];
   state.tcds.forEach(tcd => {
-    if (!tcd.approved) return;
-    (tcd.vendorAllocations || []).forEach(va => {
-      const vendorName = va.vendorName;
-      va.items.forEach(item => {
+    if (!tcd.approved && String(tcd.status || '').trim().toLowerCase() !== 'approved') return;
+    const allocations = tcd.vendorAllocations || tcd.vendors || [];
+    allocations.forEach(va => {
+      const vendorName = va.vendorName || va.name || '';
+      (va.items || []).forEach(item => {
         const prc = state.prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
         if (prc && (isPRCShortClosed(prc) || prc.isFuturePRC || prc.isWrongPRC)) return;
         if (isMaterialShortClosed(item, prc)) return;
