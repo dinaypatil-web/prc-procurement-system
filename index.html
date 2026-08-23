@@ -1035,8 +1035,18 @@ window.changeVendorSort = function(field, dir) {
 };
 
 window.getPRCDocumentSummary = function(p) {
-  if (!p) return { rfqs: [], tcds: [], pos: [], vendors: [] };
+  if (!p) return { allocations: [], rfqs: [], tcds: [], pos: [], vendors: [] };
   const mats = p.materials || [];
+
+  // 0. Allocations
+  const allocSet = new Map();
+  if (p.allocationNumber) allocSet.set(String(p.allocationNumber).trim(), p.allocationDate || '');
+  mats.forEach(m => {
+    if (m.allocationNumber) {
+      const num = String(m.allocationNumber).trim();
+      if (!allocSet.has(num) || (!allocSet.get(num) && m.allocationDate)) allocSet.set(num, m.allocationDate || '');
+    }
+  });
 
   // 1. RFQs
   const rfqSet = new Map();
@@ -1078,6 +1088,7 @@ window.getPRCDocumentSummary = function(p) {
   });
 
   return {
+    allocations: Array.from(allocSet.entries()).map(([num, date]) => ({ number: num, date })),
     rfqs: Array.from(rfqSet.entries()).map(([num, date]) => ({ number: num, date })),
     tcds: Array.from(tcdSet.entries()).map(([num, date]) => ({ number: num, date })),
     pos:  Array.from(poSet.entries()).map(([num, date]) => ({ number: num, date })),
@@ -1370,7 +1381,7 @@ function renderPRCTable() {
               </select>
             </div>
           </td>
-          <td>${p.allocationNumber ? `${fmtDate(p.allocationDate)}<br><span class="copy-badge" onclick="copyToClipboard('${p.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number" style="font-size:11px">${p.allocationNumber}<span class="copy-icon">📋</span></span>` : '<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate(\'create-allocation\',{prcId:\'${p.id}\'})" title="Create Allocation Document">➕ Create Allocation Document</button>'}</td>
+          <td>${p.allocationNumber ? `${fmtDate(p.allocationDate)}<br><span class="copy-badge" onclick="copyToClipboard('${p.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number" style="font-size:11px">${p.allocationNumber}<span class="copy-icon">📋</span></span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateAllocation('${p.id}')" title="Create Allocation Document">➕ Create Allocation Document</button>`}</td>
           <td>${p.buyerName || p.allocatedBy ? highlight(p.buyerName || p.allocatedBy, q) : '<span style="font-size:11px;color:var(--color-text-tertiary)">—</span>'}</td>
           <td>${rfqCell}</td>
           <td>${tcdCell}</td>
