@@ -342,6 +342,35 @@ export function buildStatusSummary(prcs, materialsMap = {}) {
 }
 
 /**
+ * Checks whether an item or PRC has a complete Allocation process.
+ * Rule: Complete allocation MUST have allocationNumber, allocationDate, AND buyerName.
+ * If any of these 3 fields is missing/empty, the allocation process is INCOMPLETE.
+ */
+export function isAllocationComplete(item) {
+  if (!item) return false;
+  const allocNo = String(item.allocationNumber || '').trim();
+  const allocDt = String(item.allocationDate || '').trim();
+  const buyer   = String(item.buyerName || item.allocatedBy || '').trim();
+  return !!(allocNo && allocDt && buyer);
+}
+
+export function isPRCAllocationComplete(prc) {
+  if (!prc) return false;
+  if (isAllocationComplete(prc)) return true;
+  const mats = prc.materials || [];
+  if (!mats.length) return false;
+  return mats.every(m => isMaterialAllocationComplete(m, prc));
+}
+
+export function isMaterialAllocationComplete(mat, prc = null) {
+  if (!mat) return false;
+  const allocNo = String(mat.allocationNumber || prc?.allocationNumber || '').trim();
+  const allocDt = String(mat.allocationDate || prc?.allocationDate || '').trim();
+  const buyer   = String(mat.buyerName || mat.allocatedBy || prc?.buyerName || prc?.allocatedBy || '').trim();
+  return !!(allocNo && allocDt && buyer);
+}
+
+/**
  * Returns timeline steps with completion state for a PRC.
  */
 export function buildTimeline(prc) {
@@ -350,6 +379,17 @@ export function buildTimeline(prc) {
 
   const allocNo   = prc.allocationNumber || mats.find(m => m.allocationNumber)?.allocationNumber;
   const allocDt   = prc.allocationDate   || mats.find(m => m.allocationDate)?.allocationDate;
+  const buyerName = prc.buyerName || prc.allocatedBy || mats.find(m => m.buyerName || m.allocatedBy)?.buyerName || mats.find(m => m.buyerName || m.allocatedBy)?.allocatedBy;
+
+  const hasAllocNo   = !!(allocNo && String(allocNo).trim());
+  const hasAllocDt   = !!(allocDt && String(allocDt).trim());
+  const hasBuyerName = !!(buyerName && String(buyerName).trim());
+  const allocDone    = hasAllocNo && hasAllocDt && hasBuyerName;
+
+  const allocMissing = [];
+  if (!hasAllocNo)   allocMissing.push('Allocation Number');
+  if (!hasAllocDt)   allocMissing.push('Allocation Date');
+  if (!hasBuyerName) allocMissing.push('Buyer Name');
 
   const rfqNo     = prc.rfqNumber || mats.find(m => m.rfqNumber)?.rfqNumber;
   const rfqDt     = prc.rfqDate   || mats.find(m => m.rfqDate)?.rfqDate;
@@ -377,11 +417,11 @@ export function buildTimeline(prc) {
     },
     {
       key:   'allocated',
-      label: 'Allocated',
-      done:  !!allocNo,
+      label: allocDone ? 'Allocated' : (allocMissing.length < 3 ? 'Allocation Incomplete' : 'Allocated'),
+      done:  allocDone,
       date:  allocDt,
-      user:  prc.allocatedBy || prc.buyerName,
-      icon:  '📌'
+      user:  allocDone ? (buyerName || 'Allocated') : (allocMissing.length < 3 ? `Missing: ${allocMissing.join(', ')}` : 'Unassigned'),
+      icon:  allocDone ? '📌' : (allocMissing.length < 3 ? '⚠️' : '📌')
     },
     {
       key:   'rfq',

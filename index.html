@@ -311,8 +311,8 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, createRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile } from './js/state.js';
-import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary } from './js/status-engine.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile } from './js/state.js';
+import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
@@ -743,7 +743,7 @@ function initDashboardCharts(prcs, s) {
   // Procurement Funnel
   const funnelData = [
     { label:'Imported',   value: prcs.length },
-    { label:'Allocated',  value: prcs.filter(p => p.allocationNumber || (p.materials||[]).some(m => m.allocationNumber)).length },
+    { label:'Allocated',  value: prcs.filter(p => isPRCAllocationComplete(p)).length },
     { label:'RFQ Issued', value: prcs.filter(p => p.rfqNumber || (p.materials||[]).some(m => m.rfqNumber)).length },
     { label:'Offers In',  value: prcs.filter(p => p.offersReceived || p.tcdNumber || p.tcdApproved || (p.materials||[]).some(m => m.offersReceived || m.tcdNumber || m.tcdApproved || m.poNumber)).length },
     { label:'TCD Done',   value: prcs.filter(p => p.tcdNumber || p.tcdApproved || (p.materials||[]).some(m => m.tcdNumber || m.tcdApproved || m.poNumber)).length },
@@ -1147,13 +1147,10 @@ window.renderProgressStars = function(item, isPRC) {
     // PRC-level: check PRC fields and any material having the stage
     const mats = item.materials || [];
     const state = getState();
-    const allocs = state.allocations || [];
     const rfqs = state.rfqs || [];
 
-    // Allocation
-    stages[0].filled = !!(item.allocationNumber || item.allocationDate || item.buyerName ||
-      mats.some(m => m.allocationNumber || m.allocationDate) ||
-      allocs.some(a => (a.prcIds || []).includes(item.id)));
+    // Allocation: Requires all 3 (Allocation Number, Allocation Date, Buyer Name)
+    stages[0].filled = isPRCAllocationComplete(item);
 
     // RFQ
     stages[1].filled = !!(item.rfqNumber ||
@@ -1177,11 +1174,11 @@ window.renderProgressStars = function(item, isPRC) {
     stages[4].filled = !!(item.poNumber ||
       mats.some(m => m.poNumber));
   } else {
-    // Material-level
+    // Material-level: complete allocation requires ALL 3: allocationNumber, allocationDate & buyerName
     const state = getState();
     const rfqs = state.rfqs || [];
 
-    stages[0].filled = !!(item.allocationNumber || item.allocationDate);
+    stages[0].filled = isMaterialAllocationComplete(item);
     stages[1].filled = !!(item.rfqNumber);
 
     // RFQ Close for material
@@ -1198,7 +1195,7 @@ window.renderProgressStars = function(item, isPRC) {
   }
 
   return `<span class="progress-stars">${stages.map(s =>
-    `<span class="progress-star ${s.filled ? 'star-' + s.key : 'star-empty'}" title="${s.label}: ${s.filled ? '✅ Completed' : '⬜ Pending'}">★</span>`
+    `<span class="progress-star ${s.filled ? 'star-' + s.key : 'star-empty'}" title="${s.label}: ${s.filled ? '✅ Completed' : (s.key==='alloc' ? '⬜ Incomplete / Pending (Requires Allocation Number, Date & Buyer Name)' : '⬜ Pending')}">★</span>`
   ).join('')}</span>`;
 };
 
@@ -1261,8 +1258,21 @@ function renderPRCTable() {
           <td><span class="text-brand font-semibold">${proc}</span></td>
           <td><span class="${pend>0?'text-warning font-semibold':'text-secondary'}">${pend}</span></td>
           <td><span class="${cls>0?'text-danger':'text-secondary'}">${cls}</span></td>
-          <td><span class="chip ${getStatusChipClass(m.status)}"><span class="chip-dot"></span>${m.status}</span></td>
-          <td>${m.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><strong>${m.allocationNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.allocationDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateAllocation('${m.prcId}')" title="Create Allocation Document">➕ Create Allocation Document</button>`}</td>
+          <td>${(() => {
+            const hasComplete = isMaterialAllocationComplete(m);
+            const hasAny = !!(m.allocationNumber || m.allocationDate || m.buyerName || m.allocatedBy);
+            if (hasComplete) {
+              return `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><strong>${m.allocationNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.allocationDate)} · ${m.buyerName || m.allocatedBy}</span>`;
+            } else if (hasAny) {
+              const missing = [];
+              if (!m.allocationNumber) missing.push('No #');
+              if (!m.allocationDate) missing.push('No Date');
+              if (!m.buyerName && !m.allocatedBy) missing.push('No Buyer');
+              return `<span class="copy-badge" style="border-color:var(--color-warning);background:rgba(245,158,11,0.08)" onclick="copyToClipboard('${m.allocationNumber||''}','Allocation Number',event)" title="Allocation Incomplete"><strong>${m.allocationNumber || '—'}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-warning);font-weight:600" title="Missing: ${missing.join(', ')}">⚠️ Incomplete (${missing.join(', ')})</span>`;
+            } else {
+              return `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateAllocation('${m.prcId}')" title="Create Allocation Document">➕ Create Allocation Document</button>`;
+            }
+          })()}</td>
           <td>${m.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><strong>${highlight(m.rfqNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.rfqDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateRFQ('${m.prcId}','${m.allocationNumber||''}','${m.allocationId||''}')" title="Create RFQ Document">➕ Create RFQ Document</button>`}</td>
           <td>${m.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><strong>${m.tcdNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.tcdDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateTCD('${m.rfqNumber||''}','${m.rfqId||''}','${m.prcId}')" title="Create TCD Document">➕ Create TCD Document</button>`}</td>
           <td>${m.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.poNumber}','PO Number',event)" title="Click to copy PO Number"><strong class="text-brand">${highlight(m.poNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:11px;color:var(--color-text-tertiary)">${fmtDate(m.poDate)}${m.vendorName||m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreatePOD('${m.tcdNumber||''}','${m.tcdId||''}','${(m.vendorName||m.vendor||'').replace(/'/g, "\\'")}','${m.prcId}')" title="Create Purchase Order Document">➕ Create PO Document</button>`}</td>
@@ -1423,7 +1433,21 @@ function renderPRCTable() {
               </select>
             </div>
           </td>
-          <td>${p.allocationNumber ? `${fmtDate(p.allocationDate)}<br><span class="copy-badge" onclick="copyToClipboard('${p.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number" style="font-size:11px">${p.allocationNumber}<span class="copy-icon">📋</span></span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateAllocation('${p.id}')" title="Create Allocation Document">➕ Create Allocation Document</button>`}</td>
+          <td>${(() => {
+            const hasComplete = isPRCAllocationComplete(p);
+            const hasAny = !!(p.allocationNumber || p.allocationDate || p.buyerName || p.allocatedBy || (p.materials||[]).some(m => m.allocationNumber || m.allocationDate || m.buyerName || m.allocatedBy));
+            if (hasComplete) {
+              return `${fmtDate(p.allocationDate)}<br><span class="copy-badge" onclick="copyToClipboard('${p.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number" style="font-size:11px">${p.allocationNumber}<span class="copy-icon">📋</span></span>`;
+            } else if (hasAny) {
+              const missing = [];
+              if (!p.allocationNumber) missing.push('No #');
+              if (!p.allocationDate) missing.push('No Date');
+              if (!p.buyerName && !p.allocatedBy) missing.push('No Buyer');
+              return `<span class="copy-badge" style="border-color:var(--color-warning);background:rgba(245,158,11,0.08)" onclick="copyToClipboard('${p.allocationNumber||''}','Allocation Number',event)" title="Allocation Incomplete"><strong>${p.allocationNumber || '—'}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-warning);font-weight:600" title="Missing: ${missing.join(', ')}">⚠️ Incomplete (${missing.join(', ')})</span>`;
+            } else {
+              return `<button class="btn btn-secondary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateAllocation('${p.id}')" title="Create Allocation Document">➕ Create Allocation Document</button>`;
+            }
+          })()}</td>
           <td>${p.buyerName || p.allocatedBy ? highlight(p.buyerName || p.allocatedBy, q) : '<span style="font-size:11px;color:var(--color-text-tertiary)">—</span>'}</td>
           <td>${rfqCell}</td>
           <td>${tcdCell}</td>
@@ -1443,24 +1467,26 @@ function renderPRCTable() {
               <div class="child-materials-header">
                 <span class="font-semibold text-xs text-secondary">🔩 Material Items for PRC: <strong style="color:var(--color-text-primary)">${p.prNumber}</strong> (${materials.length} items)</span>
                 <div style="display:flex;gap:6px;align-items:center">
-                  <button class="btn btn-primary btn-xs" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation(); openAddMaterialModal('${p.id}')">+ Add Material</button>
-                  <button class="btn btn-ghost btn-xs" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation(); openPRCDetail('${p.id}')">Full PRC View →</button>
+                  <button class="btn btn-secondary btn-xs" style="font-size:11px;padding:3px 8px" onclick="event.stopPropagation();openBulkMaterialEditModal('${p.id}')" title="Bulk update material status/vendors">⚙️ Bulk Update Items</button>
+                  <button class="btn btn-primary btn-xs" style="font-size:11px;padding:3px 8px" onclick="event.stopPropagation();openAddMaterialModal('${p.id}')" title="Add material item">➕ Add Material</button>
                 </div>
               </div>
               ${materials.length === 0 ? `
-                <div style="padding:14px;text-align:center;color:var(--color-text-tertiary);font-size:12px">No material items recorded under this PRC. Click "+ Add Material" to add item.</div>
+                <div style="padding:16px 20px;color:var(--color-text-tertiary);font-size:12px;font-style:italic">
+                  No line item materials recorded for this PRC. Click "+ Add Material" to append items.
+                </div>
               ` : `
                 <table class="child-materials-table">
                   <thead>
                     <tr>
-                      <th style="width:70px">Sl</th>
-                      <th>Mat Code</th>
+                      <th style="width:40px">#</th>
+                      <th>Material Code</th>
                       <th>Description</th>
                       <th>Req Qty</th>
-                      <th>Proc Qty</th>
-                      <th>Pending Qty</th>
-                      <th>Closed Qty</th>
-                      <th>Status</th>
+                      <th>Processed</th>
+                      <th>Pending</th>
+                      <th>Closed</th>
+                      <th>Item Status</th>
                       <th>Allocation</th>
                       <th>RFQ</th>
                       <th>TCD</th>
@@ -1475,8 +1501,8 @@ function renderPRCTable() {
                       const proc = parseFloat(m.processedQty) || 0;
                       const cls = parseFloat(m.closedQty) || 0;
                       const pend = Math.max(0, tot - proc - cls);
-                      const mStatus = calculateMaterialStatus(m);
-                      const isChildCompleted = mStatus === 'Process Completed' || mStatus === STATUS.COMPLETED || m.status === 'Process Completed';
+                      const mStatus = m.status || calculateMaterialStatus(m);
+                      const isChildCompleted = mStatus === 'Process Completed';
                       const isLast = idx === materials.length - 1;
 
                       return `<tr class="${isChildCompleted ? 'row-process-completed' : ''}">
@@ -1489,8 +1515,24 @@ function renderPRCTable() {
                         <td><span class="text-brand font-semibold">${proc}</span></td>
                         <td><span class="${pend>0?'text-warning font-semibold':'text-secondary'}">${pend}</span></td>
                         <td><span class="${cls>0?'text-danger':'text-secondary'}">${cls}</span></td>
-                        <td><span class="chip ${getStatusChipClass(mStatus)}"><span class="chip-dot"></span>${mStatus}</span></td>
-                        <td>${m.allocationNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><strong>${m.allocationNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.allocationDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateAllocation('${p.id}')" title="Create Allocation Document">➕ Create Allocation Document</button>`}</td>
+                        <td>${(() => {
+                          const hasComplete = isMaterialAllocationComplete(m, p);
+                          const hasAny = !!(m.allocationNumber || m.allocationDate || m.buyerName || m.allocatedBy || p.allocationNumber || p.allocationDate || p.buyerName || p.allocatedBy);
+                          if (hasComplete) {
+                            return `<span class="copy-badge" onclick="copyToClipboard('${m.allocationNumber || p.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><strong>${m.allocationNumber || p.allocationNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.allocationDate || p.allocationDate)}</span>`;
+                          } else if (hasAny) {
+                            const allocNum = m.allocationNumber || p.allocationNumber;
+                            const allocDate = m.allocationDate || p.allocationDate;
+                            const buyer = m.buyerName || m.allocatedBy || p.buyerName || p.allocatedBy;
+                            const missing = [];
+                            if (!allocNum) missing.push('No #');
+                            if (!allocDate) missing.push('No Date');
+                            if (!buyer) missing.push('No Buyer');
+                            return `<span class="copy-badge" style="border-color:var(--color-warning);background:rgba(245,158,11,0.08)" onclick="copyToClipboard('${allocNum||''}','Allocation Number',event)" title="Allocation Incomplete"><strong>${allocNum || '—'}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:9.5px;color:var(--color-warning);font-weight:600" title="Missing: ${missing.join(', ')}">⚠️ Incomplete (${missing.join(', ')})</span>`;
+                          } else {
+                            return `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateAllocation('${p.id}')" title="Create Allocation Document">➕ Create Allocation Document</button>`;
+                          }
+                        })()}</td>
                         <td>${m.rfqNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><strong>${highlight(m.rfqNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.rfqDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateRFQ('${p.id}','${m.allocationNumber||''}','${m.allocationId||''}')" title="Create RFQ Document">➕ Create RFQ Document</button>`}</td>
                         <td>${m.tcdNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><strong>${m.tcdNumber}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.tcdDate)}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreateTCD('${m.rfqNumber||''}','${m.rfqId||''}','${p.id}')" title="Create TCD Document">➕ Create TCD Document</button>`}</td>
                         <td>${m.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.poNumber}','PO Number',event)" title="Click to copy PO Number"><strong class="text-brand">${highlight(m.poNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.poDate)}${m.vendorName||m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreatePOD('${m.tcdNumber||''}','${m.tcdId||''}','${(m.vendorName||m.vendor||'').replace(/'/g, "\\'")}','${p.id}')" title="Create Purchase Order Document">➕ Create PO Document</button>`}</td>
@@ -3505,8 +3547,11 @@ function renderCreateAllocationPage(container) {
   let filterPrc = null;
 
   if (filterPrcId) {
-    filterPrc = availablePrcs.find(p => p.id === filterPrcId);
+    filterPrc = availablePrcs.find(p => p.id === filterPrcId) || getPRCById(filterPrcId);
     if (filterPrc) {
+      if (!availablePrcs.some(p => p.id === filterPrcId)) {
+        availablePrcs = [filterPrc, ...availablePrcs];
+      }
       availablePrcs = [filterPrc];
     }
   }
@@ -3628,6 +3673,9 @@ ${filterBannerHTML}
   </div>
 </div>`;
 
+  if (filterPrcId) {
+    autoFetchFromPRC(filterPrcId);
+  }
   updateAllocTreeSummary();
 }
 
@@ -3636,9 +3684,9 @@ window.submitCreateAllocationPage = function() {
   const allocDate = document.getElementById('create-alloc-date')?.value;
   const buyerName = document.getElementById('create-alloc-buyer')?.value.trim();
 
-  if (!allocNumber) { toast('Allocation Number is required', 'warning'); return; }
-  if (!allocDate) { toast('Allocation Date is required', 'warning'); return; }
-  if (!buyerName) { toast('Buyer Name is required', 'warning'); return; }
+  if (!allocNumber) { toast('Allocation Number is required. Allocation process is incomplete without it.', 'warning'); return; }
+  if (!allocDate)   { toast('Allocation Date is required. Allocation process is incomplete without it.', 'warning'); return; }
+  if (!buyerName)   { toast('Buyer Name is required. Allocation process is incomplete without it.', 'warning'); return; }
 
   const selectedMats = getSelectedAllocMaterials();
   if (!selectedMats.length) {
@@ -3788,7 +3836,7 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
                             <span class="tree-icon-badge tree-icon-prc" title="PRC Document">
                               <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                             </span>
-                            <span class="tree-node-label" style="font-family:var(--font-mono);font-weight:600">${prc.prNumber}</span>
+                            <span class="copy-badge" onclick="copyToClipboard('${prc.prNumber}','PRC Number',event)" title="Click to copy PRC Number" style="font-family:var(--font-mono);font-weight:600">${prc.prNumber}<span class="copy-icon">📋</span></span>
                             <span class="tree-pill-job">${prc.jobNumber || 'No Job'}</span>
                           </div>
                           <div class="tree-node-right">
@@ -3797,23 +3845,29 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
                         </div>
                         <ul class="tree-children">
                           ${mats.map(mat => {
-                            const isAllocated = !!mat.allocationNumber;
+                            const isShortClosed = isMaterialShortClosed(mat, prc);
+                            const allocdQty = getAllocatedQty(prc.id, mat.id);
+                            const totalQty = parseFloat(mat.quantity) || 0;
+                            // A material is considered fully allocated only if an active Allocation Document exists in state.allocations and covers the full quantity
+                            const hasAllocDoc = (state.allocations || []).some(a => (a.items || []).some(i => i.prcId === prc.id && i.materialId === mat.id));
+                            const isFullyAllocated = hasAllocDoc && totalQty > 0 && allocdQty >= totalQty;
+                            const isAllocated = isShortClosed || isFullyAllocated;
                             const isChecked = isPreselected && !isAllocated;
                             return `
                               <li>
-                                <div class="tree-leaf-item ${isAllocated ? 'tree-leaf-allocated' : ''}">
+                                <div class="tree-leaf-item ${isAllocated ? 'tree-leaf-allocated' : ''}" onclick="toggleAllocMatCheck(event, '${prc.id}', '${mat.id}')" style="cursor:${isAllocated ? 'default' : 'pointer'}">
                                   <div class="tree-node-left">
                                     <span class="tree-leaf-spacer"></span>
                                     <input type="checkbox" class="alloc-tree-mat-cb" data-prc="${prc.id}" data-mat="${mat.id}" data-dept="${deptId}" ${isChecked ? 'checked' : ''} ${isAllocated ? 'disabled' : ''} onclick="event.stopPropagation();onPRCTreeMatCheck('${prc.id}', '${mat.id}', event)"/>
                                     <span class="tree-icon-badge tree-icon-mat" title="Material">
                                       <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
                                     </span>
-                                    <span class="tree-leaf-code">${mat.matCode || '—'}</span>
+                                    <span class="copy-badge" onclick="copyToClipboard('${mat.matCode}','Material Code',event)" title="Click to copy Material Code" style="font-family:var(--font-mono);font-weight:600;font-size:11.5px">${mat.matCode || '—'}<span class="copy-icon">📋</span></span>
                                     <span class="tree-leaf-desc">${mat.description || '—'}</span>
                                   </div>
                                   <div class="tree-node-right">
                                     <span class="tree-leaf-qty">${mat.quantity || 0} ${mat.unit || ''}</span>
-                                    ${isAllocated ? `<span class="badge badge-success" style="font-size:10px">Allocated: ${mat.allocationNumber}</span>` : ''}
+                                    ${isShortClosed ? '<span class="badge badge-warning" style="font-size:10px">Short Closed</span>' : (isFullyAllocated ? `<span class="badge badge-success" style="font-size:10px">Allocated: ${mat.allocationNumber || 'Yes'}</span>` : (mat.allocationNumber ? `<span class="badge" style="font-size:10px;color:var(--color-primary);background:var(--color-primary-light,#e8f0fe)">Prior: ${mat.allocationNumber}</span>` : ''))}
                                   </div>
                                 </div>
                               </li>`;
@@ -3828,6 +3882,16 @@ function renderAllocPRCTreeHTML(prcs, query = '', preselectedPrcId = null) {
       </div>
     </div>`;
 }
+
+window.toggleAllocMatCheck = function(event, prcId, matId) {
+  if (event && (event.target.tagName === 'INPUT' || event.target.tagName === 'BUTTON' || event.target.closest('button'))) return;
+  const scope = document.getElementById('alloc-tree-container') || document;
+  const cb = scope.querySelector(`.alloc-tree-mat-cb[data-prc="${prcId}"][data-mat="${matId}"]`);
+  if (cb && !cb.disabled) {
+    cb.checked = !cb.checked;
+    onPRCTreeMatCheck(prcId, matId, event);
+  }
+};
 
 window.toggleDeptNode = function(deptId) {
   const node = document.getElementById(`node-${deptId}`);
@@ -4138,9 +4202,9 @@ window.submitEditAllocation = function(id) {
   const allocationDate = document.getElementById('edit-alloc-date')?.value;
   const buyerName = document.getElementById('edit-alloc-buyer')?.value.trim();
 
-  if (!allocationNumber) { toast('Allocation Number is required', 'warning'); return; }
-  if (!allocationDate) { toast('Allocation Date is required', 'warning'); return; }
-  if (!buyerName) { toast('Buyer Name is required', 'warning'); return; }
+  if (!allocationNumber) { toast('Allocation Number is required. Allocation process is incomplete without it.', 'warning'); return; }
+  if (!allocationDate)   { toast('Allocation Date is required. Allocation process is incomplete without it.', 'warning'); return; }
+  if (!buyerName)        { toast('Buyer Name is required. Allocation process is incomplete without it.', 'warning'); return; }
 
   const qtyInputs = document.querySelectorAll('.edit-alloc-item-qty');
   const updatedItems = alloc.items.map((item, idx) => {
@@ -4355,7 +4419,7 @@ function renderCreateRFQPage(container) {
     <div style="display:flex;align-items:center;gap:10px">
       <span style="font-size:18px">🔍</span>
       <div>
-        <div style="font-size:13px;font-weight:700;color:var(--color-primary)">Filtered to PRC: ${filterPrc.prNumber}</div>
+        <div style="font-size:13px;font-weight:700;color:var(--color-primary)">Filtered to PRC: <span class="copy-badge" onclick="copyToClipboard('${filterPrc.prNumber}','PRC Number',event)" title="Click to copy PRC Number" style="font-family:var(--font-mono);font-size:12px;color:var(--color-primary)"><strong>${filterPrc.prNumber}</strong><span class="copy-icon">📋</span></span></div>
         <div style="font-size:11px;color:var(--color-text-secondary)">Showing only allocated materials from this PRC. ${filterPrc.department ? 'Dept: ' + filterPrc.department : ''} ${filterPrc.jobNumber ? '· Job: ' + filterPrc.jobNumber : ''}</div>
       </div>
     </div>
@@ -4551,7 +4615,7 @@ function renderRFQTreeHTML(allocEntries, query = '', preselectedSet = null) {
                     <span class="tree-icon-badge tree-icon-prc" title="Allocation Document">
                       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                     </span>
-                    <span class="tree-node-label" style="font-family:var(--font-mono);font-weight:700">${data.allocationNumber || allocKey}</span>
+                    <span class="copy-badge" onclick="copyToClipboard('${data.allocationNumber || allocKey}','Allocation Number',event)" title="Click to copy Allocation Number" style="font-family:var(--font-mono);font-weight:700">${data.allocationNumber || allocKey}<span class="copy-icon">📋</span></span>
                     ${data.buyerName ? `<span class="tree-pill-job">${data.buyerName}</span>` : ''}
                   </div>
                   <div class="tree-node-right">
@@ -4563,16 +4627,21 @@ function renderRFQTreeHTML(allocEntries, query = '', preselectedSet = null) {
                     const isChecked = selSet ? (selSet.has(m._idx) || selSet.has(m.materialId) || selSet.has(m.prcId) || selSet.has(m.prNumber) || selSet.has(m.allocationNumber) || selSet.has(m.allocationId)) : false;
                     return `
                       <li>
-                        <div class="tree-leaf-item">
-                          <div class="tree-node-left">
+                        <div class="tree-leaf-item" onclick="toggleRFQMatCheck(event, '${allocNodeId}', ${m._idx})" style="cursor:pointer">
+                          <div class="tree-node-left" style="flex-wrap:wrap;gap:6px">
                             <span class="tree-leaf-spacer"></span>
                             <input type="checkbox" class="rfq-mat-cb" data-idx="${m._idx}" data-alloc-node="${allocNodeId}" data-mat="${m.materialId}" data-prc="${m.prcId}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation();onRFQMatCheck('${allocNodeId}', event)"/>
                             <span class="tree-icon-badge tree-icon-mat" title="Material">
                               <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
                             </span>
-                            <span class="tree-leaf-code">${m.matCode || '—'}</span>
+                            <span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code" style="font-family:var(--font-mono);font-weight:600;font-size:11.5px">${m.matCode || '—'}<span class="copy-icon">📋</span></span>
                             <span class="tree-leaf-desc">${m.description || '—'}</span>
-                            <span class="badge" style="font-size:10px;font-family:var(--font-mono)">PRC: ${m.prNumber}</span>
+                            ${m.prNumber ? `
+                              <span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number (${m.prNumber})" style="font-size:11px;font-family:var(--font-mono);font-weight:600;background:rgba(59,130,246,0.08);border-color:rgba(59,130,246,0.25);color:var(--color-primary)">
+                                PRC: <strong>${m.prNumber}</strong>
+                                <span class="copy-icon">📋</span>
+                              </span>
+                            ` : ''}
                           </div>
                           <div class="tree-node-right" style="gap:8px">
                             <span class="tree-leaf-qty" style="white-space:nowrap">Avail: ${m.availableQty} ${m.unit||''}</span>
@@ -4591,6 +4660,18 @@ function renderRFQTreeHTML(allocEntries, query = '', preselectedSet = null) {
       </div>
     </div>`;
 }
+
+window.toggleRFQMatCheck = function(event, allocNodeId, idx) {
+  if (event.target.tagName === 'INPUT' || event.target.closest('.copy-badge') || event.target.closest('button')) {
+    return;
+  }
+  const scope = document.getElementById('rfq-tree-container') || document;
+  const cb = scope.querySelector(`.rfq-mat-cb[data-idx="${idx}"]`);
+  if (cb) {
+    cb.checked = !cb.checked;
+    onRFQMatCheck(allocNodeId);
+  }
+};
 
 window.toggleTreeNode = function(nodeId) {
   const node = document.getElementById(nodeId);
