@@ -311,7 +311,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
@@ -4354,7 +4354,8 @@ function renderRFQsPage(container) {
             </td>
             <td>${fmtDate(r.createdAt)}</td>
             <td>
-              <button class="btn btn-ghost btn-sm" onclick="viewRFQDetail('${r.id}')">👁️ View</button>
+              <button class="btn btn-ghost btn-sm" onclick="viewRFQDetail('${r.id}')" title="View Details">👁️ View</button>
+              <button class="btn btn-ghost btn-sm" onclick="openEditRFQModal('${r.id}')" title="Edit RFQ">✏️ Edit</button>
               <button class="btn ${isClosed ? 'btn-secondary' : 'btn-primary'} btn-sm" onclick="handleToggleRFQClose('${r.id}', ${!isClosed})">
                 ${isClosed ? '🔓 Re-open' : '🔒 Close RFQ'}
               </button>
@@ -4777,6 +4778,7 @@ window.viewRFQDetail = function(id) {
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove();openEditRFQModal('${rfq.id}')">✏️ Edit RFQ</button>
         <button class="btn ${isClosed ? 'btn-secondary' : 'btn-primary'}" onclick="document.getElementById('${modalId}').remove();handleToggleRFQClose('${rfq.id}', ${!isClosed})">
           ${isClosed ? '🔓 Re-open RFQ' : '🔒 Tag RFQ Close'}
         </button>
@@ -4784,6 +4786,399 @@ window.viewRFQDetail = function(id) {
       </div>
     </div>`;
   document.body.appendChild(el);
+};
+
+window.openEditRFQModal = function(id) {
+  const rfq = getRFQById(id);
+  if (!rfq) return;
+  const isClosed = !!(rfq.isClosed || String(rfq.status||'').trim().toLowerCase() === 'closed');
+  const modalId = 'edit-rfq-modal';
+  let el = document.getElementById(modalId);
+  if (el) el.remove();
+  el = document.createElement('div');
+  el.id = modalId;
+  el.className = 'modal-overlay open';
+
+  // Initialize working items in window state
+  window._editRFQId = id;
+  window._editRFQItems = (rfq.items || []).map((item) => ({
+    ...item,
+    quantity: parseFloat(item.quantity) || 0
+  }));
+  window._editRFQShowAvailable = false;
+
+  el.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:920px;max-height:90vh;display:flex;flex-direction:column">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">✏️ Edit RFQ Document: ${rfq.rfqNumber}</h3>
+          <p style="font-size:12px;color:var(--color-text-secondary);margin:2px 0 0 0">
+            Update header details, adjust quantities, add materials from other PRCs, or remove line items. Status: <span class="chip ${isClosed ? 'chip-completed' : 'chip-pending'}" style="font-size:11px">${isClosed ? '🔒 Closed' : 'Active'}</span>
+          </p>
+        </div>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+      </div>
+      <div class="modal-body" style="padding:20px;overflow-y:auto;flex:1">
+        <form id="edit-rfq-form" onsubmit="event.preventDefault();submitEditRFQ('${rfq.id}')">
+          <!-- 1. Header Details -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;background:var(--color-surface-2);padding:14px;border-radius:8px">
+            <div>
+              <label class="form-label required">RFQ Number</label>
+              <input type="text" id="edit-rfq-number" class="form-control" value="${rfq.rfqNumber}" required placeholder="e.g. RFQ-2026-001"/>
+            </div>
+            <div>
+              <label class="form-label required">RFQ Date</label>
+              <input type="date" id="edit-rfq-date" class="form-control" value="${toInputDateVal(rfq.rfqDate)}" required/>
+            </div>
+          </div>
+
+          <!-- 2. RFQ Material Line Items -->
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+            <div>
+              <h4 style="font-size:14px;font-weight:700;margin:0;color:var(--color-primary)">
+                Current RFQ Material Items (<span id="edit-rfq-items-count">${window._editRFQItems.length}</span>)
+              </h4>
+              <p style="font-size:11px;color:var(--color-text-secondary);margin:2px 0 0 0">Adjust quantities or remove items from this RFQ.</p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-xs" onclick="toggleEditRFQAvailablePicker()" id="btn-toggle-add-mats" style="gap:4px">
+              <span>➕ Add Materials from Other PRCs</span>
+            </button>
+          </div>
+
+          <div class="table-wrapper" style="overflow:auto;max-height:260px;margin-bottom:16px">
+            <table class="data-table" style="font-size:12px">
+              <thead>
+                <tr>
+                  <th>PR Number</th>
+                  <th>Material Code</th>
+                  <th>Description</th>
+                  <th>Allocated Qty</th>
+                  <th>RFQ Quantity</th>
+                  <th>Unit</th>
+                  <th style="width:70px;text-align:center">Action</th>
+                </tr>
+              </thead>
+              <tbody id="edit-rfq-items-tbody">
+                <!-- Dynamically Rendered -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- 3. Collapsible Available Materials Picker from Other PRCs -->
+          <div id="edit-rfq-available-section" style="display:none;background:var(--color-surface-1);border:1px solid var(--color-border);border-radius:8px;padding:14px;margin-top:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+              <div>
+                <h5 style="font-size:13px;font-weight:700;margin:0;color:var(--color-primary);display:flex;align-items:center;gap:6px">
+                  <span>📦 Available Allocated Materials from Other PRCs</span>
+                </h5>
+                <p style="font-size:11px;color:var(--color-text-secondary);margin:2px 0 0 0">Select materials from other PRCs/Allocations to include in this RFQ.</p>
+              </div>
+              <div class="flex gap-2">
+                <input type="text" id="edit-rfq-available-search" class="form-control form-control-xs" style="width:200px" placeholder="🔍 Search materials..." oninput="filterEditRFQAvailableItems(this.value)"/>
+                <button type="button" class="btn btn-primary btn-xs" onclick="addSelectedItemsToEditRFQ()">➕ Add Selected to RFQ</button>
+              </div>
+            </div>
+            <div id="edit-rfq-available-container" style="max-height:220px;overflow-y:auto">
+              <!-- Dynamically Rendered Available Items -->
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
+        <div id="edit-rfq-footer-info" style="font-size:12px;color:var(--color-text-secondary)">
+          ${window._editRFQItems.length} item(s) in RFQ
+        </div>
+        <div class="flex gap-2">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="submitEditRFQ('${rfq.id}')">💾 Save Changes</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  renderEditRFQItemsTable();
+};
+
+window.renderEditRFQItemsTable = function() {
+  const tbody = document.getElementById('edit-rfq-items-tbody');
+  const countEl = document.getElementById('edit-rfq-items-count');
+  const footerInfo = document.getElementById('edit-rfq-footer-info');
+  if (!tbody) return;
+
+  const state = getState();
+  const rfqId = window._editRFQId;
+  const items = window._editRFQItems || [];
+
+  if (countEl) countEl.textContent = items.length;
+  if (footerInfo) footerInfo.textContent = `${items.length} item(s) in RFQ`;
+
+  if (!items.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" style="text-align:center;padding:24px;color:var(--color-danger)">
+          ⚠️ No materials currently in this RFQ. Click <strong>"➕ Add Materials from Other PRCs"</strong> above to add items.
+        </td>
+      </tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map((item, idx) => {
+    // Calculate max allowed quantity based on allocation & other RFQs
+    const otherRfqdQty = (state.rfqs || [])
+      .filter(r => r.id !== rfqId)
+      .reduce((sum, r) => sum + (r.items || [])
+        .filter(i => i.allocationId === item.allocationId && i.prcId === item.prcId && i.materialId === item.materialId)
+        .reduce((s, i) => s + (parseFloat(i.quantity) || 0), 0), 0);
+
+    const alloc = getAllocationById(item.allocationId);
+    const allocItem = (alloc?.items || []).find(i => i.materialId === item.materialId && i.prcId === item.prcId);
+    const allocQty = allocItem ? (parseFloat(allocItem.quantity) || 0) : (parseFloat(item.quantity) || 0);
+    const maxQty = Math.max(parseFloat(item.quantity) || 0, allocQty - otherRfqdQty);
+
+    // Min quantity is constrained if downstream TCD already exists
+    const tcdQty = (typeof getTCDdQty === 'function' && rfqId) ? getTCDdQty(rfqId, item.prcId, item.materialId) : 0;
+    const minQty = tcdQty > 0 ? tcdQty : 0.001;
+
+    return `
+      <tr>
+        <td><span class="copy-badge" onclick="copyToClipboard('${item.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono font-semibold">${item.prNumber}</span><span class="copy-icon">📋</span></span></td>
+        <td><span class="copy-badge" onclick="copyToClipboard('${item.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${item.matCode}</span><span class="copy-icon">📋</span></span></td>
+        <td><strong>${item.description}</strong></td>
+        <td><span class="text-secondary">${allocQty}</span></td>
+        <td>
+          <input type="number"
+                 class="form-control form-control-sm edit-rfq-item-qty"
+                 data-idx="${idx}"
+                 data-max="${maxQty}"
+                 data-min="${minQty}"
+                 value="${item.quantity}"
+                 step="any"
+                 min="${minQty}"
+                 max="${maxQty}"
+                 onchange="onEditRFQItemQtyChange(${idx}, this.value)"
+                 required
+                 style="width:105px"/>
+          ${tcdQty > 0 ? `<div style="font-size:10px;color:var(--color-warning);margin-top:2px">Min ${tcdQty} (in TCD)</div>` : ''}
+        </td>
+        <td>${item.unit || ''}</td>
+        <td style="text-align:center">
+          ${tcdQty > 0 ? `
+            <button type="button" class="btn btn-ghost btn-xs" style="color:var(--color-text-tertiary);cursor:not-allowed" title="Cannot remove: item has downstream TCD allocations" disabled>🔒</button>
+          ` : `
+            <button type="button" class="btn btn-ghost btn-xs" style="color:var(--color-danger)" onclick="removeItemFromEditRFQ(${idx})" title="Remove item from RFQ">🗑️</button>
+          `}
+        </td>
+      </tr>`;
+  }).join('');
+};
+
+window.onEditRFQItemQtyChange = function(idx, val) {
+  const num = parseFloat(val);
+  if (!isNaN(num) && window._editRFQItems && window._editRFQItems[idx]) {
+    window._editRFQItems[idx].quantity = num;
+  }
+};
+
+window.removeItemFromEditRFQ = function(idx) {
+  const item = window._editRFQItems[idx];
+  if (!item) return;
+  const rfqId = window._editRFQId;
+  const tcdQty = (typeof getTCDdQty === 'function' && rfqId) ? getTCDdQty(rfqId, item.prcId, item.materialId) : 0;
+  if (tcdQty > 0) {
+    toast(`Cannot remove ${item.matCode}: item already used in downstream TCD documents`, 'warning');
+    return;
+  }
+
+  window._editRFQItems.splice(idx, 1);
+  renderEditRFQItemsTable();
+  if (window._editRFQShowAvailable) {
+    renderEditRFQAvailableItems();
+  }
+};
+
+window.toggleEditRFQAvailablePicker = function() {
+  const section = document.getElementById('edit-rfq-available-section');
+  const btn = document.getElementById('btn-toggle-add-mats');
+  if (!section) return;
+
+  window._editRFQShowAvailable = !window._editRFQShowAvailable;
+  section.style.display = window._editRFQShowAvailable ? 'block' : 'none';
+  if (btn) {
+    btn.innerHTML = window._editRFQShowAvailable
+      ? '<span>▲ Hide Available Materials</span>'
+      : '<span>➕ Add Materials from Other PRCs</span>';
+  }
+
+  if (window._editRFQShowAvailable) {
+    renderEditRFQAvailableItems();
+  }
+};
+
+window.renderEditRFQAvailableItems = function(query = '') {
+  const container = document.getElementById('edit-rfq-available-container');
+  if (!container) return;
+
+  const currentItemKeys = new Set((window._editRFQItems || []).map(i => `${i.prcId}::${i.materialId}`));
+  const available = getAvailableForRFQ().filter(m => !currentItemKeys.has(`${m.prcId}::${m.materialId}`));
+  const q = (query || '').toLowerCase().trim();
+
+  const filtered = available.filter(m => {
+    if (!q) return true;
+    return (m.prNumber || '').toLowerCase().includes(q) ||
+           (m.matCode || '').toLowerCase().includes(q) ||
+           (m.description || '').toLowerCase().includes(q) ||
+           (m.allocationNumber || '').toLowerCase().includes(q) ||
+           (m.buyerName || '').toLowerCase().includes(q);
+  });
+
+  window._editRFQAvailableFiltered = filtered;
+
+  if (!filtered.length) {
+    container.innerHTML = `
+      <div style="padding:16px;text-align:center;color:var(--color-text-secondary);font-size:12px">
+        ${available.length === 0 ? 'No additional allocated materials currently available for RFQ.' : 'No materials match your search.'}
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="data-table" style="font-size:11px">
+      <thead>
+        <tr>
+          <th style="width:36px;text-align:center">
+            <input type="checkbox" id="edit-rfq-select-all-avail" onchange="toggleSelectAllEditRFQAvail(this.checked)"/>
+          </th>
+          <th>PR Number</th>
+          <th>Alloc #</th>
+          <th>Material Code</th>
+          <th>Description</th>
+          <th>Avail Qty</th>
+          <th>Unit</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${filtered.map((m, i) => `
+          <tr onclick="toggleEditRFQAvailRowCheck(event, ${i})" style="cursor:pointer">
+            <td style="text-align:center" onclick="event.stopPropagation()">
+              <input type="checkbox" class="edit-rfq-avail-cb" data-idx="${i}"/>
+            </td>
+            <td><span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono font-semibold">${m.prNumber}</span><span class="copy-icon">📋</span></span></td>
+            <td><span class="font-mono">${m.allocationNumber || '—'}</span></td>
+            <td><span class="font-mono">${m.matCode}</span></td>
+            <td><strong>${m.description}</strong></td>
+            <td><span class="chip chip-pending" style="font-size:10px">${m.availableQty}</span></td>
+            <td>${m.unit || ''}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>`;
+};
+
+window.filterEditRFQAvailableItems = function(query) {
+  renderEditRFQAvailableItems(query);
+};
+
+window.toggleSelectAllEditRFQAvail = function(checked) {
+  const cbs = document.querySelectorAll('.edit-rfq-avail-cb');
+  cbs.forEach(cb => cb.checked = checked);
+};
+
+window.toggleEditRFQAvailRowCheck = function(event, idx) {
+  if (event.target.tagName === 'INPUT' || event.target.closest('.copy-badge') || event.target.closest('button')) {
+    return;
+  }
+  const cb = document.querySelector(`.edit-rfq-avail-cb[data-idx="${idx}"]`);
+  if (cb) cb.checked = !cb.checked;
+};
+
+window.addSelectedItemsToEditRFQ = function() {
+  const checkedCbs = document.querySelectorAll('.edit-rfq-avail-cb:checked');
+  if (!checkedCbs.length) {
+    toast('Please select at least one material to add', 'warning');
+    return;
+  }
+
+  const filtered = window._editRFQAvailableFiltered || [];
+  let addedCount = 0;
+
+  checkedCbs.forEach(cb => {
+    const idx = parseInt(cb.dataset.idx);
+    const m = filtered[idx];
+    if (m) {
+      window._editRFQItems.push({
+        allocationId: m.allocationId,
+        prcId: m.prcId,
+        materialId: m.materialId,
+        quantity: parseFloat(m.availableQty) || 0,
+        matCode: m.matCode,
+        description: m.description,
+        unit: m.unit || '',
+        prNumber: m.prNumber
+      });
+      addedCount++;
+    }
+  });
+
+  toast(`Added ${addedCount} material(s) to RFQ!`, 'success');
+  renderEditRFQItemsTable();
+  renderEditRFQAvailableItems();
+};
+
+window.submitEditRFQ = function(id) {
+  const rfq = getRFQById(id);
+  if (!rfq) return;
+
+  const rfqNumber = document.getElementById('edit-rfq-number')?.value.trim();
+  const rfqDate = document.getElementById('edit-rfq-date')?.value;
+
+  if (!rfqNumber) { toast('RFQ Number is required', 'warning'); return; }
+  if (!rfqDate)   { toast('RFQ Date is required', 'warning'); return; }
+
+  const items = window._editRFQItems || [];
+  if (!items.length) {
+    toast('An RFQ must contain at least one material item. Please add materials before saving.', 'warning');
+    return;
+  }
+
+  const qtyInputs = document.querySelectorAll('.edit-rfq-item-qty');
+  let hasError = false;
+  const updatedItems = items.map((item, idx) => {
+    const input = Array.from(qtyInputs).find(el => parseInt(el.dataset.idx) === idx);
+    const val = input ? parseFloat(input.value) : parseFloat(item.quantity);
+    const max = input ? parseFloat(input.dataset.max) : Infinity;
+    const min = input ? parseFloat(input.dataset.min) : 0.001;
+
+    if (isNaN(val) || val < min) {
+      toast(`Quantity for ${item.matCode} cannot be less than ${min}`, 'warning');
+      hasError = true;
+      return item;
+    }
+    if (val > max) {
+      toast(`Quantity for ${item.matCode} cannot exceed available allocation quantity of ${max}`, 'warning');
+      hasError = true;
+      return item;
+    }
+    return { ...item, quantity: val };
+  });
+
+  if (hasError) return;
+
+  const res = updateRFQ(id, {
+    rfqNumber,
+    rfqDate,
+    items: updatedItems
+  });
+
+  if (res.success) {
+    document.getElementById('edit-rfq-modal')?.remove();
+    toast(`RFQ Document ${rfqNumber} updated successfully!`, 'success');
+    const container = document.getElementById('page-content');
+    if (container && getState().currentPage === 'rfqs') {
+      renderRFQsPage(container);
+    }
+    updateSidebarBadges();
+  } else {
+    toast(res.reason || 'Failed to update RFQ Document', 'error');
+  }
 };
 
 window.handleToggleRFQClose = async function(id, shouldClose) {

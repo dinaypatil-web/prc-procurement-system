@@ -249,9 +249,9 @@ export async function restoreDatabaseBackup(jsonData) {
   }
 
   state.prcs = prcs;
-  if (allocations.length) state.allocations = allocations;
-  if (rfqs.length) state.rfqs = rfqs;
-  if (tcds.length) state.tcds = tcds;
+  if (allocations.length) state.allocations = consolidateAllocations(allocations);
+  if (rfqs.length) state.rfqs = consolidateRFQs(rfqs);
+  if (tcds.length) state.tcds = consolidateTCDs(tcds);
   if (pods.length) state.pods = pods;
   if (vendors.length) state.vendors = vendors;
   if (users.length) state.users = users;
@@ -481,20 +481,248 @@ export function reconcileAllocationRouting(prcs = state.prcs, allocations = stat
 
   return {
     prcs: updatedPrcs,
-    allocations: updatedAllocations,
+    allocations: consolidateAllocations(updatedAllocations),
     prcChanged,
     allocChanged
   };
 }
 
+/** Consolidate multiple allocation records with the same allocationNumber into a single master allocation */
+export function consolidateAllocations(allocations = []) {
+  if (!Array.isArray(allocations) || allocations.length <= 1) return allocations || [];
+
+  const groupMap = new Map();
+  const result = [];
+
+  allocations.forEach(alloc => {
+    if (!alloc) return;
+    const num = String(alloc.allocationNumber || '').trim();
+    if (!num) {
+      result.push(alloc);
+      return;
+    }
+    const key = num.toUpperCase();
+    if (!groupMap.has(key)) {
+      groupMap.set(key, []);
+    }
+    groupMap.get(key).push(alloc);
+  });
+
+  groupMap.forEach(group => {
+    if (group.length === 1) {
+      result.push(group[0]);
+      return;
+    }
+
+    // Merge multiple allocation records with same number
+    const master = { ...group[0] };
+    const itemMap = new Map();
+
+    group.forEach(record => {
+      if (!master.allocationDate && record.allocationDate) master.allocationDate = record.allocationDate;
+      if (!master.buyerName && record.buyerName) master.buyerName = record.buyerName;
+      if (!master.allocatedBy && record.allocatedBy) master.allocatedBy = record.allocatedBy;
+      if (record.createdAt && (!master.createdAt || new Date(record.createdAt) < new Date(master.createdAt))) {
+        master.createdAt = record.createdAt;
+      }
+      if (record.updatedAt && (!master.updatedAt || new Date(record.updatedAt) > new Date(master.updatedAt))) {
+        master.updatedAt = record.updatedAt;
+        if (record.updatedBy) master.updatedBy = record.updatedBy;
+      }
+
+      (record.items || []).forEach(item => {
+        const itemKey = `${item.prcId || ''}::${item.materialId || item.matCode || ''}`;
+        if (!itemMap.has(itemKey)) {
+          itemMap.set(itemKey, { ...item, allocationId: master.id, allocationNumber: master.allocationNumber });
+        } else {
+          const existingItem = itemMap.get(itemKey);
+          existingItem.quantity = Math.max(parseFloat(existingItem.quantity) || 0, parseFloat(item.quantity) || 0);
+          if (!existingItem.description && item.description) existingItem.description = item.description;
+          if (!existingItem.unit && item.unit) existingItem.unit = item.unit;
+          if (!existingItem.prNumber && item.prNumber) existingItem.prNumber = item.prNumber;
+        }
+      });
+    });
+
+    master.items = Array.from(itemMap.values());
+    result.push(master);
+  });
+
+  return result;
+}
+
+/** Consolidate multiple RFQ records with the same rfqNumber into a single master RFQ */
+export function consolidateRFQs(rfqs = []) {
+  if (!Array.isArray(rfqs) || rfqs.length <= 1) return rfqs || [];
+
+  const groupMap = new Map();
+  const result = [];
+
+  rfqs.forEach(rfq => {
+    if (!rfq) return;
+    const num = String(rfq.rfqNumber || '').trim();
+    if (!num) {
+      result.push(rfq);
+      return;
+    }
+    const key = num.toUpperCase();
+    if (!groupMap.has(key)) {
+      groupMap.set(key, []);
+    }
+    groupMap.get(key).push(rfq);
+  });
+
+  groupMap.forEach(group => {
+    if (group.length === 1) {
+      result.push(group[0]);
+      return;
+    }
+
+    // Merge multiple RFQ records with same number
+    const master = { ...group[0] };
+    const itemMap = new Map();
+
+    group.forEach(record => {
+      if (!master.rfqDate && record.rfqDate) master.rfqDate = record.rfqDate;
+      if (record.isClosed || String(record.status || '').trim().toLowerCase() === 'closed') {
+        master.isClosed = true;
+        master.status = 'Closed';
+      }
+      if (record.offersReceived) master.offersReceived = true;
+      if (record.createdAt && (!master.createdAt || new Date(record.createdAt) < new Date(master.createdAt))) {
+        master.createdAt = record.createdAt;
+      }
+      if (record.updatedAt && (!master.updatedAt || new Date(record.updatedAt) > new Date(master.updatedAt))) {
+        master.updatedAt = record.updatedAt;
+        if (record.updatedBy) master.updatedBy = record.updatedBy;
+      }
+
+      (record.items || []).forEach(item => {
+        const itemKey = `${item.prcId || ''}::${item.materialId || item.matCode || ''}`;
+        if (!itemMap.has(itemKey)) {
+          itemMap.set(itemKey, { ...item });
+        } else {
+          const existingItem = itemMap.get(itemKey);
+          existingItem.quantity = Math.max(parseFloat(existingItem.quantity) || 0, parseFloat(item.quantity) || 0);
+          if (!existingItem.description && item.description) existingItem.description = item.description;
+          if (!existingItem.unit && item.unit) existingItem.unit = item.unit;
+          if (!existingItem.prNumber && item.prNumber) existingItem.prNumber = item.prNumber;
+        }
+      });
+    });
+
+    master.items = Array.from(itemMap.values());
+    result.push(master);
+  });
+
+  return result;
+}
+
+/** Consolidate multiple TCD records with the same tcdNumber into a single master TCD */
+export function consolidateTCDs(tcds = []) {
+  if (!Array.isArray(tcds) || tcds.length <= 1) return tcds || [];
+
+  const groupMap = new Map();
+  const result = [];
+
+  tcds.forEach(tcd => {
+    if (!tcd) return;
+    const num = String(tcd.tcdNumber || '').trim();
+    if (!num) {
+      result.push(tcd);
+      return;
+    }
+    const key = num.toUpperCase();
+    if (!groupMap.has(key)) {
+      groupMap.set(key, []);
+    }
+    groupMap.get(key).push(tcd);
+  });
+
+  groupMap.forEach(group => {
+    if (group.length === 1) {
+      result.push(group[0]);
+      return;
+    }
+
+    // Merge multiple TCD records with same number
+    const master = { ...group[0] };
+    const vendorMap = new Map();
+
+    group.forEach(record => {
+      if (!master.tcdDate && record.tcdDate) master.tcdDate = record.tcdDate;
+      if (!master.rfqNumber && record.rfqNumber) master.rfqNumber = record.rfqNumber;
+      if (!master.rfqId && record.rfqId) master.rfqId = record.rfqId;
+      if (record.approved) {
+        master.approved = true;
+        master.approvedDate = master.approvedDate || record.approvedDate;
+        master.approvedBy = master.approvedBy || record.approvedBy;
+        master.status = 'Approved';
+      }
+      if (record.createdAt && (!master.createdAt || new Date(record.createdAt) < new Date(master.createdAt))) {
+        master.createdAt = record.createdAt;
+      }
+      if (record.updatedAt && (!master.updatedAt || new Date(record.updatedAt) > new Date(master.updatedAt))) {
+        master.updatedAt = record.updatedAt;
+        if (record.updatedBy) master.updatedBy = record.updatedBy;
+      }
+
+      const vas = record.vendorAllocations || record.vendors || [];
+      vas.forEach(va => {
+        const vKey = String(va.vendorName || '').trim().toUpperCase();
+        if (!vendorMap.has(vKey)) {
+          vendorMap.set(vKey, {
+            ...va,
+            items: [...(va.items || [])]
+          });
+        } else {
+          const existingVA = vendorMap.get(vKey);
+          const existingItemKeys = new Set(existingVA.items.map(i => `${i.prcId}::${i.materialId}`));
+          (va.items || []).forEach(it => {
+            const iKey = `${it.prcId}::${it.materialId}`;
+            if (!existingItemKeys.has(iKey)) {
+              existingVA.items.push({ ...it });
+              existingItemKeys.add(iKey);
+            } else {
+              const exIt = existingVA.items.find(i => `${i.prcId}::${i.materialId}` === iKey);
+              if (exIt) {
+                exIt.quantity = Math.max(parseFloat(exIt.quantity) || 0, parseFloat(it.quantity) || 0);
+                if (it.unitPrice) exIt.unitPrice = it.unitPrice;
+                if (it.totalPrice) exIt.totalPrice = it.totalPrice;
+              }
+            }
+          });
+          if (va.quotedAmount) existingVA.quotedAmount = Math.max(existingVA.quotedAmount || 0, va.quotedAmount);
+        }
+      });
+    });
+
+    master.vendorAllocations = Array.from(vendorMap.values());
+    master.vendors = master.vendorAllocations;
+    result.push(master);
+  });
+
+  return result;
+}
+
 export function setState(patch) {
+  if (patch.allocations) {
+    patch.allocations = consolidateAllocations(patch.allocations);
+  }
+  if (patch.rfqs) {
+    patch.rfqs = consolidateRFQs(patch.rfqs);
+  }
+  if (patch.tcds) {
+    patch.tcds = consolidateTCDs(patch.tcds);
+  }
+
   Object.assign(state, patch);
 
   if (patch.prcs || patch.allocations) {
     const reconciled = reconcileAllocationRouting(state.prcs, state.allocations);
     if (reconciled.allocChanged || reconciled.prcChanged) {
       state.prcs = reconciled.prcs;
-      state.allocations = reconciled.allocations;
+      state.allocations = consolidateAllocations(reconciled.allocations);
     }
   }
 
@@ -601,9 +829,9 @@ export async function initAppData(forceClean = false) {
     // 2. Cache fallback if offline
     if (loadedFrom === 'empty' && cached && Array.isArray(cached.prcs)) {
       prcs = cached.prcs;
-      allocations = cached.allocations || [];
-      rfqs = cached.rfqs || [];
-      tcds = cached.tcds || [];
+      allocations = consolidateAllocations(cached.allocations || []);
+      rfqs = consolidateRFQs(cached.rfqs || []);
+      tcds = consolidateTCDs(cached.tcds || []);
       pods = cached.pods || [];
       vendors = cached.vendors || [];
       users = cached.users || [];
@@ -616,7 +844,9 @@ export async function initAppData(forceClean = false) {
   // Reconcile allocation document routing for all available data
   const reconciled = reconcileAllocationRouting(prcs, allocations);
   prcs = reconciled.prcs;
-  allocations = reconciled.allocations;
+  allocations = consolidateAllocations(reconciled.allocations);
+  rfqs = consolidateRFQs(rfqs);
+  tcds = consolidateTCDs(tcds);
 
   const summary = buildStatusSummary(prcs);
   const totalMats = prcs.reduce((acc, p) => acc + (p.materials || []).length, 0);
@@ -650,6 +880,8 @@ export const initDemoData = initAppData;
 // ── AUTH STATE SETTERS ────────────────────────────────────
 
 export async function setAuthenticatedUser(firebaseUser) {
+  if (!firebaseUser) return;
+  
   if (state.firebaseUser?.uid !== firebaseUser.uid) {
     // Clear previous user's in-memory data arrays when switching accounts
     state.prcs = [];
@@ -682,9 +914,9 @@ export async function setAuthenticatedUser(firebaseUser) {
   };
   if (cached) {
     state.prcs = cached.prcs || [];
-    state.allocations = cached.allocations || [];
-    state.rfqs = cached.rfqs || [];
-    state.tcds = cached.tcds || [];
+    state.allocations = consolidateAllocations(cached.allocations || []);
+    state.rfqs = consolidateRFQs(cached.rfqs || []);
+    state.tcds = consolidateTCDs(cached.tcds || []);
     state.pods = cached.pods || [];
     state.vendors = cached.vendors || [];
     state.users = cached.users || [];
@@ -708,13 +940,18 @@ export async function setAuthenticatedUser(firebaseUser) {
 
 function handleRealtimeUpdate(colName, items) {
   if (state[colName] !== undefined && Array.isArray(items)) {
+    let processedItems = items;
+    if (colName === 'allocations') processedItems = consolidateAllocations(items);
+    if (colName === 'rfqs') processedItems = consolidateRFQs(items);
+    if (colName === 'tcds') processedItems = consolidateTCDs(items);
+
     // Only update if incoming items differ from current local state
     const currentList = state[colName] || [];
-    const isDifferent = items.length !== currentList.length ||
-      JSON.stringify(items.map(i => i.id).sort()) !== JSON.stringify(currentList.map(i => i.id).sort());
+    const isDifferent = processedItems.length !== currentList.length ||
+      JSON.stringify(processedItems.map(i => i.id).sort()) !== JSON.stringify(currentList.map(i => i.id).sort());
 
     if (isDifferent || colName === 'prcs') {
-      state[colName] = items;
+      state[colName] = processedItems;
       if (colName === 'prcs') {
         state.statusSummary = buildStatusSummary(items);
         state.totalMaterials = items.reduce((acc, p) => acc + (p.materials || []).length, 0);
@@ -739,9 +976,9 @@ export async function forceSyncWithFirestore() {
     const firestoreData = await loadAllUserData(uid, true);
     if (firestoreData) {
       state.prcs = firestoreData.prcs || [];
-      state.allocations = firestoreData.allocations || [];
-      state.rfqs = firestoreData.rfqs || [];
-      state.tcds = firestoreData.tcds || [];
+      state.allocations = consolidateAllocations(firestoreData.allocations || []);
+      state.rfqs = consolidateRFQs(firestoreData.rfqs || []);
+      state.tcds = consolidateTCDs(firestoreData.tcds || []);
       state.pods = firestoreData.pods || [];
       state.vendors = firestoreData.vendors || [];
       state.users = firestoreData.users || [];
@@ -1199,44 +1436,87 @@ export function getAvailablePRCsForAllocation() {
 }
 
 export function createAllocation(data) {
-  const allocation = {
-    id: `alloc-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-    allocationNumber: data.allocationNumber,
-    allocationDate: data.allocationDate,
-    buyerName: data.buyerName || '',
-    items: data.items || [],
-    createdAt: new Date().toISOString(),
-    createdBy: state.currentUser.name,
-    status: 'Active'
-  };
+  const normNum = String(data.allocationNumber || '').trim();
+  const existingIdx = state.allocations.findIndex(
+    a => String(a.allocationNumber || '').trim().toUpperCase() === normNum.toUpperCase()
+  );
 
-  const allocations = [allocation, ...state.allocations];
+  let allocation;
+  let allocations;
+
+  if (existingIdx !== -1) {
+    // Merge into existing allocation
+    const existing = state.allocations[existingIdx];
+    const existingItems = [...(existing.items || [])];
+    const itemKeySet = new Set(existingItems.map(i => `${i.prcId}::${i.materialId}`));
+
+    (data.items || []).forEach(newItem => {
+      const key = `${newItem.prcId}::${newItem.materialId}`;
+      if (!itemKeySet.has(key)) {
+        existingItems.push(newItem);
+        itemKeySet.add(key);
+      } else {
+        const ex = existingItems.find(i => `${i.prcId}::${i.materialId}` === key);
+        if (ex) ex.quantity = parseFloat(newItem.quantity) || ex.quantity;
+      }
+    });
+
+    allocation = {
+      ...existing,
+      allocationNumber: normNum || existing.allocationNumber,
+      allocationDate: data.allocationDate || existing.allocationDate,
+      buyerName: data.buyerName || existing.buyerName,
+      allocatedBy: data.buyerName || existing.allocatedBy,
+      items: existingItems,
+      updatedAt: new Date().toISOString(),
+      updatedBy: state.currentUser?.name || 'User'
+    };
+
+    allocations = [...state.allocations];
+    allocations[existingIdx] = allocation;
+  } else {
+    // Create fresh allocation
+    allocation = {
+      id: `alloc-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      allocationNumber: normNum,
+      allocationDate: data.allocationDate,
+      buyerName: data.buyerName || '',
+      allocatedBy: data.buyerName || '',
+      items: data.items || [],
+      createdAt: new Date().toISOString(),
+      createdBy: state.currentUser?.name || 'User',
+      status: 'Active'
+    };
+    allocations = [allocation, ...state.allocations];
+  }
+
+  allocations = consolidateAllocations(allocations);
 
   const prcs = [...state.prcs];
-  const affectedPrcIds = new Set(allocation.items.map(i => i.prcId));
+  const affectedPrcIds = new Set((allocation.items || []).map(i => i.prcId));
 
   affectedPrcIds.forEach(prcId => {
     const prcIdx = prcs.findIndex(p => p.id === prcId);
     if (prcIdx === -1) return;
     const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
 
-    allocation.items.filter(i => i.prcId === prcId).forEach(item => {
+    (allocation.items || []).filter(i => i.prcId === prcId).forEach(item => {
       const matIdx = prc.materials.findIndex(m => m.id === item.materialId);
       if (matIdx === -1) return;
       prc.materials[matIdx] = {
         ...prc.materials[matIdx],
-        allocationNumber: data.allocationNumber,
-        allocationDate: data.allocationDate,
-        buyerName: data.buyerName,
-        allocatedBy: data.buyerName
+        allocationNumber: allocation.allocationNumber,
+        allocationDate: allocation.allocationDate,
+        buyerName: allocation.buyerName,
+        allocatedBy: allocation.buyerName
       };
       prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
     });
 
-    prc.allocationNumber = prc.allocationNumber || data.allocationNumber;
-    prc.allocationDate   = prc.allocationDate || data.allocationDate;
-    prc.buyerName        = prc.buyerName || data.buyerName;
-    prc.allocatedBy      = prc.allocatedBy || data.buyerName;
+    prc.allocationNumber = prc.allocationNumber || allocation.allocationNumber;
+    prc.allocationDate   = prc.allocationDate || allocation.allocationDate;
+    prc.buyerName        = prc.buyerName || allocation.buyerName;
+    prc.allocatedBy      = prc.allocatedBy || allocation.buyerName;
 
     prc.status = calculateStatus(prc, prc.materials);
     prc.updatedAt = new Date().toISOString();
@@ -1252,8 +1532,10 @@ export function createAllocation(data) {
   directSaveAllocation(_getEffectiveUid(), allocation);
 
   addAuditLog({
-    action: 'create_allocation', collection: 'Allocations', docId: allocation.id,
-    changes: { allocationNumber: data.allocationNumber, itemCount: data.items.length, prcCount: affectedPrcIds.size }
+    action: existingIdx !== -1 ? 'merge_allocation' : 'create_allocation',
+    collection: 'Allocations',
+    docId: allocation.id,
+    changes: { allocationNumber: allocation.allocationNumber, itemCount: allocation.items.length, prcCount: affectedPrcIds.size }
   });
 
   return allocation;
@@ -1399,21 +1681,61 @@ export function getAvailableForRFQ() {
 }
 
 export function createRFQ(data) {
-  const rfq = {
-    id: `rfq-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-    rfqNumber: data.rfqNumber,
-    rfqDate: data.rfqDate,
-    items: data.items || [],
-    createdAt: new Date().toISOString(),
-    createdBy: state.currentUser.name,
-    status: 'Active',
-    offersReceived: false
-  };
+  const normNum = String(data.rfqNumber || '').trim();
+  const existingIdx = state.rfqs.findIndex(
+    r => String(r.rfqNumber || '').trim().toUpperCase() === normNum.toUpperCase()
+  );
 
-  const rfqs = [rfq, ...state.rfqs];
+  let rfq;
+  let rfqs;
+
+  if (existingIdx !== -1) {
+    // Merge into existing RFQ
+    const existing = state.rfqs[existingIdx];
+    const existingItems = [...(existing.items || [])];
+    const itemKeySet = new Set(existingItems.map(i => `${i.prcId}::${i.materialId}`));
+
+    (data.items || []).forEach(newItem => {
+      const key = `${newItem.prcId}::${newItem.materialId}`;
+      if (!itemKeySet.has(key)) {
+        existingItems.push(newItem);
+        itemKeySet.add(key);
+      } else {
+        const ex = existingItems.find(i => `${i.prcId}::${i.materialId}` === key);
+        if (ex) ex.quantity = parseFloat(newItem.quantity) || ex.quantity;
+      }
+    });
+
+    rfq = {
+      ...existing,
+      rfqNumber: normNum || existing.rfqNumber,
+      rfqDate: data.rfqDate || existing.rfqDate,
+      items: existingItems,
+      updatedAt: new Date().toISOString(),
+      updatedBy: state.currentUser?.name || 'User'
+    };
+
+    rfqs = [...state.rfqs];
+    rfqs[existingIdx] = rfq;
+  } else {
+    // Create fresh RFQ
+    rfq = {
+      id: `rfq-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      rfqNumber: normNum,
+      rfqDate: data.rfqDate,
+      items: data.items || [],
+      createdAt: new Date().toISOString(),
+      createdBy: state.currentUser?.name || 'User',
+      status: 'Active',
+      offersReceived: false
+    };
+    rfqs = [rfq, ...state.rfqs];
+  }
+
+  rfqs = consolidateRFQs(rfqs);
 
   const prcs = [...state.prcs];
-  rfq.items.forEach(item => {
+  (rfq.items || []).forEach(item => {
     const prcIdx = prcs.findIndex(p => p.id === item.prcId);
     if (prcIdx === -1) return;
     const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
@@ -1421,12 +1743,12 @@ export function createRFQ(data) {
     if (matIdx === -1) return;
     prc.materials[matIdx] = {
       ...prc.materials[matIdx],
-      rfqNumber: data.rfqNumber,
-      rfqDate: data.rfqDate
+      rfqNumber: rfq.rfqNumber,
+      rfqDate: rfq.rfqDate
     };
-    prc.rfqNumber = data.rfqNumber;
-    prc.rfqDate = data.rfqDate;
-    prc.rfqBy = state.currentUser.name;
+    prc.rfqNumber = rfq.rfqNumber;
+    prc.rfqDate = rfq.rfqDate;
+    prc.rfqBy = prc.rfqBy || state.currentUser?.name || 'App User';
     prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
     prc.status = calculateStatus(prc, prc.materials);
     prc.updatedAt = new Date().toISOString();
@@ -1440,8 +1762,10 @@ export function createRFQ(data) {
   directSaveRFQ(_getEffectiveUid(), rfq);
 
   addAuditLog({
-    action: 'create_rfq', collection: 'RFQs', docId: rfq.id,
-    changes: { rfqNumber: data.rfqNumber, itemCount: data.items.length }
+    action: existingIdx !== -1 ? 'merge_rfq' : 'create_rfq',
+    collection: 'RFQs',
+    docId: rfq.id,
+    changes: { rfqNumber: rfq.rfqNumber, itemCount: rfq.items.length }
   });
 
   return rfq;
@@ -1449,6 +1773,169 @@ export function createRFQ(data) {
 
 export function getRFQById(id) {
   return state.rfqs.find(r => r.id === id) || null;
+}
+
+export function updateRFQ(id, data) {
+  const rfqIdx = state.rfqs.findIndex(r => r.id === id);
+  if (rfqIdx === -1) return { success: false, reason: 'RFQ document not found' };
+
+  const existingRFQ = state.rfqs[rfqIdx];
+  const oldRfqNumber = existingRFQ.rfqNumber;
+  const newRfqNumber = data.rfqNumber || existingRFQ.rfqNumber;
+  const newRfqDate = data.rfqDate || existingRFQ.rfqDate;
+  const newItems = data.items !== undefined ? data.items : existingRFQ.items;
+
+  if (!newItems || !newItems.length) {
+    return { success: false, reason: 'An RFQ must contain at least one material item.' };
+  }
+
+  // Detect removed items
+  const newItemKeys = new Set(newItems.map(i => `${i.prcId}::${i.materialId}`));
+  const removedItems = (existingRFQ.items || []).filter(i => !newItemKeys.has(`${i.prcId}::${i.materialId}`));
+
+  // Check if any removed item has downstream TCDs
+  for (const removed of removedItems) {
+    const tcdQty = getTCDdQty(id, removed.prcId, removed.materialId);
+    if (tcdQty > 0) {
+      return {
+        success: false,
+        reason: `Cannot remove item (${removed.matCode}) — it has ${tcdQty} qty already allocated in downstream TCD documents.`
+      };
+    }
+  }
+
+  const updatedRFQ = {
+    ...existingRFQ,
+    rfqNumber: newRfqNumber,
+    rfqDate: newRfqDate,
+    items: newItems,
+    updatedAt: new Date().toISOString(),
+    updatedBy: state.currentUser?.name || 'User'
+  };
+
+  const rfqs = [...state.rfqs];
+  rfqs[rfqIdx] = updatedRFQ;
+
+  let prcs = [...state.prcs];
+
+  // 1. Process Removed Items - reset RFQ fields on PRC and materials if no other RFQs link to them
+  removedItems.forEach(removed => {
+    const prcIdx = prcs.findIndex(p => p.id === removed.prcId);
+    if (prcIdx === -1) return;
+    const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
+    const matIdx = prc.materials.findIndex(m => m.id === removed.materialId);
+    if (matIdx !== -1) {
+      const otherRFQ = rfqs.find(r => r.id !== id && (r.items || []).some(i => i.prcId === removed.prcId && i.materialId === removed.materialId));
+      if (otherRFQ) {
+        prc.materials[matIdx] = {
+          ...prc.materials[matIdx],
+          rfqNumber: otherRFQ.rfqNumber,
+          rfqDate: otherRFQ.rfqDate
+        };
+      } else {
+        const matCopy = { ...prc.materials[matIdx] };
+        delete matCopy.rfqNumber;
+        delete matCopy.rfqDate;
+        prc.materials[matIdx] = matCopy;
+      }
+      prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
+    }
+
+    const remainingMatWithRFQ = prc.materials.find(m => m.rfqNumber);
+    if (remainingMatWithRFQ) {
+      prc.rfqNumber = remainingMatWithRFQ.rfqNumber;
+      prc.rfqDate = remainingMatWithRFQ.rfqDate;
+    } else {
+      const prcCopy = { ...prc };
+      delete prcCopy.rfqNumber;
+      delete prcCopy.rfqDate;
+      delete prcCopy.rfqBy;
+      Object.assign(prc, prcCopy);
+    }
+    prc.status = calculateStatus(prc, prc.materials);
+    prc.updatedAt = new Date().toISOString();
+    prcs[prcIdx] = prc;
+
+    directSavePRC(_getEffectiveUid(), prc);
+  });
+
+  // 2. Process Current/Added Items - assign updated RFQ info
+  const affectedPrcIds = new Set(updatedRFQ.items.map(i => i.prcId));
+  affectedPrcIds.forEach(prcId => {
+    const prcIdx = prcs.findIndex(p => p.id === prcId);
+    if (prcIdx === -1) return;
+    const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
+
+    updatedRFQ.items.filter(i => i.prcId === prcId).forEach(item => {
+      const matIdx = prc.materials.findIndex(m => m.id === item.materialId);
+      if (matIdx === -1) return;
+      prc.materials[matIdx] = {
+        ...prc.materials[matIdx],
+        rfqNumber: newRfqNumber,
+        rfqDate: newRfqDate
+      };
+      prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
+    });
+
+    prc.rfqNumber = newRfqNumber;
+    prc.rfqDate = newRfqDate;
+    prc.rfqBy = prc.rfqBy || state.currentUser?.name || 'App User';
+    prc.status = calculateStatus(prc, prc.materials);
+    prc.updatedAt = new Date().toISOString();
+    prcs[prcIdx] = prc;
+
+    directSavePRC(_getEffectiveUid(), prc);
+  });
+
+  // Cascade RFQ number changes to downstream TCDs if RFQ number changed
+  let tcds = [...state.tcds];
+  if (oldRfqNumber !== newRfqNumber) {
+    let tcdsChanged = false;
+    tcds = tcds.map(tcd => {
+      let tcdModified = false;
+      const updatedTcd = { ...tcd };
+      if (updatedTcd.rfqId === id || updatedTcd.rfqNumber === oldRfqNumber) {
+        updatedTcd.rfqNumber = newRfqNumber;
+        tcdModified = true;
+      }
+      if (updatedTcd.vendorAllocations) {
+        updatedTcd.vendorAllocations = updatedTcd.vendorAllocations.map(va => {
+          let vaModified = false;
+          const updatedItems = (va.items || []).map(it => {
+            if (it.rfqId === id || it.rfqNumber === oldRfqNumber) {
+              vaModified = true;
+              return { ...it, rfqNumber: newRfqNumber };
+            }
+            return it;
+          });
+          return vaModified ? { ...va, items: updatedItems } : va;
+        });
+        if (updatedTcd.vendorAllocations.some(va => (va.items || []).some(it => it.rfqNumber === newRfqNumber))) {
+          tcdModified = true;
+        }
+      }
+      if (tcdModified) {
+        tcdsChanged = true;
+        directSaveTCD(_getEffectiveUid(), updatedTcd);
+        return updatedTcd;
+      }
+      return tcd;
+    });
+    if (tcdsChanged) {
+      setState({ tcds });
+    }
+  }
+
+  setState({ rfqs, prcs, statusSummary: buildStatusSummary(prcs) });
+
+  directSaveRFQ(_getEffectiveUid(), updatedRFQ);
+
+  addAuditLog({
+    action: 'update_rfq', collection: 'RFQs', docId: id,
+    changes: { rfqNumber: updatedRFQ.rfqNumber, rfqDate: updatedRFQ.rfqDate, itemCount: updatedRFQ.items.length }
+  });
+
+  return { success: true, rfq: updatedRFQ };
 }
 
 export function deleteRFQ(id) {
@@ -1557,25 +2044,88 @@ export function getAvailableForTCD() {
 }
 
 export function createTCD(data) {
-  const tcd = {
-    id: `tcd-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-    tcdNumber: data.tcdNumber,
-    tcdDate: data.tcdDate,
-    vendorAllocations: data.vendorAllocations || data.vendors || [],
-    vendors: data.vendors || data.vendorAllocations || [],
-    createdAt: new Date().toISOString(),
-    createdBy: state.currentUser?.name || 'Admin',
-    status: 'Pending Approval',
-    approved: false,
-    approvedDate: null,
-    approvedBy: null
-  };
+  const normNum = String(data.tcdNumber || '').trim();
+  const existingIdx = state.tcds.findIndex(
+    t => String(t.tcdNumber || '').trim().toUpperCase() === normNum.toUpperCase()
+  );
 
-  const tcds = [tcd, ...state.tcds];
+  let tcd;
+  let tcds;
+  const newVAs = data.vendorAllocations || data.vendors || [];
+
+  if (existingIdx !== -1) {
+    // Merge into existing TCD
+    const existing = state.tcds[existingIdx];
+    const mergedVAs = [...(existing.vendorAllocations || existing.vendors || [])];
+    const vendorMap = new Map();
+
+    mergedVAs.forEach((va, vIdx) => {
+      vendorMap.set(String(va.vendorName || '').trim().toUpperCase(), vIdx);
+    });
+
+    newVAs.forEach(va => {
+      const vKey = String(va.vendorName || '').trim().toUpperCase();
+      if (vendorMap.has(vKey)) {
+        const vIdx = vendorMap.get(vKey);
+        const existingVA = { ...mergedVAs[vIdx], items: [...(mergedVAs[vIdx].items || [])] };
+        const itemKeySet = new Set(existingVA.items.map(i => `${i.prcId}::${i.materialId}`));
+
+        (va.items || []).forEach(newItem => {
+          const iKey = `${newItem.prcId}::${newItem.materialId}`;
+          if (!itemKeySet.has(iKey)) {
+            existingVA.items.push(newItem);
+            itemKeySet.add(iKey);
+          } else {
+            const ex = existingVA.items.find(i => `${i.prcId}::${i.materialId}` === iKey);
+            if (ex) {
+              ex.quantity = parseFloat(newItem.quantity) || ex.quantity;
+              if (newItem.unitPrice) ex.unitPrice = newItem.unitPrice;
+              if (newItem.totalPrice) ex.totalPrice = newItem.totalPrice;
+            }
+          }
+        });
+        mergedVAs[vIdx] = existingVA;
+      } else {
+        mergedVAs.push(va);
+        vendorMap.set(vKey, mergedVAs.length - 1);
+      }
+    });
+
+    tcd = {
+      ...existing,
+      tcdNumber: normNum || existing.tcdNumber,
+      tcdDate: data.tcdDate || existing.tcdDate,
+      vendorAllocations: mergedVAs,
+      vendors: mergedVAs,
+      updatedAt: new Date().toISOString(),
+      updatedBy: state.currentUser?.name || 'Admin'
+    };
+
+    tcds = [...state.tcds];
+    tcds[existingIdx] = tcd;
+  } else {
+    // Create fresh TCD
+    tcd = {
+      id: `tcd-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      tcdNumber: normNum,
+      tcdDate: data.tcdDate,
+      vendorAllocations: newVAs,
+      vendors: newVAs,
+      createdAt: new Date().toISOString(),
+      createdBy: state.currentUser?.name || 'Admin',
+      status: 'Pending Approval',
+      approved: false,
+      approvedDate: null,
+      approvedBy: null
+    };
+    tcds = [tcd, ...state.tcds];
+  }
+
+  tcds = consolidateTCDs(tcds);
 
   const prcs = [...state.prcs];
   (tcd.vendorAllocations || []).forEach(va => {
-    va.items.forEach(item => {
+    (va.items || []).forEach(item => {
       const prcIdx = prcs.findIndex(p => p.id === item.prcId);
       if (prcIdx === -1) return;
       const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
@@ -1583,12 +2133,12 @@ export function createTCD(data) {
       if (matIdx === -1) return;
       prc.materials[matIdx] = {
         ...prc.materials[matIdx],
-        tcdNumber: data.tcdNumber,
-        tcdDate: data.tcdDate
+        tcdNumber: tcd.tcdNumber,
+        tcdDate: tcd.tcdDate
       };
-      prc.tcdNumber = data.tcdNumber;
-      prc.tcdDate = data.tcdDate;
-      prc.tcdBy = state.currentUser?.name || 'Admin';
+      prc.tcdNumber = tcd.tcdNumber;
+      prc.tcdDate = tcd.tcdDate;
+      prc.tcdBy = prc.tcdBy || state.currentUser?.name || 'Admin';
       prc.prStatus = 'Process Completed';
       prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
       prc.status = calculateStatus(prc, prc.materials);
@@ -1604,8 +2154,10 @@ export function createTCD(data) {
   directSaveTCD(_getEffectiveUid(), tcd);
 
   addAuditLog({
-    action: 'create_tcd', collection: 'TCDs', docId: tcd.id,
-    changes: { tcdNumber: data.tcdNumber, vendorCount: tcd.vendorAllocations.length }
+    action: existingIdx !== -1 ? 'merge_tcd' : 'create_tcd',
+    collection: 'TCDs',
+    docId: tcd.id,
+    changes: { tcdNumber: tcd.tcdNumber, vendorCount: tcd.vendorAllocations.length }
   });
 
   return tcd;
