@@ -392,6 +392,29 @@ function navigate(page, context) {
 }
 window.navigate = navigate;
 
+/**
+ * Preserves the page-content scroll position across an in-place re-render.
+ * Use this whenever a button/sort/filter causes a full section re-render
+ * but should NOT scroll the user back to the top.
+ * @param {Function} fn  The render/update function to call
+ */
+function preserveScroll(fn) {
+  const el = document.getElementById('page-content');
+  const top = el ? el.scrollTop : 0;
+  const left = el ? el.scrollLeft : 0;
+  fn();
+  if (el) {
+    el.scrollTop = top;
+    el.scrollLeft = left;
+    // Double-set after paint to beat any async innerHTML flush
+    requestAnimationFrame(() => {
+      el.scrollTop = top;
+      el.scrollLeft = left;
+    });
+  }
+}
+window.preserveScroll = preserveScroll;
+
 function quickCreateAllocation(prcId) {
   navigate('create-allocation', prcId ? { prcId } : null);
 }
@@ -421,7 +444,7 @@ window.renderCreateAllocationPage = renderCreateAllocationPage;
 window.renderSettings = renderSettings;
 window.changePageSize = function(val) {
   setState({ pageSize: parseInt(val) || 25, currentPage_num: 1 });
-  renderPRCTable();
+  preserveScroll(() => renderPRCTable());
 };
 
 // ── SIDEBAR ────────────────────────────────────────────────
@@ -951,7 +974,7 @@ function renderPRCList(container) {
 
 window.switchViewLevel = function(level) {
   setState({ viewLevel: level, currentPage_num: 1 });
-  renderPRCList(document.getElementById('page-content'));
+  preserveScroll(() => renderPRCList(document.getElementById('page-content')));
 };
 
 window.togglePRCTreeRow = function(prcId, evt) {
@@ -1009,7 +1032,7 @@ window.applyFilters = function() {
     filters: currentFilters,
     currentPage_num: 1
   });
-  renderPRCList(document.getElementById('page-content'));
+  preserveScroll(() => renderPRCList(document.getElementById('page-content')));
 };
 
 window.clearFilters = function() {
@@ -1018,54 +1041,54 @@ window.clearFilters = function() {
     if(el) el.value = '';
   });
   setState({ filters: {}, currentPage_num: 1 });
-  renderPRCList(document.getElementById('page-content'));
+  preserveScroll(() => renderPRCList(document.getElementById('page-content')));
 };
 
 window.sortTable = function(field) {
   const state = getState();
   const dir = state.sortField === field && state.sortDir === 'asc' ? 'desc' : 'asc';
   setState({ sortField: field, sortDir: dir });
-  renderPRCTable();
+  preserveScroll(() => renderPRCTable());
 };
 
 window.changeSortField = function(val) {
   setState({ sortField: val });
-  renderPRCTable();
+  preserveScroll(() => renderPRCTable());
 };
 
 window.changeSortDir = function(val) {
   setState({ sortDir: val });
-  renderPRCTable();
+  preserveScroll(() => renderPRCTable());
 };
 
 window.changeAllocSort = function(field, dir) {
   setState({ allocSortField: field, allocSortDir: dir });
   const container = document.getElementById('page-content');
-  if (container) renderAllocationsPage(container);
+  if (container) preserveScroll(() => renderAllocationsPage(container));
 };
 
 window.changeRFQSort = function(field, dir) {
   setState({ rfqSortField: field, rfqSortDir: dir });
   const container = document.getElementById('page-content');
-  if (container) renderRFQsPage(container);
+  if (container) preserveScroll(() => renderRFQsPage(container));
 };
 
 window.changeTCDSort = function(field, dir) {
   setState({ tcdSortField: field, tcdSortDir: dir });
   const container = document.getElementById('page-content');
-  if (container) renderTCDsPage(container);
+  if (container) preserveScroll(() => renderTCDsPage(container));
 };
 
 window.changePOSort = function(field, dir) {
   setState({ poSortField: field, poSortDir: dir });
   const container = document.getElementById('page-content');
-  if (container) renderPODsPage(container);
+  if (container) preserveScroll(() => renderPODsPage(container));
 };
 
 window.changeVendorSort = function(field, dir) {
   setState({ vendorSortField: field, vendorSortDir: dir });
   const container = document.getElementById('page-content');
-  if (container) renderVendors(container);
+  if (container) preserveScroll(() => renderVendors(container));
 };
 
 window.getPRCDocumentSummary = function(p) {
@@ -1588,7 +1611,7 @@ window.goPage = function(p) {
   const { pages } = state.viewLevel === 'material' ? getPaginatedMaterials() : getPaginatedPRCs();
   if(p<1||p>pages) return;
   setState({ currentPage_num: p });
-  renderPRCTable();
+  preserveScroll(() => renderPRCTable());
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -1976,7 +1999,7 @@ window.saveSingleMaterialWorkflow = function(prcId, materialId, modalId) {
   updateMaterial(prcId, materialId, patch);
   document.getElementById(modalId)?.remove();
   if (getState().currentPage === 'prc-list') {
-    renderPRCTable();
+    preserveScroll(() => renderPRCTable());
   } else {
     openPRCDetail(prcId);
     switchPRCTab(document.querySelectorAll('#prc-detail-modal .tab-btn')[1], 'tab-materials');
@@ -2167,13 +2190,13 @@ window.handlePRCStatusChange = function(id, newStatus) {
   toast(`PRC ${prc.prNumber} status changed to "${newStatus}"`, 'success', 2500);
 
   if (getState().currentPage === 'prc-list') {
-    renderPRCTable();
+    preserveScroll(() => renderPRCTable());
   }
   if (getState().currentPage === 'allocations') {
-    renderAllocationsPage(document.getElementById('page-content'));
+    preserveScroll(() => renderAllocationsPage(document.getElementById('page-content')));
   }
   if (getState().currentPage === 'rfqs') {
-    renderRFQsPage(document.getElementById('page-content'));
+    preserveScroll(() => renderRFQsPage(document.getElementById('page-content')));
   }
   const modal = document.getElementById('prc-detail-modal');
   if (modal && modal.classList.contains('open')) {
@@ -3399,7 +3422,7 @@ window.handleDeletePRC = async function(id) {
   if (result.success) {
     toast(`PRC ${prc.prNumber} deleted successfully`, 'success');
     closePRCDetail();
-    if (getState().currentPage === 'prc-list') renderPRCTable();
+    if (getState().currentPage === 'prc-list') preserveScroll(() => renderPRCTable());
     const badge = document.getElementById('nav-prc-count');
     if (badge) badge.textContent = getState().prcs.length;
   } else {
@@ -4079,9 +4102,9 @@ window.changeAllocSort = function(field, dir) {
   setState({ allocSortField: field, allocSortDir: dir });
   const container = document.getElementById('page-content');
   if (getState().currentPage === 'allocations' && container) {
-    renderAllocationsPage(container);
+    preserveScroll(() => renderAllocationsPage(container));
   } else if (getState().currentPage === 'create-allocation' && container) {
-    renderCreateAllocationPage(container);
+    preserveScroll(() => renderCreateAllocationPage(container));
   }
 };
 
@@ -4224,7 +4247,7 @@ window.submitEditAllocation = function(id) {
     document.getElementById('edit-alloc-modal')?.remove();
     toast(`Allocation Document ${allocationNumber} updated successfully!`, 'success');
     const container = document.getElementById('page-content');
-    if (container) renderAllocationsPage(container);
+    if (container) preserveScroll(() => renderAllocationsPage(container));
     updateSidebarBadges();
   } else {
     toast(res.reason || 'Failed to update Allocation Document', 'error');
@@ -4813,9 +4836,9 @@ window.changeRFQSort = function(field, dir) {
   setState({ rfqSortField: field, rfqSortDir: dir });
   const container = document.getElementById('page-content');
   if (getState().currentPage === 'rfqs' && container) {
-    renderRFQsPage(container);
+    preserveScroll(() => renderRFQsPage(container));
   } else if (getState().currentPage === 'create-rfq' && container) {
-    renderCreateRFQPage(container);
+    preserveScroll(() => renderCreateRFQPage(container));
   }
 };
 
@@ -5258,7 +5281,7 @@ window.submitEditRFQ = function(id) {
     toast(`RFQ Document ${rfqNumber} updated successfully!`, 'success');
     const container = document.getElementById('page-content');
     if (container && getState().currentPage === 'rfqs') {
-      renderRFQsPage(container);
+      preserveScroll(() => renderRFQsPage(container));
     }
     updateSidebarBadges();
   } else {
@@ -5873,9 +5896,9 @@ window.changeTCDSort = function(field, dir) {
   setState({ tcdSortField: field, tcdSortDir: dir });
   const container = document.getElementById('page-content');
   if (getState().currentPage === 'tcds' && container) {
-    renderTCDsPage(container);
+    preserveScroll(() => renderTCDsPage(container));
   } else if (getState().currentPage === 'create-tcd' && container) {
-    renderCreateTCDPage(container);
+    preserveScroll(() => renderCreateTCDPage(container));
   }
 };
 
@@ -6441,7 +6464,7 @@ window.submitCreatePODPage = function() {
 window.changePOSort = function(field, dir) {
   setState({ poSortField: field, poSortDir: dir });
   const container = document.getElementById('page-content');
-  if (container && getState().currentPage === 'pods') renderPODsPage(container);
+  if (container && getState().currentPage === 'pods') preserveScroll(() => renderPODsPage(container));
 };
 
 window.viewPODDetail = function(id) {
