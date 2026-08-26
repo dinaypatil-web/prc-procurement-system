@@ -4242,6 +4242,42 @@ window.handleDeleteAllocation = async function(id) {
 // ═══════════════════════════════════════════════════════════
 // PAGE: RFQs (LIST VIEW)
 // ═══════════════════════════════════════════════════════════
+
+/**
+ * Compute TCD coverage for a given RFQ.
+ * Returns:
+ *   tcdNumbers  – unique TCD numbers that reference items of this RFQ
+ *   coveredItems – count of RFQ items that have at least 1 qty in a TCD
+ *   totalItems   – total RFQ item count
+ *   status       – 'full' | 'partial' | 'none'
+ */
+function getRFQTCDCoverage(rfq, allTCDs) {
+  const items = rfq.items || [];
+  const tcdNumberSet = new Set();
+  const coveredSet = new Set();
+
+  allTCDs.forEach(tcd => {
+    (tcd.vendorAllocations || tcd.vendors || []).forEach(va => {
+      (va.items || []).forEach(item => {
+        if (item.rfqId === rfq.id) {
+          tcdNumberSet.add(tcd.tcdNumber);
+          // mark this prcId+materialId as covered
+          coveredSet.add(`${item.prcId}::${item.materialId}`);
+        }
+      });
+    });
+  });
+
+  const totalItems = items.length;
+  const coveredItems = items.filter(i => coveredSet.has(`${i.prcId}::${i.materialId}`)).length;
+  const tcdNumbers = [...tcdNumberSet];
+
+  let status = 'none';
+  if (coveredItems > 0 && coveredItems >= totalItems) status = 'full';
+  else if (coveredItems > 0) status = 'partial';
+
+  return { tcdNumbers, coveredItems, totalItems, status };
+}
 function renderRFQsPage(container) {
   const state = getState();
   const rfqs = [...(state.rfqs || [])];
@@ -4337,11 +4373,43 @@ function renderRFQsPage(container) {
   ${rfqs.length ? `
   <div class="table-wrapper" style="overflow:auto">
     <table class="data-table">
-      <thead><tr><th>RFQ Number</th><th>Date</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+      <thead><tr><th>RFQ Number</th><th>Date</th><th>Materials</th><th>Status</th><th>TCD</th><th>Created</th><th>Actions</th></tr></thead>
       <tbody id="rfq-docs-tbody">
         ${rfqs.map(r => {
           const isClosed = !!(r.isClosed || String(r.status||'').trim().toLowerCase() === 'closed');
           const statusChipClass = isClosed ? 'chip-completed' : (r.status === 'Short-Close' ? 'chip-shortclosed' : 'chip-pending');
+          const tcdCov = getRFQTCDCoverage(r, state.tcds || []);
+
+          // Build TCD cell HTML
+          let tcdCellHTML = '';
+          if (tcdCov.status === 'full') {
+            // All items covered — show TCD number(s) only
+            tcdCellHTML = tcdCov.tcdNumbers.map(num =>
+              `<span class="copy-badge" onclick="copyToClipboard('${num}','TCD Number',event)" title="Click to copy TCD Number" style="margin-bottom:2px;display:inline-flex">
+                 <strong class="font-mono">${num}</strong><span class="copy-icon">📋</span>
+               </span>`
+            ).join('<br>');
+            tcdCellHTML += `<br><span style="font-size:10px;color:var(--color-success);font-weight:600">✅ All items covered (${tcdCov.coveredItems}/${tcdCov.totalItems})</span>`;
+          } else if (tcdCov.status === 'partial') {
+            // Some items covered — show TCD number(s) + button for balance
+            tcdCellHTML = tcdCov.tcdNumbers.map(num =>
+              `<span class="copy-badge" onclick="copyToClipboard('${num}','TCD Number',event)" title="Click to copy TCD Number" style="margin-bottom:2px;display:inline-flex">
+                 <strong class="font-mono">${num}</strong><span class="copy-icon">📋</span>
+               </span>`
+            ).join('<br>');
+            tcdCellHTML += `<br><span style="font-size:10px;color:var(--color-warning);font-weight:600">⚠️ Partial (${tcdCov.coveredItems}/${tcdCov.totalItems} items)</span><br>`;
+            if (isClosed) {
+              tcdCellHTML += `<button class="btn btn-secondary btn-xs" style="margin-top:4px;padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate('create-tcd', { rfqId: '${r.id}', rfqNumber: '${r.rfqNumber}' })" title="Create TCD for remaining items">📊 Create TCD for Balance</button>`;
+            }
+          } else {
+            // No TCD yet
+            if (isClosed) {
+              tcdCellHTML = `<button class="btn btn-primary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate('create-tcd', { rfqId: '${r.id}', rfqNumber: '${r.rfqNumber}' })" title="Create TCD from this RFQ">📊 Create TCD</button>`;
+            } else {
+              tcdCellHTML = `<span style="font-size:11px;color:var(--color-text-tertiary)">— (RFQ not closed)</span>`;
+            }
+          }
+
           return `
           <tr>
             <td><span class="copy-badge" onclick="copyToClipboard('${r.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="font-mono font-semibold">${r.rfqNumber}</span><span class="copy-icon">📋</span></span></td>
@@ -4352,6 +4420,7 @@ function renderRFQsPage(container) {
                 ${isClosed ? '🔒 Closed (TCD Eligible)' : (r.status || 'Active')}
               </span>
             </td>
+            <td style="min-width:160px">${tcdCellHTML}</td>
             <td>${fmtDate(r.createdAt)}</td>
             <td>
               <button class="btn btn-ghost btn-sm" onclick="viewRFQDetail('${r.id}')" title="View Details">👁️ View</button>
@@ -4359,7 +4428,6 @@ function renderRFQsPage(container) {
               <button class="btn ${isClosed ? 'btn-secondary' : 'btn-primary'} btn-sm" onclick="handleToggleRFQClose('${r.id}', ${!isClosed})">
                 ${isClosed ? '🔓 Re-open' : '🔒 Close RFQ'}
               </button>
-              ${isClosed ? `<button class="btn btn-primary btn-sm" onclick="navigate('create-tcd', { rfqId: '${r.id}', rfqNumber: '${r.rfqNumber}' })" title="Create TCD from this RFQ">📊 Create TCD</button>` : ''}
               <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleDeleteRFQ('${r.id}')" title="Delete RFQ">🗑️</button>
             </td>
           </tr>`;
@@ -4782,7 +4850,24 @@ window.viewRFQDetail = function(id) {
         <button class="btn ${isClosed ? 'btn-secondary' : 'btn-primary'}" onclick="document.getElementById('${modalId}').remove();handleToggleRFQClose('${rfq.id}', ${!isClosed})">
           ${isClosed ? '🔓 Re-open RFQ' : '🔒 Tag RFQ Close'}
         </button>
-        ${isClosed ? `<button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();navigate('create-tcd', { rfqId: '${rfq.id}', rfqNumber: '${rfq.rfqNumber}' })">📊 Create TCD for this RFQ</button>` : ''}
+        ${(() => {
+          const _cov = getRFQTCDCoverage(rfq, getState().tcds || []);
+          if (!isClosed) return '';
+          if (_cov.status === 'full') {
+            return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--color-success);padding:6px 12px;background:rgba(16,185,129,0.1);border-radius:6px;border:1px solid rgba(16,185,129,0.25)">
+              ✅ TCD Created: ${_cov.tcdNumbers.map(n => `<span class="copy-badge" onclick="copyToClipboard('${n}','TCD Number',event)" title="Click to copy TCD Number" style="font-size:12px"><strong>${n}</strong><span class="copy-icon">📋</span></span>`).join(', ')}
+              <span style="font-size:11px;color:var(--color-text-secondary);font-weight:400">(All ${_cov.totalItems} items covered)</span>
+            </span>`;
+          } else if (_cov.status === 'partial') {
+            return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--color-warning);padding:4px 10px;background:rgba(245,158,11,0.1);border-radius:6px;border:1px solid rgba(245,158,11,0.25)">
+              ⚠️ TCD: ${_cov.tcdNumbers.map(n => `<span class="copy-badge" onclick="copyToClipboard('${n}','TCD Number',event)" title="Click to copy TCD Number" style="font-size:11px"><strong>${n}</strong><span class="copy-icon">📋</span></span>`).join(', ')}
+              <span style="font-size:11px;font-weight:400">(${_cov.coveredItems}/${_cov.totalItems} covered)</span>
+            </span>
+            <button class="btn btn-primary btn-sm" onclick="document.getElementById('${modalId}').remove();navigate('create-tcd', { rfqId: '${rfq.id}', rfqNumber: '${rfq.rfqNumber}' })" title="Create TCD for remaining items">📊 Create TCD for Balance (${_cov.totalItems - _cov.coveredItems} items)</button>`;
+          } else {
+            return `<button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();navigate('create-tcd', { rfqId: '${rfq.id}', rfqNumber: '${rfq.rfqNumber}' })">📊 Create TCD for this RFQ</button>`;
+          }
+        })()}
       </div>
     </div>`;
   document.body.appendChild(el);
