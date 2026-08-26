@@ -345,6 +345,10 @@ const PAGES = {
 
 function navigate(page, context) {
   const state = getState();
+  const isSamePage = state.currentPage === page;
+  const winX = window.scrollX !== undefined ? window.scrollX : (window.pageXOffset || document.documentElement?.scrollLeft || document.body?.scrollLeft || 0);
+  const winY = window.scrollY !== undefined ? window.scrollY : (window.pageYOffset || document.documentElement?.scrollTop || document.body?.scrollTop || 0);
+
   // Store navigation context (e.g., prcId, rfqNumber, tcdNumber) for creation pages to filter by
   window._navigateContext = context || null;
   setState({ currentPage: page });
@@ -376,42 +380,80 @@ function navigate(page, context) {
   // Render page
   const content = document.getElementById('page-content');
   if (content) {
-    content.innerHTML = '<div style="padding:40px;text-align:center"><div class="loading-spinner" style="margin:auto"></div></div>';
-    requestAnimationFrame(() => {
+    if (isSamePage) {
+      // In-place refresh of current page without spinner flash or scrolling to top
       if (p) {
         content.innerHTML = '';
         p.render(content);
-        content.classList.remove('page-enter');
-        void content.offsetWidth;
-        content.classList.add('page-enter');
       }
-      window.location.hash = page;
-      window.scrollTo(0,0);
-    });
+      const restoreSame = () => {
+        window.scrollTo({ left: winX, top: winY, behavior: 'instant' });
+        if (document.documentElement) document.documentElement.scrollTop = winY;
+        if (document.body) document.body.scrollTop = winY;
+      };
+      restoreSame();
+      requestAnimationFrame(restoreSame);
+      setTimeout(restoreSame, 0);
+      setTimeout(restoreSame, 50);
+    } else {
+      content.innerHTML = '<div style="padding:40px;text-align:center"><div class="loading-spinner" style="margin:auto"></div></div>';
+      requestAnimationFrame(() => {
+        if (p) {
+          content.innerHTML = '';
+          p.render(content);
+          content.classList.remove('page-enter');
+          void content.offsetWidth;
+          content.classList.add('page-enter');
+        }
+        window.location.hash = page;
+        window.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+      });
+    }
   }
 }
 window.navigate = navigate;
 
 /**
- * Preserves the page-content scroll position across an in-place re-render.
- * Use this whenever a button/sort/filter causes a full section re-render
- * but should NOT scroll the user back to the top.
+ * Preserves the window, document, and container scroll positions across any in-place re-render or action.
  * @param {Function} fn  The render/update function to call
  */
 function preserveScroll(fn) {
-  const el = document.getElementById('page-content');
-  const top = el ? el.scrollTop : 0;
-  const left = el ? el.scrollLeft : 0;
-  fn();
-  if (el) {
-    el.scrollTop = top;
-    el.scrollLeft = left;
-    // Double-set after paint to beat any async innerHTML flush
-    requestAnimationFrame(() => {
-      el.scrollTop = top;
-      el.scrollLeft = left;
-    });
+  const winX = window.scrollX !== undefined ? window.scrollX : (window.pageXOffset || document.documentElement?.scrollLeft || document.body?.scrollLeft || 0);
+  const winY = window.scrollY !== undefined ? window.scrollY : (window.pageYOffset || document.documentElement?.scrollTop || document.body?.scrollTop || 0);
+
+  const scrollContainers = Array.from(document.querySelectorAll('.table-wrapper, #prc-table-wrapper, .prc-tree, .explorer-tree, .modal-body, #page-content')).map(el => ({
+    el,
+    left: el.scrollLeft,
+    top: el.scrollTop
+  }));
+
+  if (typeof fn === 'function') {
+    fn();
   }
+
+  const restore = () => {
+    window.scrollTo({ left: winX, top: winY, behavior: 'instant' });
+    if (document.documentElement) {
+      document.documentElement.scrollTop = winY;
+      document.documentElement.scrollLeft = winX;
+    }
+    if (document.body) {
+      document.body.scrollTop = winY;
+      document.body.scrollLeft = winX;
+    }
+    scrollContainers.forEach(item => {
+      if (item.el && document.body.contains(item.el)) {
+        item.el.scrollLeft = item.left;
+        item.el.scrollTop = item.top;
+      }
+    });
+  };
+
+  restore();
+  requestAnimationFrame(restore);
+  setTimeout(restore, 0);
+  setTimeout(restore, 30);
+  setTimeout(restore, 100);
 }
 window.preserveScroll = preserveScroll;
 
@@ -1007,12 +1049,12 @@ window.togglePRCTreeRow = function(prcId, evt) {
 window.handleExpandAllPRCs = function() {
   const { items } = getPaginatedPRCs();
   expandAllPRCs(items.map(p => p.id));
-  renderPRCTable();
+  preserveScroll(() => renderPRCTable());
 };
 
 window.handleCollapseAllPRCs = function() {
   collapseAllPRCs();
-  renderPRCTable();
+  preserveScroll(() => renderPRCTable());
 };
 
 window.applyFilters = function() {
@@ -1225,6 +1267,8 @@ window.renderProgressStars = function(item, isPRC) {
 function renderPRCTable() {
   const state = getState();
   const countEl = document.getElementById('prc-list-count');
+  const winX = window.scrollX !== undefined ? window.scrollX : (window.pageXOffset || document.documentElement?.scrollLeft || document.body?.scrollLeft || 0);
+  const winY = window.scrollY !== undefined ? window.scrollY : (window.pageYOffset || document.documentElement?.scrollTop || document.body?.scrollTop || 0);
   const tableWrapper = document.getElementById('prc-table-wrapper');
   const savedScrollTop = tableWrapper ? tableWrapper.scrollTop : 0;
   const savedScrollLeft = tableWrapper ? tableWrapper.scrollLeft : 0;
@@ -1593,17 +1637,20 @@ function renderPRCTable() {
     }
   }
 
-  // Restore scroll positions so table doesn't jump to top
-  if (tableWrapper) {
-    tableWrapper.scrollTop = savedScrollTop;
-    tableWrapper.scrollLeft = savedScrollLeft;
-    requestAnimationFrame(() => {
-      if (tableWrapper) {
-        tableWrapper.scrollTop = savedScrollTop;
-        tableWrapper.scrollLeft = savedScrollLeft;
-      }
-    });
-  }
+  // Restore scroll positions so table and window don't jump to top
+  const restorePRCScroll = () => {
+    window.scrollTo({ left: winX, top: winY, behavior: 'instant' });
+    if (document.documentElement) document.documentElement.scrollTop = winY;
+    if (document.body) document.body.scrollTop = winY;
+    if (tableWrapper) {
+      tableWrapper.scrollTop = savedScrollTop;
+      tableWrapper.scrollLeft = savedScrollLeft;
+    }
+  };
+  restorePRCScroll();
+  requestAnimationFrame(restorePRCScroll);
+  setTimeout(restorePRCScroll, 0);
+  setTimeout(restorePRCScroll, 40);
 }
 
 window.goPage = function(p) {
@@ -3169,8 +3216,10 @@ window.handlePushLocalToCloud = async function() {
     const res = await pushLocalDataToFirestore();
     if (res.success) {
       toast(`Successfully uploaded ${res.count} PRC record(s) and all procurement workflow data to Cloud Firestore!`, 'success');
-      renderSettings(document.getElementById('page-content'));
-      window.showSettingsTab('database');
+      preserveScroll(() => {
+        renderSettings(document.getElementById('page-content'));
+        window.showSettingsTab('database');
+      });
       updateUserUI();
       updateSidebarBadges();
     } else {
@@ -3196,8 +3245,10 @@ window.handlePullCloudToLocal = async function() {
     const res = await forceSyncWithFirestore();
     if (res && res.success) {
       toast(`Successfully pulled fresh database from Cloud Firestore! (${res.count || getState().prcs.length} PRCs loaded)`, 'success');
-      renderSettings(document.getElementById('page-content'));
-      window.showSettingsTab('database');
+      preserveScroll(() => {
+        renderSettings(document.getElementById('page-content'));
+        window.showSettingsTab('database');
+      });
       updateUserUI();
       updateSidebarBadges();
     } else {
@@ -3239,7 +3290,7 @@ window.setTheme = function(t) {
   document.documentElement.setAttribute('data-theme', t==='system'?(window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'):t);
   localStorage.setItem('theme', t);
   setState({theme:t});
-  renderSettings(document.getElementById('page-content'));
+  preserveScroll(() => renderSettings(document.getElementById('page-content')));
 };
 
 // ── GLOBAL EXPORTS for inline onclick handlers ─────────────
@@ -4258,8 +4309,18 @@ window.handleDeleteAllocation = async function(id) {
   const confirmed = await confirmDialog('Delete this allocation document?', 'Delete Allocation');
   if (!confirmed) return;
   const result = deleteAllocation(id);
-  if (result.success) { toast('Allocation deleted', 'success'); navigate('allocations'); updateSidebarBadges(); }
-  else toast(result.reason, 'error');
+  if (result.success) {
+    toast('Allocation deleted', 'success');
+    const container = document.getElementById('page-content');
+    if (container && getState().currentPage === 'allocations') {
+      preserveScroll(() => renderAllocationsPage(container));
+    } else {
+      navigate('allocations');
+    }
+    updateSidebarBadges();
+  } else {
+    toast(result.reason, 'error');
+  }
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -5297,7 +5358,12 @@ window.handleToggleRFQClose = async function(id, shouldClose) {
   const result = toggleRFQClose(id, shouldClose);
   if (result.success) {
     toast(shouldClose ? 'RFQ closed! Materials are now available for TCD.' : 'RFQ re-opened.', 'success');
-    navigate('rfqs');
+    const container = document.getElementById('page-content');
+    if (container && getState().currentPage === 'rfqs') {
+      preserveScroll(() => renderRFQsPage(container));
+    } else {
+      navigate('rfqs');
+    }
     updateSidebarBadges();
   } else {
     toast(result.reason || 'Failed to update RFQ status', 'error');
@@ -5308,8 +5374,18 @@ window.handleDeleteRFQ = async function(id) {
   const confirmed = await confirmDialog('Delete this RFQ document?', 'Delete RFQ');
   if (!confirmed) return;
   const result = deleteRFQ(id);
-  if (result.success) { toast('RFQ deleted', 'success'); navigate('rfqs'); updateSidebarBadges(); }
-  else toast(result.reason, 'error');
+  if (result.success) {
+    toast('RFQ deleted', 'success');
+    const container = document.getElementById('page-content');
+    if (container && getState().currentPage === 'rfqs') {
+      preserveScroll(() => renderRFQsPage(container));
+    } else {
+      navigate('rfqs');
+    }
+    updateSidebarBadges();
+  } else {
+    toast(result.reason, 'error');
+  }
 };
 
 window.filterRFQDocs = function(query) {
@@ -6063,8 +6139,13 @@ window.handleApproveTCD = async function(id) {
   if (!confirmed) return;
   const result = approveTCD(id);
   if (result.success) {
-    toast(`TCD approved! ${result.podCount} PO Document(s) generated.`, 'success');
-    navigate('tcds');
+    toast(`TCD approved! ${result.podCount || ''} PO Document(s) generated.`, 'success');
+    const container = document.getElementById('page-content');
+    if (container && getState().currentPage === 'tcds') {
+      preserveScroll(() => renderTCDsPage(container));
+    } else {
+      navigate('tcds');
+    }
     updateSidebarBadges();
   } else {
     toast(result.reason || 'Failed to approve TCD', 'error');
@@ -6075,8 +6156,18 @@ window.handleDeleteTCD = async function(id) {
   const confirmed = await confirmDialog('Delete this TCD document?', 'Delete TCD');
   if (!confirmed) return;
   const result = deleteTCD(id);
-  if (result.success) { toast('TCD deleted', 'success'); navigate('tcds'); updateSidebarBadges(); }
-  else toast(result.reason, 'error');
+  if (result.success) {
+    toast('TCD deleted', 'success');
+    const container = document.getElementById('page-content');
+    if (container && getState().currentPage === 'tcds') {
+      preserveScroll(() => renderTCDsPage(container));
+    } else {
+      navigate('tcds');
+    }
+    updateSidebarBadges();
+  } else {
+    toast(result.reason, 'error');
+  }
 };
 
 window.filterTCDDocs = function(query) {
@@ -6671,8 +6762,18 @@ window.handleDeletePOD = async function(id) {
   const confirmed = await confirmDialog('Delete this Purchase Order document?', 'Delete PO');
   if (!confirmed) return;
   const result = deletePOD(id);
-  if (result.success) { toast('Purchase Order deleted', 'success'); navigate('pods'); updateSidebarBadges(); }
-  else toast(result.reason, 'error');
+  if (result.success) {
+    toast('Purchase Order deleted', 'success');
+    const container = document.getElementById('page-content');
+    if (container && getState().currentPage === 'pods') {
+      preserveScroll(() => renderPODsPage(container));
+    } else {
+      navigate('pods');
+    }
+    updateSidebarBadges();
+  } else {
+    toast(result.reason, 'error');
+  }
 };
 
 window.filterPODDocs = function(query) {
