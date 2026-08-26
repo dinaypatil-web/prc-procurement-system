@@ -5324,6 +5324,74 @@ window.filterRFQDocs = function(query) {
 // ═══════════════════════════════════════════════════════════
 // PAGE: TCDs (LIST VIEW)
 // ═══════════════════════════════════════════════════════════
+
+/**
+ * Compute PO coverage for a given TCD.
+ * Returns:
+ *   poNumbers    – unique PO numbers that reference items of this TCD
+ *   coveredItems – count of TCD items that have a PO created / issued
+ *   totalItems   – total TCD item count
+ *   status       – 'full' | 'partial' | 'none'
+ */
+function getTCDPOCoverage(tcd, allPODs = [], allPRCs = []) {
+  const vas = tcd.vendorAllocations || tcd.vendors || [];
+  const allTCDItems = vas.flatMap(va => va.items || []);
+  const poNumberSet = new Set();
+  const coveredSet = new Set();
+
+  allPODs.forEach(pod => {
+    const poNum = String(pod.poNumber || '').trim();
+    if (!poNum) return;
+
+    const matchesTcd = (pod.tcdId && pod.tcdId === tcd.id) ||
+      (pod.tcdNumber && tcd.tcdNumber && String(pod.tcdNumber).trim().toLowerCase() === String(tcd.tcdNumber).trim().toLowerCase());
+
+    (pod.items || []).forEach(item => {
+      const isItemInTcd = matchesTcd || allTCDItems.some(ti =>
+        (ti.prcId && item.prcId && ti.prcId === item.prcId && ti.materialId && item.materialId && ti.materialId === item.materialId) ||
+        (ti.prNumber && item.prNumber && ti.prNumber === item.prNumber && ti.matCode && item.matCode && ti.matCode === item.matCode)
+      );
+
+      if (isItemInTcd) {
+        poNumberSet.add(poNum);
+        if (item.prcId && item.materialId) coveredSet.add(`${item.prcId}::${item.materialId}`);
+        if (item.prNumber && item.matCode) coveredSet.add(`${item.prNumber}::${item.matCode}`);
+      }
+    });
+  });
+
+  allPRCs.forEach(prc => {
+    (prc.materials || []).forEach(m => {
+      const poNum = String(m.poNumber || prc.poNumber || '').trim();
+      if (!poNum) return;
+
+      const isItemInTcd = allTCDItems.some(ti =>
+        (ti.prcId === prc.id && ti.materialId === m.id) ||
+        (ti.prNumber === prc.prNumber && ti.matCode === m.matCode)
+      );
+
+      if (isItemInTcd) {
+        poNumberSet.add(poNum);
+        if (prc.id && m.id) coveredSet.add(`${prc.id}::${m.id}`);
+        if (prc.prNumber && m.matCode) coveredSet.add(`${prc.prNumber}::${m.matCode}`);
+      }
+    });
+  });
+
+  const totalItems = allTCDItems.length;
+  const coveredItems = allTCDItems.filter(i => 
+    (i.prcId && i.materialId && coveredSet.has(`${i.prcId}::${i.materialId}`)) ||
+    (i.prNumber && i.matCode && coveredSet.has(`${i.prNumber}::${i.matCode}`))
+  ).length;
+
+  const poNumbers = [...poNumberSet];
+
+  let status = 'none';
+  if (totalItems > 0 && coveredItems >= totalItems) status = 'full';
+  else if (coveredItems > 0) status = 'partial';
+
+  return { poNumbers, coveredItems, totalItems, status };
+}
 function renderTCDsPage(container) {
   const state = getState();
   const tcds = [...(state.tcds || [])];
@@ -5419,23 +5487,56 @@ function renderTCDsPage(container) {
   ${tcds.length ? `
   <div class="table-wrapper" style="overflow:auto">
     <table class="data-table">
-      <thead><tr><th>TCD Number</th><th>Date</th><th>Vendors</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+      <thead><tr><th>TCD Number</th><th>Date</th><th>Vendors</th><th>Materials</th><th>Status</th><th>PO</th><th>Created</th><th>Actions</th></tr></thead>
       <tbody id="tcd-docs-tbody">
         ${tcds.map(t => {
           const tcdVendors = t.vendorAllocations || t.vendors || [];
           const totalItems = tcdVendors.reduce((s, v) => s + (v.items || []).length, 0);
+          const isApproved = !!(t.approved || String(t.status || '').trim().toLowerCase() === 'approved');
+          const poCov = getTCDPOCoverage(t, state.pods || [], state.prcs || []);
+
+          // Build PO cell HTML
+          let poCellHTML = '';
+          if (poCov.status === 'full') {
+            // All items covered — show PO number(s) only
+            poCellHTML = poCov.poNumbers.map(num =>
+              `<span class="copy-badge" onclick="copyToClipboard('${num}','PO Number',event)" title="Click to copy PO Number" style="margin-bottom:2px;display:inline-flex">
+                 <strong class="font-mono">${num}</strong><span class="copy-icon">📋</span>
+               </span>`
+            ).join('<br>');
+            poCellHTML += `<br><span style="font-size:10px;color:var(--color-success);font-weight:600">✅ All items covered (${poCov.coveredItems}/${poCov.totalItems})</span>`;
+          } else if (poCov.status === 'partial') {
+            // Some items covered — show PO number(s) + button for balance
+            poCellHTML = poCov.poNumbers.map(num =>
+              `<span class="copy-badge" onclick="copyToClipboard('${num}','PO Number',event)" title="Click to copy PO Number" style="margin-bottom:2px;display:inline-flex">
+                 <strong class="font-mono">${num}</strong><span class="copy-icon">📋</span>
+               </span>`
+            ).join('<br>');
+            poCellHTML += `<br><span style="font-size:10px;color:var(--color-warning);font-weight:600">⚠️ Partial (${poCov.coveredItems}/${poCov.totalItems} items)</span><br>`;
+            if (isApproved) {
+              poCellHTML += `<button class="btn btn-secondary btn-xs" style="margin-top:4px;padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate('create-pod', { tcdId: '${t.id}', tcdNumber: '${t.tcdNumber}' })" title="Create Purchase Order for remaining items">🛒 Create PO for Balance</button>`;
+            }
+          } else {
+            // No PO yet
+            if (isApproved) {
+              poCellHTML = `<button class="btn btn-primary btn-xs" style="padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();navigate('create-pod', { tcdId: '${t.id}', tcdNumber: '${t.tcdNumber}' })" title="Create Purchase Order from this TCD">🛒 Create PO</button>`;
+            } else {
+              poCellHTML = `<span style="font-size:11px;color:var(--color-text-tertiary)">— (Pending Approval)</span>`;
+            }
+          }
+
           return `
           <tr>
             <td><span class="copy-badge" onclick="copyToClipboard('${t.tcdNumber}','TCD Number',event)" title="Click to copy TCD Number"><span class="font-mono font-semibold">${t.tcdNumber}</span><span class="copy-icon">📋</span></span></td>
             <td>${fmtDate(t.tcdDate)}</td>
             <td><strong>${tcdVendors.length} vendor(s)</strong></td>
             <td><span class="chip chip-pending">${totalItems} items</span></td>
-            <td><span class="chip ${t.approved ? 'chip-completed' : 'chip-awaiting'}">${t.status || (t.approved ? 'Approved' : 'Pending Approval')}</span></td>
+            <td><span class="chip ${isApproved ? 'chip-completed' : 'chip-awaiting'}">${t.status || (isApproved ? 'Approved' : 'Pending Approval')}</span></td>
+            <td style="min-width:160px">${poCellHTML}</td>
             <td>${fmtDate(t.createdAt)}</td>
             <td>
               <button class="btn btn-ghost btn-sm" onclick="viewTCDDetail('${t.id}')">👁️ View</button>
-              ${!t.approved ? `<button class="btn btn-secondary btn-sm" onclick="handleApproveTCD('${t.id}')">✅ Approve</button>` : ''}
-              <button class="btn btn-primary btn-sm" onclick="navigate('create-pod', { tcdId: '${t.id}', tcdNumber: '${t.tcdNumber}' })" title="Create Purchase Order from this TCD">🛒 Create PO</button>
+              ${!isApproved ? `<button class="btn btn-secondary btn-sm" onclick="handleApproveTCD('${t.id}')">✅ Approve</button>` : ''}
               <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleDeleteTCD('${t.id}')" title="Delete TCD">🗑️</button>
             </td>
           </tr>`;
@@ -5932,8 +6033,26 @@ window.viewTCDDetail = function(id) {
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button>
-        ${!tcd.approved ? `<button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove();handleApproveTCD('${tcd.id}')">✅ Approve TCD</button>` : ''}
-        <button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();navigate('create-pod', { tcdId: '${tcd.id}', tcdNumber: '${tcd.tcdNumber}' })">🛒 Create PO for this TCD</button>
+        ${!tcd.approved && String(tcd.status||'').trim().toLowerCase() !== 'approved' ? `<button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove();handleApproveTCD('${tcd.id}')">✅ Approve TCD</button>` : ''}
+        ${(() => {
+          const _cov = getTCDPOCoverage(tcd, getState().pods || [], getState().prcs || []);
+          const isApproved = !!(tcd.approved || String(tcd.status||'').trim().toLowerCase() === 'approved');
+          if (!isApproved) return '';
+          if (_cov.status === 'full') {
+            return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--color-success);padding:6px 12px;background:rgba(16,185,129,0.1);border-radius:6px;border:1px solid rgba(16,185,129,0.25)">
+              ✅ PO Created: ${_cov.poNumbers.map(n => `<span class="copy-badge" onclick="copyToClipboard('${n}','PO Number',event)" title="Click to copy PO Number" style="font-size:12px"><strong>${n}</strong><span class="copy-icon">📋</span></span>`).join(', ')}
+              <span style="font-size:11px;color:var(--color-text-secondary);font-weight:400">(All ${_cov.totalItems} items covered)</span>
+            </span>`;
+          } else if (_cov.status === 'partial') {
+            return `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--color-warning);padding:4px 10px;background:rgba(245,158,11,0.1);border-radius:6px;border:1px solid rgba(245,158,11,0.25)">
+              ⚠️ PO: ${_cov.poNumbers.map(n => `<span class="copy-badge" onclick="copyToClipboard('${n}','PO Number',event)" title="Click to copy PO Number" style="font-size:11px"><strong>${n}</strong><span class="copy-icon">📋</span></span>`).join(', ')}
+              <span style="font-size:11px;font-weight:400">(${_cov.coveredItems}/${_cov.totalItems} covered)</span>
+            </span>
+            <button class="btn btn-primary btn-sm" onclick="document.getElementById('${modalId}').remove();navigate('create-pod', { tcdId: '${tcd.id}', tcdNumber: '${tcd.tcdNumber}' })" title="Create Purchase Order for remaining items">🛒 Create PO for Balance (${_cov.totalItems - _cov.coveredItems} items)</button>`;
+          } else {
+            return `<button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();navigate('create-pod', { tcdId: '${tcd.id}', tcdNumber: '${tcd.tcdNumber}' })">🛒 Create PO for this TCD</button>`;
+          }
+        })()}
       </div>
     </div>`;
   document.body.appendChild(el);
