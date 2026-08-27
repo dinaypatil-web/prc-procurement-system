@@ -5,9 +5,14 @@
 
 import { getEnv, loadEnv } from './env.js';
 
-let _tursoUrl = null;
-let _tursoToken = null;
-let _isConfigured = false;
+const DEFAULT_TURSO_CONFIG = {
+  url: "https://prc-procurement-db-dinay-patil.aws-ap-south-1.turso.io",
+  token: "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODc4NDgwMzUsImlkIjoiMDFhMDQ0MGEtZTAwMS03Y2M3LTg1YTMtNmM1NjFhYjM0NzljIiwia2lkIjoibDdvQl9hXzkxQ3dlS3B2RS1BbkZWTU9mU1VjWDBGRmgyQmhtLVhLeTZhVSIsInJpZCI6IjkyODU0ZGNhLWRmYmItNDNmMy1hMWU3LTU3Zjg4MjFjOWU4MCJ9.pwXwdT-JWWrHoSTTB7Ml10vak3vgq78M_bXRWB8SyC3LRgmdQKmQ1K0eKHbgWjblRw2rEXBLv-20krGk9jUAAw"
+};
+
+let _tursoUrl = DEFAULT_TURSO_CONFIG.url;
+let _tursoToken = DEFAULT_TURSO_CONFIG.token;
+let _isConfigured = true;
 let _initPromise = null;
 
 const COLLECTION_TABLE_MAP = {
@@ -26,15 +31,25 @@ const COLLECTION_TABLE_MAP = {
 const COLLECTIONS = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'users', 'notifications', 'activityLogs'];
 
 /**
- * Initialize Turso Configuration from env
+ * Initialize Turso Configuration from custom override, env, or defaults
  */
 export async function initTurso() {
   if (_initPromise) return _initPromise;
 
   _initPromise = (async () => {
-    await loadEnv();
-    let url = getEnv('TURSO_DATABASE_URL');
-    let token = getEnv('TURSO_AUTH_TOKEN');
+    try {
+      await loadEnv();
+    } catch (e) {}
+
+    // Check custom localStorage override
+    let customCfg = null;
+    try {
+      const raw = localStorage.getItem('PRC_CUSTOM_TURSO_CONFIG');
+      if (raw) customCfg = JSON.parse(raw);
+    } catch (e) {}
+
+    let url = customCfg?.url || getEnv('TURSO_DATABASE_URL', DEFAULT_TURSO_CONFIG.url);
+    let token = customCfg?.token || getEnv('TURSO_AUTH_TOKEN', DEFAULT_TURSO_CONFIG.token);
 
     if (url && token) {
       if (url.startsWith('libsql://')) {
@@ -46,7 +61,7 @@ export async function initTurso() {
       _tursoUrl = url;
       _tursoToken = token;
       _isConfigured = true;
-      console.info('⚡ Turso Database Client initialized successfully');
+      console.info('⚡ Turso Database Client active (libSQL Edge DB)');
     } else {
       _isConfigured = false;
     }
@@ -57,7 +72,24 @@ export async function initTurso() {
 }
 
 export function isTursoConfigured() {
-  return _isConfigured || Boolean(getEnv('TURSO_DATABASE_URL') && getEnv('TURSO_AUTH_TOKEN'));
+  return Boolean(_tursoUrl && _tursoToken);
+}
+
+export function getTursoConfig() {
+  return {
+    url: _tursoUrl || DEFAULT_TURSO_CONFIG.url,
+    token: _tursoToken || DEFAULT_TURSO_CONFIG.token
+  };
+}
+
+export async function testTursoConnection() {
+  const start = performance.now();
+  const res = await executeTursoPipeline(["SELECT 1 AS ping;"]);
+  const latency = Math.round(performance.now() - start);
+  if (res && res.results && res.results[0]?.type === 'ok') {
+    return { success: true, latency };
+  }
+  return { success: false, error: 'Connection failed or bad credentials' };
 }
 
 /**
@@ -249,12 +281,12 @@ export async function loadAllUserData(uid, forceServer = false) {
   const effectiveUid = (uid && uid !== 'default') ? uid : 'guest';
   const result = {};
 
-  // Build select queries for each collection
+  // Build select queries for each collection (Load workspace records)
   const queries = COLLECTIONS.map(col => {
     const table = _getTableName(col);
     return {
-      sql: `SELECT id, user_id, data, updated_at FROM ${table} WHERE user_id = ? OR user_id = 'guest' ORDER BY rowid ASC;`,
-      args: [effectiveUid]
+      sql: `SELECT id, user_id, data, updated_at FROM ${table} ORDER BY rowid ASC;`,
+      args: []
     };
   });
 

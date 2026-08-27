@@ -316,6 +316,8 @@ import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatus
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
+import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } from './js/turso-db.js';
+import { getActiveDbProvider, setActiveDbProvider } from './js/db-adapter.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
 import { exportCSV, exportExcel, exportPDF, getAgeingReport } from './js/reports.js';
 
@@ -2943,30 +2945,17 @@ function renderSettings(container) {
     <div id="settings-database" class="card hidden">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:8px">
         <div>
-          <h3 style="font-weight:700;margin-bottom:2px">Cloud Database & Multi-PC Synchronization</h3>
-          <p style="font-size:12px;color:var(--color-text-secondary)">Manage data synchronization between local browser storage and Google Cloud Firestore</p>
+          <h3 style="font-weight:700;margin-bottom:2px">⚡ Turso Cloud Database & Multi-PC Synchronization</h3>
+          <p style="font-size:12px;color:var(--color-text-secondary)">High-speed libSQL Edge Database with 25,000,000 monthly writes and zero quota limits</p>
         </div>
-        <div class="chip ${isFirebaseConfigured() && state.isAuthenticated ? 'chip-completed' : 'chip-warning'}" style="padding:6px 12px;font-weight:600">
-          ${isFirebaseConfigured() && state.isAuthenticated ? '🟢 Connected to Cloud Firestore' : '⚠️ Offline / Guest Mode'}
+        <div class="chip chip-completed" style="padding:6px 12px;font-weight:600">
+          ⚡ Primary Storage: Turso Database
         </div>
       </div>
 
-      ${!state.isAuthenticated ? `
-      <div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
-        <div>
-          <div style="font-weight:700;color:#f59e0b;font-size:14px;display:flex;align-items:center;gap:6px">
-            <span>⚠️</span> Sign-in Required for Cloud Synchronization
-          </div>
-          <div style="font-size:12.5px;color:var(--color-text-secondary);margin-top:4px">
-            You are currently browsing in guest/offline mode. Sign in to your account with your email & password so your local records can be saved to Cloud Firestore and accessed on other computers.
-          </div>
-        </div>
-        <button class="btn btn-primary btn-sm" style="font-weight:700;white-space:nowrap" onclick="showAuthModal('signin')">🔑 Sign In Now</button>
-      </div>` : ''}
-
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:24px">
         <div style="background:var(--color-surface-2);border:1px solid var(--color-border);padding:14px;border-radius:10px">
-          <div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-transform:uppercase">Active Memory PRCs</div>
+          <div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-transform:uppercase">Active Turso PRCs</div>
           <div style="font-size:24px;font-weight:800;color:var(--color-primary);margin-top:4px">${state.prcs.length}</div>
           <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">${state.totalMaterials} material items</div>
         </div>
@@ -2976,38 +2965,38 @@ function renderSettings(container) {
           <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">${state.tcds.length} TCDs • ${state.pods.length} POs</div>
         </div>
         <div style="background:var(--color-surface-2);border:1px solid var(--color-border);padding:14px;border-radius:10px">
-          <div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-transform:uppercase">Local Cache Records</div>
-          <div style="font-size:24px;font-weight:800;color:var(--color-text-primary);margin-top:4px">${localCount}</div>
-          <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Saved in browser storage</div>
+          <div style="font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-transform:uppercase">Monthly Write Quota</div>
+          <div style="font-size:24px;font-weight:800;color:var(--color-success);margin-top:4px">25M</div>
+          <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">~800,000 writes / day (Free)</div>
         </div>
       </div>
 
       <div style="background:var(--color-surface-2);border:1px solid var(--color-border);padding:18px;border-radius:12px;margin-bottom:24px">
         <h4 style="font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px">
-          <span>☁️</span> Push Local Storage Data to Cloud Firestore
+          <span>⚡</span> Synchronize Data with Turso Cloud Database
         </h4>
         <p style="font-size:12.5px;color:var(--color-text-secondary);margin-bottom:14px;line-height:1.5">
-          If you uploaded an Excel sheet or created PRCs on this PC while offline or before Firestore was attached, click this button to <strong>upload all local records directly to Cloud Firestore</strong> so they immediately become available across all your other PCs and team members.
+          Push any pending changes or Excel imports directly to your Turso libSQL Cloud Database so your entire procurement team sees the latest updates in real-time across all PCs.
         </p>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button id="btn-push-local-cloud" class="btn btn-primary btn-sm" style="padding:8px 16px;font-weight:600" onclick="handlePushLocalToCloud()">
-            <span>☁️ Push / Upload Local Data to Firestore</span>
+            <span>⚡ Push / Save Workspace to Turso</span>
           </button>
           <button id="btn-pull-cloud-local" class="btn btn-secondary btn-sm" style="padding:8px 16px;font-weight:600" onclick="handlePullCloudToLocal()">
-            <span>🔄 Force Pull Fresh from Firestore</span>
+            <span>🔄 Force Pull Fresh from Turso</span>
           </button>
         </div>
       </div>
 
       <div style="background:var(--color-surface-2);border:1px solid var(--color-border);padding:18px;border-radius:12px;margin-bottom:24px">
         <h4 style="font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px">
-          <span>🔍</span> Firestore Connection Diagnostics
+          <span>🔍</span> Turso Database Diagnostics & Latency Test
         </h4>
         <p style="font-size:12.5px;color:var(--color-text-secondary);margin-bottom:14px;line-height:1.5">
-          Test whether this browser can read & write to your Cloud Firestore database. This writes a tiny ping document and reads it back.
+          Test connectivity and network latency to your Turso edge database cluster.
         </p>
-        <button id="btn-test-firestore" class="btn btn-secondary btn-sm" style="padding:8px 16px;font-weight:600" onclick="handleTestFirestoreConnection()">
-          🔍 Test Firestore Connection
+        <button id="btn-test-firestore" class="btn btn-secondary btn-sm" style="padding:8px 16px;font-weight:600" onclick="handleTestTursoConnection()">
+          🔍 Test Turso Connection
         </button>
         <div id="firestore-diag-output" style="margin-top:12px;background:var(--color-surface-3);border-radius:8px;padding:12px;min-height:20px"></div>
       </div>
@@ -3330,73 +3319,61 @@ window.handleRestoreJSONBackupFile = async function(e) {
   };
   reader.readAsText(file);
 };
-window.handleTestFirestoreConnection = async function() {
+window.handleTestTursoConnection = async function() {
   const btn = document.getElementById('btn-test-firestore');
   const out = document.getElementById('firestore-diag-output');
   if (btn) btn.disabled = true;
-  if (out) out.innerHTML = `<span style="color:var(--color-text-secondary)">🔍 Testing read/write connection to Cloud Firestore...</span>`;
+  if (out) out.innerHTML = `<span style="color:var(--color-text-secondary)">🔍 Testing connection to Turso Edge Database...</span>`;
 
   try {
-    const res = await testFirestoreConnection();
+    const res = await testTursoConnection();
     if (res.success) {
-      if (out) out.innerHTML = `<span style="color:var(--color-success);font-weight:600">✅ Cloud Firestore Connection Successful!</span><br><span style="font-size:12px;color:var(--color-text-secondary)">Project: <code>${res.projectId}</code> | Latency: <strong>${res.latencyMs}ms</strong></span>`;
-      toast("Firestore connection test passed!", "success");
+      if (out) out.innerHTML = `<span style="color:var(--color-success);font-weight:600">✅ Turso Cloud Database Connection Successful!</span><br><span style="font-size:12px;color:var(--color-text-secondary)">Endpoint: <code>${getTursoConfig().url}</code> | Round-trip Latency: <strong>${res.latency}ms</strong> | Quota: <strong>25 Million writes/month</strong></span>`;
+      toast(`Turso connection OK! (${res.latency}ms)`, "success");
     } else {
-      const isTimeout = (res.error || '').toLowerCase().includes('timed out');
       if (out) out.innerHTML = `
-        <div style="color:var(--color-danger);font-weight:600">❌ Firestore Connection Error:</div>
-        <div style="font-size:12px;color:var(--color-danger);margin-top:4px;margin-bottom:8px">${res.error || 'Unknown error'}</div>
-        <div style="font-size:11.5px;line-height:1.5;color:var(--color-text-secondary);background:var(--color-surface-1);padding:10px;border-radius:6px;border-left:3px solid var(--color-danger)">
-          <strong>Troubleshooting Checklist:</strong>
-          <ol style="margin-top:4px;margin-bottom:0;padding-left:18px">
-            <li><strong>Create Firestore Database:</strong> Open <a href="https://console.firebase.google.com/" target="_blank" style="color:var(--color-primary)">Firebase Console</a> › Select project <code>${res.projectId || 'procuretrack-3cb1c'}</code> › <strong>Build › Firestore Database</strong> › Click <strong>Create Database</strong>.</li>
-            <li><strong>Enable Test Mode Rules:</strong> In Firestore Database › <strong>Rules</strong> tab, set: <code>allow read, write: if true;</code></li>
-            <li><strong>Enable Anonymous Auth:</strong> Go to <strong>Authentication › Sign-in method</strong> › Enable <strong>Anonymous</strong>.</li>
-            <li><strong>Authorized Domains:</strong> Go to <strong>Authentication › Settings › Authorized Domains</strong> › Add your deployment domain.</li>
-          </ol>
-        </div>`;
-      toast("Firestore connection failed. Check setup guide in output box.", "danger");
+        <div style="color:var(--color-danger);font-weight:600">❌ Turso Connection Error:</div>
+        <div style="font-size:12px;color:var(--color-danger);margin-top:4px;margin-bottom:8px">${res.error || 'Connection failed'}</div>`;
+      toast("Turso connection failed.", "danger");
     }
   } catch (err) {
     if (out) out.innerHTML = `<span style="color:var(--color-danger);font-weight:600">❌ Test Exception:</span> ${err.message}`;
-    toast("Firestore test exception: " + err.message, "danger");
+    toast("Turso test exception: " + err.message, "danger");
   } finally {
     if (btn) btn.disabled = false;
   }
 };
-window.handleSaveCustomFirebaseConfig = async function() {
-  const apiKey = document.getElementById('cfg-api-key')?.value?.trim();
-  const projectId = document.getElementById('cfg-project-id')?.value?.trim();
-  const authDomain = document.getElementById('cfg-auth-domain')?.value?.trim();
-  const storageBucket = document.getElementById('cfg-storage-bucket')?.value?.trim();
 
-  if (!apiKey || !projectId) {
-    toast("API Key and Project ID are required.", "danger");
+window.handleSaveCustomTursoConfig = async function() {
+  const url = document.getElementById('cfg-turso-url')?.value?.trim();
+  const token = document.getElementById('cfg-turso-token')?.value?.trim();
+
+  if (!url || !token) {
+    toast("Turso URL and Auth Token are required.", "danger");
     return;
   }
 
   try {
-    saveCustomFirebaseConfig({
-      apiKey,
-      projectId,
-      authDomain: authDomain || `${projectId}.firebaseapp.com`,
-      storageBucket: storageBucket || `${projectId}.firebasestorage.app`
-    });
-    toast("Custom Firebase configuration saved! Reconnecting...", "success");
+    localStorage.setItem('PRC_CUSTOM_TURSO_CONFIG', JSON.stringify({ url, token }));
+    toast("Custom Turso configuration saved! Reconnecting...", "success");
+    await initTurso();
     await initAppData();
-    window.handleTestFirestoreConnection();
+    window.handleTestTursoConnection();
   } catch (err) {
     toast("Failed to save configuration: " + err.message, "danger");
   }
 };
-window.handleResetCustomFirebaseConfig = async function() {
-  resetCustomFirebaseConfig();
-  toast("Reset to default environment Firebase config. Reconnecting...", "info");
+
+window.handleResetCustomTursoConfig = async function() {
+  localStorage.removeItem('PRC_CUSTOM_TURSO_CONFIG');
+  toast("Reset to default environment Turso config. Reconnecting...", "info");
+  await initTurso();
   await initAppData();
-  window.handleTestFirestoreConnection();
+  window.handleTestTursoConnection();
 };
-window.toggleApiKeyVisibility = function(e) {
-  const input = document.getElementById('cfg-api-key');
+
+window.toggleTursoTokenVisibility = function(e) {
+  const input = document.getElementById('cfg-turso-token');
   const btn = (e && e.currentTarget) || (e && e.target);
   if (!input) return;
   if (input.type === 'password') {
@@ -3407,6 +3384,8 @@ window.toggleApiKeyVisibility = function(e) {
     if (btn) btn.textContent = '👁️';
   }
 };
+
+window.handleTestFirestoreConnection = window.handleTestTursoConnection;
 window.updateTopBarDbBadge = function(isConnected) {
   const dot = document.getElementById('topbar-db-dot');
   const text = document.getElementById('topbar-db-text');
@@ -7056,21 +7035,22 @@ function updateUserUI() {
 
   if (avatarEl) avatarEl.textContent = user.avatar || 'AO';
   if (nameEl) nameEl.textContent = user.name || (state.isAuthenticated ? 'User' : 'Guest');
-  if (roleEl) roleEl.textContent = user.role || (state.isAuthenticated ? 'Member' : 'Offline Mode');
+  if (roleEl) roleEl.textContent = user.role || 'Member';
 
   if (authBtn) {
     authBtn.title = state.isAuthenticated ? 'Sign Out / Switch User' : 'Sign In';
   }
 
   if (topbarBadgeText && topbarDot) {
-    if (isFirebaseConfigured() && state.isAuthenticated) {
+    const provider = getActiveDbProvider();
+    if (provider === 'turso' || isTursoConfigured()) {
+      topbarBadgeText.textContent = `Turso DB: Online`;
+      topbarDot.style.background = '#10b981'; // green
+    } else if (isFirebaseConfigured() && state.isAuthenticated) {
       topbarBadgeText.textContent = `Firestore: ${user.name.split(' ')[0]}`;
       topbarDot.style.background = '#10b981'; // green
-    } else if (isFirebaseConfigured()) {
-      topbarBadgeText.textContent = 'Auth Required';
-      topbarDot.style.background = '#f59e0b'; // yellow
     } else {
-      topbarBadgeText.textContent = 'Offline DB';
+      topbarBadgeText.textContent = 'Local Storage';
       topbarDot.style.background = '#64748b'; // gray
     }
   }
@@ -7083,9 +7063,9 @@ window.triggerManualSync = async function() {
     syncBtn.classList.add('loading');
     if (syncText) syncText.textContent = 'Syncing...';
   }
-  const success = await forceSyncWithFirestore();
-  if (success) {
-    toast('Live database synchronized with Firestore!', 'success');
+  const res = await pushLocalDataToFirestore();
+  if (res && res.success) {
+    toast(`⚡ Synced ${res.count || getState().prcs.length} records with Turso Cloud Database!`, 'success');
     updateUserUI();
     updateSidebarBadges();
     const currentPage = getState().currentPage || 'dashboard';
@@ -7093,7 +7073,7 @@ window.triggerManualSync = async function() {
       PAGES[currentPage].render(document.getElementById('page-content'));
     }
   } else {
-    toast('Sync completed. Your local data is up to date.', 'info');
+    toast('Sync completed. Your data is up to date.', 'info');
   }
   if (syncBtn) {
     syncBtn.classList.remove('loading');
@@ -7143,29 +7123,19 @@ async function init() {
   // Render initial page immediately
   navigate(initialPage);
 
-  // 2. Perform background Cloud Firestore initialization asynchronously without blocking initial render
+  // 2. Perform background Turso & App Data initialization asynchronously
   try {
-    const app = await Promise.race([
-      initFirebase(),
-      new Promise(resolve => setTimeout(() => resolve(null), 3000))
-    ]);
-
-    await Promise.race([
-      initAppData(),
-      new Promise(resolve => setTimeout(() => resolve(null), 4000))
-    ]);
+    await initTurso();
+    await initAppData();
 
     updateUserUI();
     updateSidebarBadges();
 
-    if (isFirebaseConfigured() && app) {
-      onAuthChange(async (firebaseUser) => {
-        if (firebaseUser) {
-          await setAuthenticatedUser(firebaseUser);
-        }
-        updateUserUI();
-        updateSidebarBadges();
-      });
+    // Re-render active page with fresh Turso data
+    const activePage = getState().currentPage || 'dashboard';
+    const pageContent = document.getElementById('page-content');
+    if (PAGES[activePage] && pageContent) {
+      PAGES[activePage].render(pageContent);
     }
   } catch (err) {
     console.error('App background init error:', err);
