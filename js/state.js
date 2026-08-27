@@ -1040,47 +1040,148 @@ export function clearAuthenticatedUser() {
   emit('*');
 }
 
-export function updateUserProfile(patch) {
-  if (!patch) return false;
+// ── ROLE & PERMISSION HELPERS ──────────────────────────────
 
-  state.currentUser = {
-    ...state.currentUser,
+export function isSuperAdmin(user = state.currentUser) {
+  if (!user) return false;
+  const role = String(user.role || '').trim().toLowerCase();
+  return role === 'super admin' || role === 'admin' || user.email === 'dinay.patil@gmail.com' || user.email === 'admin@company.com';
+}
+
+export function doesRecordPertainToCurrentUser(record, user = state.currentUser) {
+  if (isSuperAdmin(user)) return true;
+  if (!record || !user) return true;
+
+  const uName = (user.name || '').trim().toLowerCase();
+  const uEmail = (user.email || '').trim().toLowerCase();
+  const uId = String(user.id || user.uid || '').trim().toLowerCase();
+
+  const matches = (val) => {
+    if (!val || typeof val !== 'string') return false;
+    const v = val.trim().toLowerCase();
+    if (!v) return false;
+    if (v === uName || v === uEmail || v === uId) return true;
+    if (uName && (v.includes(uName) || uName.includes(v))) return true;
+    if (uEmail && v.includes(uEmail)) return true;
+    return false;
+  };
+
+  if (matches(record.buyerName) || matches(record.allocatedBy) || matches(record.requestedBy) ||
+      matches(record.createdBy) || matches(record.engineer) || matches(record.userId) || matches(record.authorizedBy)) {
+    return true;
+  }
+
+  if (Array.isArray(record.materials)) {
+    return record.materials.some(m => matches(m.buyerName) || matches(m.engineer) || matches(m.allocatedBy) || matches(m.requestedBy));
+  }
+
+  if (Array.isArray(record.items)) {
+    return record.items.some(i => matches(i.buyerName) || matches(i.engineer) || matches(i.allocatedBy) || matches(i.requestedBy));
+  }
+
+  return false;
+}
+
+export async function updateAnyUserProfile(targetIdOrEmail, patch) {
+  if (!targetIdOrEmail || !patch) return { success: false, reason: 'Invalid parameters' };
+
+  const isSelf = (state.currentUser.id && state.currentUser.id === targetIdOrEmail) ||
+                 (state.currentUser.uid && state.currentUser.uid === targetIdOrEmail) ||
+                 (state.currentUser.email && state.currentUser.email.toLowerCase() === String(targetIdOrEmail).toLowerCase());
+
+  if (!isSuperAdmin() && !isSelf) {
+    return { success: false, reason: 'Permission denied: Only Super Admin or the account owner can edit this user profile.' };
+  }
+
+  const userIdx = state.users.findIndex(u =>
+    (u.id && u.id === targetIdOrEmail) ||
+    (u.uid && u.uid === targetIdOrEmail) ||
+    (u.email && u.email.toLowerCase() === String(targetIdOrEmail).toLowerCase())
+  );
+
+  if (userIdx === -1) {
+    return { success: false, reason: 'User not found in roster.' };
+  }
+
+  // Non-super-admins cannot elevate their own role
+  if (!isSuperAdmin() && patch.role && patch.role !== state.users[userIdx].role) {
+    delete patch.role;
+  }
+
+  const updatedUser = {
+    ...state.users[userIdx],
     ...patch
   };
 
-  // If avatar is blank or default fallback, compute from name
-  if (!state.currentUser.avatar || state.currentUser.avatar === 'GU' || state.currentUser.avatar === 'U') {
-    const fn = (state.currentUser.name || state.currentUser.email || 'U').trim();
+  // Compute avatar initials if blank
+  if (!updatedUser.avatar || updatedUser.avatar === 'GU' || updatedUser.avatar === 'U') {
+    const fn = (updatedUser.name || updatedUser.email || 'U').trim();
     const parts = fn.split(' ');
-    state.currentUser.avatar = parts.length > 1
+    updatedUser.avatar = parts.length > 1
       ? (parts[0][0] + parts[1][0]).toUpperCase()
       : fn.slice(0, 2).toUpperCase();
   }
 
-  // Update in state.users list
-  const userIdx = state.users.findIndex(u =>
-    (u.id && u.id === state.currentUser.id) ||
-    (u.uid && u.uid === state.currentUser.uid) ||
-    (u.email && u.email.toLowerCase() === (state.currentUser.email || '').toLowerCase())
-  );
-  if (userIdx >= 0) {
-    state.users[userIdx] = { ...state.users[userIdx], ...state.currentUser };
-  } else {
-    state.users.push({ ...state.currentUser });
+  state.users[userIdx] = updatedUser;
+
+  if (isSelf) {
+    state.currentUser = { ...state.currentUser, ...updatedUser };
   }
 
-  // Save to local cache
   saveToLocalCache();
 
-  // Save to Firestore if connected
-  if (isFirebaseConfigured()) {
-    const uid = _getEffectiveUid();
-    saveAllUserData(uid, state).catch(err => console.warn('Firestore profile sync error:', err));
+  // Save directly to Turso users and user_profiles tables
+  try {
+    const { executeTursoPipeline, isTursoConfigured } = await import('./turso-db.js');
+    if (isTursoConfigured()) {
+      const now = new Date().toISOString();
+      const userId = String(updatedUser.id || updatedUser.uid || targetIdOrEmail);
+      await executeTursoPipeline([
+        {
+          sql: `INSERT INTO users (id, user_id, email, role, data, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                  email = excluded.email,
+                  role = excluded.role,
+                  data = excluded.data,
+                  updated_at = excluded.updated_at;`,
+          args: [
+            userId,
+            userId,
+            String(updatedUser.email || ''),
+            String(updatedUser.role || ''),
+            JSON.stringify(updatedUser),
+            now
+          ]
+        },
+        {
+          sql: `INSERT INTO user_profiles (user_id, data, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                  data = excluded.data,
+                  updated_at = excluded.updated_at;`,
+          args: [
+            userId,
+            JSON.stringify(updatedUser),
+            now
+          ]
+        }
+      ]);
+    }
+  } catch (err) {
+    console.warn('Failed to persist user profile to Turso:', err);
   }
 
   emit('currentUser');
   emit('users');
   emit('*');
+  return { success: true, user: updatedUser };
+}
+
+export function updateUserProfile(patch) {
+  if (!patch) return false;
+  const target = state.currentUser?.id || state.currentUser?.email;
+  updateAnyUserProfile(target, patch);
   return true;
 }
 
@@ -1088,6 +1189,12 @@ export function updateUserProfile(patch) {
 
 export function getFilteredPRCs() {
   let list = [...state.prcs];
+
+  // Role-based visibility filter: Only show data pertaining to current user if not Super Admin
+  if (!isSuperAdmin()) {
+    list = list.filter(p => doesRecordPertainToCurrentUser(p));
+  }
+
   const q = state.searchQuery.toLowerCase();
 
   if (q) {
@@ -1925,6 +2032,7 @@ export function getRFQdQty(allocationId, prcId, materialId) {
 export function getAvailableForRFQ() {
   const result = [];
   state.allocations.forEach(alloc => {
+    if (!isSuperAdmin() && !doesRecordPertainToCurrentUser(alloc)) return;
     alloc.items.forEach(item => {
       // Resolve the parent PRC so we can check its status and material-line flags
       const prc = state.prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
@@ -2265,6 +2373,7 @@ export function getTCDdQty(rfqId, prcId, materialId) {
 export function getAvailableForTCD() {
   const result = [];
   state.rfqs.forEach(rfq => {
+    if (!isSuperAdmin() && !doesRecordPertainToCurrentUser(rfq)) return;
     // RFQ itself marked Short-Close → skip entirely
     if (isPRCShortClosed(rfq) || rfq.isShortClosed ||
         String(rfq.status || '').toLowerCase() === 'short closed' ||
@@ -2520,6 +2629,7 @@ export function getPODById(id) {
 export function getAvailableForPOD() {
   const result = [];
   state.tcds.forEach(tcd => {
+    if (!isSuperAdmin() && !doesRecordPertainToCurrentUser(tcd)) return;
     if (!tcd.approved && String(tcd.status || '').trim().toLowerCase() !== 'approved') return;
     const allocations = tcd.vendorAllocations || tcd.vendors || [];
     allocations.forEach(va => {
