@@ -2054,6 +2054,40 @@ export function isPRCAuthorised(p) {
   return s === 'authorised' || s === 'authorized' || s === 'approved';
 }
 
+export function _isExcludedFromPending(item, prc) {
+  // 1. Check parent PRC short close & exception flags
+  if (prc) {
+    if (isPRCShortClosed(prc)) return true;
+    if (prc.isPRNotApproved || prc.isWrongPRC || prc.isFuturePRC || prc.isSystemIssue) return true;
+    const prcS = String(prc.status || prc.prStatus || '').toLowerCase().trim();
+    if (['short-close', 'short-closed', 'short close', 'short closed', 'shortclose', 'shortclosed', 'wrong prc', 'future prc', 'pr not approved', 'system issue'].includes(prcS)) {
+      return true;
+    }
+  }
+
+  // 2. Check item-level short close & flags
+  if (item) {
+    if (isPRCShortClosed(item) || isMaterialShortClosed(item, prc)) return true;
+    if (item.isShortClosed || item.shortClosed || item.isPRNotApproved || item.isWrongPRC || item.isFuturePRC || item.isSystemIssue) return true;
+    const itemS = String(item.status || item.prStatus || '').toLowerCase().trim();
+    if (['short-close', 'short-closed', 'short close', 'short closed', 'shortclose', 'shortclosed', 'wrong prc', 'future prc', 'pr not approved', 'system issue'].includes(itemS)) {
+      return true;
+    }
+  }
+
+  // 3. Find corresponding material on PRC if item links to a material
+  if (prc && Array.isArray(prc.materials) && item) {
+    const mat = prc.materials.find(m =>
+      (item.materialId && m.id === item.materialId) ||
+      (item.materialCode && m.materialCode === item.materialCode) ||
+      (item.itemCode && m.materialCode === item.itemCode)
+    );
+    if (mat && isMaterialShortClosed(mat, prc)) return true;
+  }
+
+  return false;
+}
+
 export function getAvailablePRCsForAllocation() {
   const prcs = isSuperAdmin() ? (state.prcs || []) : (state.prcs || []).filter(p => doesRecordPertainToCurrentUser(p));
   return prcs.filter(p => {
@@ -2260,41 +2294,6 @@ export function deleteAllocation(id) {
 
   addAuditLog({ action: 'delete_allocation', collection: 'Allocations', docId: id, changes: {} });
   return { success: true };
-}
-
-/**
- * Returns true if an item or PRC/material should be treated as completed/excluded
- * from all pending procurement queues (RFQ / TCD / PO).
- * Covers: Wrong PRC, Future PRC, Short-Close PRC, Short-Close material line.
- */
-function _isExcludedFromPending(item, prc) {
-  const shortKeywords = ['short-close', 'short-closed', 'short close', 'short closed', 'shortclose', 'shortclosed'];
-  const excludedPRCKeywords = ['future prc', 'wrong prc', ...shortKeywords];
-
-  // PRC-level exclusion
-  if (prc) {
-    if (isPRCShortClosed(prc) || prc.isFuturePRC || prc.isWrongPRC) return true;
-    const prcSt = String(prc.status   || '').trim().toLowerCase();
-    const prSt  = String(prc.prStatus || '').trim().toLowerCase();
-    if (excludedPRCKeywords.includes(prcSt) || excludedPRCKeywords.includes(prSt)) return true;
-
-    // Material-line-level exclusion (look up on the PRC's materials array)
-    const mat = (prc.materials || []).find(m => m.id === item.materialId || m.matCode === item.matCode);
-    if (mat) {
-      if (isMaterialShortClosed(mat, prc) || mat.isFuturePRC || mat.isWrongPRC) return true;
-      const matSt = String(mat.status   || '').trim().toLowerCase();
-      const matPr = String(mat.prStatus || '').trim().toLowerCase();
-      if (excludedPRCKeywords.includes(matSt) || excludedPRCKeywords.includes(matPr)) return true;
-    }
-  }
-
-  // Item-level exclusion (flags propagated onto allocation / RFQ / TCD item objects)
-  if (isMaterialShortClosed(item, prc) || item.isFuturePRC || item.isWrongPRC) return true;
-  const itemSt = String(item.status   || '').trim().toLowerCase();
-  const itemPr = String(item.prStatus || '').trim().toLowerCase();
-  if (excludedPRCKeywords.includes(itemSt) || excludedPRCKeywords.includes(itemPr)) return true;
-
-  return false;
 }
 
 // ── RFQ OPERATIONS ────────────────────────────────────────
