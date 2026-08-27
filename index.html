@@ -228,7 +228,7 @@
         <label class="form-label" style="font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:4px;margin-bottom:6px">
           <span>⚡</span> Quick Select Registered User
         </label>
-        <select id="auth-quick-user-select" class="form-control" style="font-size:12px" onchange="document.getElementById('auth-signin-email').value=this.value">
+        <select id="auth-quick-user-select" class="form-control" style="font-size:12px" onchange="document.getElementById('auth-signin-email').value=this.value; document.getElementById('auth-signin-password')?.focus();">
           <option value="">-- Choose Team Member --</option>
           <option value="dinay.patil@gmail.com">👑 Patil Dinay Dilip (Super Admin)</option>
           <option value="admin@company.com">👑 Admin User (Super Admin)</option>
@@ -246,13 +246,16 @@
 
       <div class="form-group" style="margin-bottom:14px">
         <label class="form-label" style="font-size:12px">Email Address</label>
-        <input type="email" id="auth-signin-email" class="form-control" placeholder="user@company.com" required autocomplete="email" value="dinay.patil@gmail.com"/>
+        <input type="email" id="auth-signin-email" class="form-control" placeholder="user@company.com" required autocomplete="email"/>
       </div>
       <div class="form-group" style="margin-bottom:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
           <label class="form-label" style="font-size:12px;margin-bottom:0">Password</label>
         </div>
-        <input type="password" id="auth-signin-password" class="form-control" placeholder="••••••••" autocomplete="current-password" value="123456"/>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="auth-signin-password" class="form-control" placeholder="Enter your password" required autocomplete="current-password" style="padding-right:38px"/>
+          <button type="button" class="btn btn-ghost btn-xs" style="position:absolute;right:6px;padding:4px 6px;color:var(--color-text-secondary);cursor:pointer;border:none;background:transparent" onclick="window.toggleAuthPasswordVisibility()" title="Toggle password visibility">👁️</button>
+        </div>
       </div>
       <button type="submit" id="auth-signin-submit" class="btn btn-primary w-full" style="height:42px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">
         <span>Sign In to Workspace</span>
@@ -3359,6 +3362,7 @@ window.handleSaveUserCredentialsSubmit = async function(e, targetIdOrEmail) {
   }
 
   if (password && password.length >= 6) {
+    patch.password = password;
     patch.passwordUpdated = new Date().toISOString();
   }
 
@@ -7039,6 +7043,12 @@ window.closeAuthModal = function() {
     modal.classList.remove('open');
     modal.classList.add('hidden');
   }
+};
+
+window.toggleAuthPasswordVisibility = function() {
+  const input = document.getElementById('auth-signin-password');
+  if (!input) return;
+  input.type = input.type === 'password' ? 'text' : 'password';
 };
 
 function showAuthAlert(msg, type = 'error') {

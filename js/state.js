@@ -933,6 +933,9 @@ export const initDemoData = initAppData;
 
 export async function loginUser(emailOrId, password) {
   if (!emailOrId) return { success: false, reason: 'Email or User ID is required.' };
+  if (!password || !String(password).trim()) {
+    return { success: false, reason: 'Password is required to sign in.' };
+  }
 
   const norm = String(emailOrId).trim().toLowerCase();
   // Match in state.users roster
@@ -965,20 +968,19 @@ export async function loginUser(emailOrId, password) {
   }
 
   if (!user) {
-    // If brand new user registering or logging in
-    const defaultRole = norm.includes('admin') || norm.includes('dinay') ? 'Super Admin' : 'Procurement Engineer';
-    const computedName = norm.includes('@') ? norm.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : norm;
-    user = {
-      id: `user-${Date.now()}`,
-      name: computedName,
-      email: norm.includes('@') ? norm : `${norm}@company.com`,
-      role: defaultRole,
-      avatar: computedName.slice(0, 2).toUpperCase(),
-      department: 'Procurement & Sourcing',
-      title: defaultRole
+    return {
+      success: false,
+      reason: 'No account found with this email address. Please check your email or click "Create User".'
     };
-    state.users.push(user);
-    updateAnyUserProfile(user.id, user).catch(() => {});
+  }
+
+  // Strictly check password
+  const expectedPassword = user.password || '123456';
+  if (String(password).trim() !== String(expectedPassword).trim()) {
+    return {
+      success: false,
+      reason: 'Incorrect password. Please enter the valid password for this account.'
+    };
   }
 
   state.currentUser = {
