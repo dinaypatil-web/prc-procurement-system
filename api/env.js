@@ -86,6 +86,16 @@ export default function handler(req, res) {
       'VITE_GEMINI_API_KEY',
       'REACT_APP_GEMINI_API_KEY'
     ]),
+    TURSO_DATABASE_URL: getEnvVar([
+      'TURSO_DATABASE_URL',
+      'NEXT_PUBLIC_TURSO_DATABASE_URL',
+      'VITE_TURSO_DATABASE_URL'
+    ]),
+    TURSO_AUTH_TOKEN: getEnvVar([
+      'TURSO_AUTH_TOKEN',
+      'NEXT_PUBLIC_TURSO_AUTH_TOKEN',
+      'VITE_TURSO_AUTH_TOKEN'
+    ]),
     _SOURCE: 'vercel-api-env'
   };
 

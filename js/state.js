@@ -20,9 +20,12 @@ import {
   directDeleteTCD,
   directSavePOD,
   directDeletePOD,
-  directSaveActivityLog
-} from './firestore-db.js';
+  directSaveActivityLog,
+  getActiveDbProvider,
+  setActiveDbProvider
+} from './db-adapter.js';
 import { isFirebaseConfigured } from './firebase-config.js';
+import { isTursoConfigured } from './turso-db.js';
 
 export const LOCAL_CACHE_KEY = 'PRC_PROCUREMENT_USER_CACHE';
 
@@ -144,26 +147,34 @@ export function loadFromLocalCache() {
 }
 
 export async function pushLocalDataToFirestore() {
-  const { ensureFirebaseAuth, isFirebaseConfigured } = await import('./firebase-config.js');
-  const authUser = await ensureFirebaseAuth();
+  return pushLocalDataToDatabase();
+}
+
+export async function pushLocalDataToDatabase() {
+  const { ensureFirebaseAuth } = await import('./firebase-config.js');
+  let authUser = null;
+  try {
+    authUser = await ensureFirebaseAuth();
+  } catch (e) {}
 
   if (authUser && (!state.firebaseUser || !state.firebaseUser.uid)) {
     await setAuthenticatedUser(authUser);
   }
 
   const uid = state.firebaseUser?.uid || authUser?.uid || 'default';
+  const provider = getActiveDbProvider();
 
   try {
-    console.info(`☁️ Pushing ${state.prcs.length} local records to Cloud Firestore (uid: ${uid})...`);
-    const { saveAllUserData } = await import('./firestore-db.js');
+    console.info(`⚡ Pushing ${state.prcs.length} local records to ${provider.toUpperCase()} (uid: ${uid})...`);
+    const { saveAllUserData } = await import('./db-adapter.js');
     const success = await saveAllUserData(uid, state);
     if (success) {
       saveToLocalCache();
       emit('*');
     }
-    return { success, count: state.prcs.length };
+    return { success, count: state.prcs.length, provider };
   } catch (err) {
-    console.error('Failed to push local data to Firestore:', err);
+    console.error(`Failed to push local data to ${provider}:`, err);
     return { success: false, reason: err.message };
   }
 }
@@ -1247,6 +1258,11 @@ export function updatePRC(id, patch, cascadeToMaterials = false) {
   // Direct Firestore write
   directSavePRC(_getEffectiveUid(), updated);
 
+  // If prNumber changed, propagate the new value to all downstream item records
+  if (patch.prNumber !== undefined && patch.prNumber !== current.prNumber) {
+    _syncPRCFieldsToDownstream(id, { prNumber: patch.prNumber });
+  }
+
   addAuditLog({
     action: 'update_prc', collection: 'PRCs', docId: id,
     changes: { ...patch, cascaded: cascadeToMaterials }
@@ -1315,6 +1331,9 @@ export function updateMaterial(prcId, materialId, patch) {
 
   directSavePRC(_getEffectiveUid(), updatedPRC);
 
+  // Propagate changed fields to Allocation / RFQ / TCD / POD item records
+  _syncMaterialPatchToDownstream(prcId, materialId, patch);
+
   addAuditLog({
     action: 'update_material', collection: 'PRC Materials', docId: `${prcId}/${materialId}`,
     changes: patch
@@ -1354,10 +1373,233 @@ export function bulkUpdateMaterials(prcId, materialIds, patch) {
 
   directSavePRC(_getEffectiveUid(), updatedPRC);
 
+  // Propagate changed fields to Allocation / RFQ / TCD / POD item records for each material
+  materialIds.forEach(matId => _syncMaterialPatchToDownstream(prcId, matId, patch));
+
   addAuditLog({
     action: 'bulk_update_materials', collection: 'PRC Materials', docId: prcId,
     changes: { materialCount: materialIds.length, patch }
   });
+}
+
+// ── DOWNSTREAM SYNC HELPERS ──────────────────────────────
+
+/**
+ * Fields that are considered descriptive/identity and should be mirrored
+ * into ALL downstream document item records (Allocation, RFQ, TCD, POD).
+ */
+const _ITEM_IDENTITY_FIELDS = ['matCode', 'description', 'unit', 'prNumber'];
+
+/**
+ * Fields that are procurement-stage references. Each key maps to the
+ * document type(s) whose items should receive the updated value.
+ * 'alloc'  → Allocation items
+ * 'rfq'    → RFQ items
+ * 'tcd'    → TCD vendorAllocations[].items[]
+ * 'pod'    → POD items
+ */
+const _STAGE_FIELDS = {
+  allocationNumber: ['alloc'],
+  allocationDate:   ['alloc'],
+  buyerName:        ['alloc'],
+  allocatedBy:      ['alloc'],
+  rfqNumber:        ['rfq', 'tcd'],
+  rfqDate:          ['rfq'],
+  tcdNumber:        ['tcd', 'pod'],
+  tcdDate:          ['tcd', 'pod'],
+  tcdApproved:      ['tcd', 'pod'],
+  poNumber:         ['pod'],
+  poDate:           ['pod'],
+  vendorName:       ['tcd', 'pod'],
+  vendor:           ['tcd', 'pod'],
+  deliveryDate:     ['alloc', 'rfq', 'tcd', 'pod'],
+};
+
+/**
+ * Propagates a material-level patch to all Allocation / RFQ / TCD / POD
+ * documents that contain an item for (prcId, materialId).
+ * Only the relevant field subsets are applied to each document type.
+ * directSave* is called only for documents that actually changed.
+ *
+ * @param {string} prcId
+ * @param {string} materialId
+ * @param {Object} patch  - same patch object passed to updateMaterial / bulkUpdateMaterials
+ */
+function _syncMaterialPatchToDownstream(prcId, materialId, patch) {
+  const uid = _getEffectiveUid();
+
+  // Build per-stage sub-patches (identity fields always included)
+  const identityPatch = {};
+  _ITEM_IDENTITY_FIELDS.forEach(f => { if (patch[f] !== undefined) identityPatch[f] = patch[f]; });
+
+  const stagePatch = { alloc: { ...identityPatch }, rfq: { ...identityPatch }, tcd: { ...identityPatch }, pod: { ...identityPatch } };
+  Object.entries(_STAGE_FIELDS).forEach(([field, stages]) => {
+    if (patch[field] !== undefined) {
+      stages.forEach(s => { stagePatch[s][field] = patch[field]; });
+    }
+  });
+
+  const hasAllocPatch = Object.keys(stagePatch.alloc).length > 0;
+  const hasRFQPatch   = Object.keys(stagePatch.rfq).length > 0;
+  const hasTCDPatch   = Object.keys(stagePatch.tcd).length > 0;
+  const hasPODPatch   = Object.keys(stagePatch.pod).length > 0;
+
+  // ── Allocation documents ──────────────────────────────────
+  if (hasAllocPatch) {
+    let allocations = [...state.allocations];
+    let allocChanged = false;
+    allocations = allocations.map(alloc => {
+      const hasMatch = (alloc.items || []).some(i => i.prcId === prcId && i.materialId === materialId);
+      if (!hasMatch) return alloc;
+      const updatedItems = alloc.items.map(i =>
+        (i.prcId === prcId && i.materialId === materialId) ? { ...i, ...stagePatch.alloc } : i
+      );
+      allocChanged = true;
+      const updated = { ...alloc, items: updatedItems, updatedAt: new Date().toISOString() };
+      directSaveAllocation(uid, updated);
+      return updated;
+    });
+    if (allocChanged) setState({ allocations });
+  }
+
+  // ── RFQ documents ─────────────────────────────────────────
+  if (hasRFQPatch) {
+    let rfqs = [...state.rfqs];
+    let rfqChanged = false;
+    rfqs = rfqs.map(rfq => {
+      const hasMatch = (rfq.items || []).some(i => i.prcId === prcId && i.materialId === materialId);
+      if (!hasMatch) return rfq;
+      const updatedItems = rfq.items.map(i =>
+        (i.prcId === prcId && i.materialId === materialId) ? { ...i, ...stagePatch.rfq } : i
+      );
+      rfqChanged = true;
+      const updated = { ...rfq, items: updatedItems, updatedAt: new Date().toISOString() };
+      directSaveRFQ(uid, updated);
+      return updated;
+    });
+    if (rfqChanged) setState({ rfqs });
+  }
+
+  // ── TCD documents (vendorAllocations[].items[]) ───────────
+  if (hasTCDPatch) {
+    let tcds = [...state.tcds];
+    let tcdChanged = false;
+    tcds = tcds.map(tcd => {
+      const vas = tcd.vendorAllocations || tcd.vendors || [];
+      let tcdModified = false;
+      const updatedVAs = vas.map(va => {
+        const hasMatch = (va.items || []).some(i => i.prcId === prcId && i.materialId === materialId);
+        if (!hasMatch) return va;
+        const updatedItems = va.items.map(i =>
+          (i.prcId === prcId && i.materialId === materialId) ? { ...i, ...stagePatch.tcd } : i
+        );
+        tcdModified = true;
+        return { ...va, items: updatedItems };
+      });
+      if (!tcdModified) return tcd;
+      tcdChanged = true;
+      const vaKey = tcd.vendorAllocations ? 'vendorAllocations' : 'vendors';
+      const updated = { ...tcd, [vaKey]: updatedVAs, updatedAt: new Date().toISOString() };
+      directSaveTCD(uid, updated);
+      return updated;
+    });
+    if (tcdChanged) setState({ tcds });
+  }
+
+  // ── POD documents ─────────────────────────────────────────
+  if (hasPODPatch) {
+    let pods = [...state.pods];
+    let podChanged = false;
+    pods = pods.map(pod => {
+      const hasMatch = (pod.items || []).some(i => i.prcId === prcId && i.materialId === materialId);
+      if (!hasMatch) return pod;
+      const updatedItems = pod.items.map(i =>
+        (i.prcId === prcId && i.materialId === materialId) ? { ...i, ...stagePatch.pod } : i
+      );
+      podChanged = true;
+      const updated = { ...pod, items: updatedItems, updatedAt: new Date().toISOString() };
+      directSavePOD(uid, updated);
+      return updated;
+    });
+    if (podChanged) setState({ pods });
+  }
+}
+
+/**
+ * Propagates PRC-level identity field changes (currently prNumber) to all
+ * downstream documents that embed items keyed by prcId.
+ *
+ * @param {string} prcId
+ * @param {Object} prcPatch  - subset of PRC fields to mirror onto item records
+ */
+function _syncPRCFieldsToDownstream(prcId, prcPatch) {
+  const uid = _getEffectiveUid();
+  const itemPatch = {};
+  if (prcPatch.prNumber !== undefined) itemPatch.prNumber = prcPatch.prNumber;
+  if (!Object.keys(itemPatch).length) return;
+
+  // Allocations
+  let allocations = [...state.allocations];
+  let allocChanged = false;
+  allocations = allocations.map(alloc => {
+    const hasMatch = (alloc.items || []).some(i => i.prcId === prcId);
+    if (!hasMatch) return alloc;
+    const updatedItems = alloc.items.map(i => i.prcId === prcId ? { ...i, ...itemPatch } : i);
+    allocChanged = true;
+    const updated = { ...alloc, items: updatedItems, updatedAt: new Date().toISOString() };
+    directSaveAllocation(uid, updated);
+    return updated;
+  });
+  if (allocChanged) setState({ allocations });
+
+  // RFQs
+  let rfqs = [...state.rfqs];
+  let rfqChanged = false;
+  rfqs = rfqs.map(rfq => {
+    const hasMatch = (rfq.items || []).some(i => i.prcId === prcId);
+    if (!hasMatch) return rfq;
+    const updatedItems = rfq.items.map(i => i.prcId === prcId ? { ...i, ...itemPatch } : i);
+    rfqChanged = true;
+    const updated = { ...rfq, items: updatedItems, updatedAt: new Date().toISOString() };
+    directSaveRFQ(uid, updated);
+    return updated;
+  });
+  if (rfqChanged) setState({ rfqs });
+
+  // TCDs
+  let tcds = [...state.tcds];
+  let tcdChanged = false;
+  tcds = tcds.map(tcd => {
+    const vas = tcd.vendorAllocations || tcd.vendors || [];
+    let tcdModified = false;
+    const updatedVAs = vas.map(va => {
+      const hasMatch = (va.items || []).some(i => i.prcId === prcId);
+      if (!hasMatch) return va;
+      tcdModified = true;
+      return { ...va, items: va.items.map(i => i.prcId === prcId ? { ...i, ...itemPatch } : i) };
+    });
+    if (!tcdModified) return tcd;
+    tcdChanged = true;
+    const vaKey = tcd.vendorAllocations ? 'vendorAllocations' : 'vendors';
+    const updated = { ...tcd, [vaKey]: updatedVAs, updatedAt: new Date().toISOString() };
+    directSaveTCD(uid, updated);
+    return updated;
+  });
+  if (tcdChanged) setState({ tcds });
+
+  // PODs
+  let pods = [...state.pods];
+  let podChanged = false;
+  pods = pods.map(pod => {
+    const hasMatch = (pod.items || []).some(i => i.prcId === prcId);
+    if (!hasMatch) return pod;
+    const updatedItems = pod.items.map(i => i.prcId === prcId ? { ...i, ...itemPatch } : i);
+    podChanged = true;
+    const updated = { ...pod, items: updatedItems, updatedAt: new Date().toISOString() };
+    directSavePOD(uid, updated);
+    return updated;
+  });
+  if (podChanged) setState({ pods });
 }
 
 // ── ALLOCATION OPERATIONS ─────────────────────────────────
@@ -1622,6 +1864,41 @@ export function deleteAllocation(id) {
   return { success: true };
 }
 
+/**
+ * Returns true if an item or PRC/material should be treated as completed/excluded
+ * from all pending procurement queues (RFQ / TCD / PO).
+ * Covers: Wrong PRC, Future PRC, Short-Close PRC, Short-Close material line.
+ */
+function _isExcludedFromPending(item, prc) {
+  const shortKeywords = ['short-close', 'short-closed', 'short close', 'short closed', 'shortclose', 'shortclosed'];
+  const excludedPRCKeywords = ['future prc', 'wrong prc', ...shortKeywords];
+
+  // PRC-level exclusion
+  if (prc) {
+    if (isPRCShortClosed(prc) || prc.isFuturePRC || prc.isWrongPRC) return true;
+    const prcSt = String(prc.status   || '').trim().toLowerCase();
+    const prSt  = String(prc.prStatus || '').trim().toLowerCase();
+    if (excludedPRCKeywords.includes(prcSt) || excludedPRCKeywords.includes(prSt)) return true;
+
+    // Material-line-level exclusion (look up on the PRC's materials array)
+    const mat = (prc.materials || []).find(m => m.id === item.materialId || m.matCode === item.matCode);
+    if (mat) {
+      if (isMaterialShortClosed(mat, prc) || mat.isFuturePRC || mat.isWrongPRC) return true;
+      const matSt = String(mat.status   || '').trim().toLowerCase();
+      const matPr = String(mat.prStatus || '').trim().toLowerCase();
+      if (excludedPRCKeywords.includes(matSt) || excludedPRCKeywords.includes(matPr)) return true;
+    }
+  }
+
+  // Item-level exclusion (flags propagated onto allocation / RFQ / TCD item objects)
+  if (isMaterialShortClosed(item, prc) || item.isFuturePRC || item.isWrongPRC) return true;
+  const itemSt = String(item.status   || '').trim().toLowerCase();
+  const itemPr = String(item.prStatus || '').trim().toLowerCase();
+  if (excludedPRCKeywords.includes(itemSt) || excludedPRCKeywords.includes(itemPr)) return true;
+
+  return false;
+}
+
 // ── RFQ OPERATIONS ────────────────────────────────────────
 
 export function getRFQdQty(allocationId, prcId, materialId) {
@@ -1636,30 +1913,11 @@ export function getAvailableForRFQ() {
   const result = [];
   state.allocations.forEach(alloc => {
     alloc.items.forEach(item => {
-      // Exclude PRCs tagged as Future PRC, Wrong PRC, or Short Closed
+      // Resolve the parent PRC so we can check its status and material-line flags
       const prc = state.prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
-      if (prc) {
-        if (isPRCShortClosed(prc) || prc.isFuturePRC || prc.isWrongPRC) return;
-        const prcStatus = String(prc.status || '').trim().toLowerCase();
-        const prStatus = String(prc.prStatus || '').trim().toLowerCase();
-        if (prcStatus === 'future prc' || prcStatus === 'wrong prc' ||
-            prStatus === 'future prc' || prStatus === 'wrong prc') {
-          return;
-        }
 
-        // Also check material-level flags
-        const mat = (prc.materials || []).find(m => m.id === item.materialId || m.matCode === item.matCode);
-        if (mat) {
-          if (isMaterialShortClosed(mat, prc) || mat.isFuturePRC || mat.isWrongPRC) return;
-          const matStatus = String(mat.status || '').trim().toLowerCase();
-          if (matStatus === 'future prc' || matStatus === 'wrong prc') return;
-        }
-      }
-
-      // Check item itself if flags exist directly on allocation item
-      if (isMaterialShortClosed(item, prc) || item.isFuturePRC || item.isWrongPRC) return;
-      const itemStatus = String(item.status || '').trim().toLowerCase();
-      if (itemStatus === 'future prc' || itemStatus === 'wrong prc') return;
+      // Wrong PRC, Future PRC, Short-Close PRC, or Short-Close material line → treat as completed
+      if (_isExcludedFromPending(item, prc)) return;
 
       const rfqdQty = getRFQdQty(alloc.id, item.prcId, item.materialId);
       const available = (parseFloat(item.quantity) || 0) - rfqdQty;
@@ -1994,36 +2252,20 @@ export function getTCDdQty(rfqId, prcId, materialId) {
 export function getAvailableForTCD() {
   const result = [];
   state.rfqs.forEach(rfq => {
-    if (isPRCShortClosed(rfq) || rfq.isShortClosed || String(rfq.status || '').toLowerCase() === 'short closed' || String(rfq.status || '').toLowerCase() === 'short-close') return;
+    // RFQ itself marked Short-Close → skip entirely
+    if (isPRCShortClosed(rfq) || rfq.isShortClosed ||
+        String(rfq.status || '').toLowerCase() === 'short closed' ||
+        String(rfq.status || '').toLowerCase() === 'short-close') return;
 
-    // Closed RFQs ONLY will be eligible for TCD creation
+    // Closed RFQs ONLY are eligible for TCD creation
     const isClosed = !!(rfq.isClosed || String(rfq.status || '').trim().toLowerCase() === 'closed');
     if (!isClosed) return;
+
     rfq.items.forEach(item => {
-      // Exclude PRCs tagged as Future PRC, Wrong PRC, or Short Closed
       const prc = state.prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
-      if (prc) {
-        if (isPRCShortClosed(prc) || prc.isFuturePRC || prc.isWrongPRC) return;
-        const prcStatus = String(prc.status || '').trim().toLowerCase();
-        const prStatus = String(prc.prStatus || '').trim().toLowerCase();
-        if (prcStatus === 'future prc' || prcStatus === 'wrong prc' ||
-            prStatus === 'future prc' || prStatus === 'wrong prc') {
-          return;
-        }
 
-        // Also check material-level flags
-        const mat = (prc.materials || []).find(m => m.id === item.materialId || m.matCode === item.matCode);
-        if (mat) {
-          if (isMaterialShortClosed(mat, prc) || mat.isFuturePRC || mat.isWrongPRC) return;
-          const matStatus = String(mat.status || '').trim().toLowerCase();
-          if (matStatus === 'future prc' || matStatus === 'wrong prc') return;
-        }
-      }
-
-      // Check item itself if flags exist directly on rfq item
-      if (isMaterialShortClosed(item, prc) || item.isFuturePRC || item.isWrongPRC) return;
-      const itemStatus = String(item.status || '').trim().toLowerCase();
-      if (itemStatus === 'future prc' || itemStatus === 'wrong prc') return;
+      // Wrong PRC, Future PRC, Short-Close PRC, or Short-Close material line → treat as completed
+      if (_isExcludedFromPending(item, prc)) return;
 
       const tcdQty = getTCDdQty(rfq.id, item.prcId, item.materialId);
       const available = (parseFloat(item.quantity) || 0) - tcdQty;
@@ -2271,8 +2513,9 @@ export function getAvailableForPOD() {
       const vendorName = va.vendorName || va.name || '';
       (va.items || []).forEach(item => {
         const prc = state.prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
-        if (prc && (isPRCShortClosed(prc) || prc.isFuturePRC || prc.isWrongPRC)) return;
-        if (isMaterialShortClosed(item, prc)) return;
+
+        // Wrong PRC, Future PRC, Short-Close PRC, or Short-Close material line → treat as completed
+        if (_isExcludedFromPending(item, prc)) return;
 
         result.push({
           ...item,
