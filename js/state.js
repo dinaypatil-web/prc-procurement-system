@@ -2055,34 +2055,74 @@ export function isPRCAuthorised(p) {
 }
 
 export function _isExcludedFromPending(item, prc) {
+  const shortKeywords = ['short-close', 'short-closed', 'short close', 'short closed', 'shortclose', 'shortclosed'];
+  const excludedPRCKeywords = ['future prc', 'wrong prc', 'pr not approved', 'system issue', ...shortKeywords];
+
   // 1. Check parent PRC short close & exception flags
   if (prc) {
     if (isPRCShortClosed(prc)) return true;
     if (prc.isPRNotApproved || prc.isWrongPRC || prc.isFuturePRC || prc.isSystemIssue) return true;
     const prcS = String(prc.status || prc.prStatus || '').toLowerCase().trim();
-    if (['short-close', 'short-closed', 'short close', 'short closed', 'shortclose', 'shortclosed', 'wrong prc', 'future prc', 'pr not approved', 'system issue'].includes(prcS)) {
-      return true;
+    if (excludedPRCKeywords.includes(prcS)) return true;
+
+    // If whole PRC pendingQty is explicitly 0
+    if (prc.pendingQty !== undefined && prc.pendingQty !== null && String(prc.pendingQty).trim() !== '' && parseFloat(prc.pendingQty) <= 0) {
+      if (Array.isArray(prc.materials) && prc.materials.length > 0) {
+        const anyMatPending = prc.materials.some(m => m.pendingQty === undefined || m.pendingQty === null || String(m.pendingQty).trim() === '' || parseFloat(m.pendingQty) > 0);
+        if (!anyMatPending) return true;
+      } else {
+        return true;
+      }
     }
   }
 
-  // 2. Check item-level short close & flags
-  if (item) {
-    if (isPRCShortClosed(item) || isMaterialShortClosed(item, prc)) return true;
-    if (item.isShortClosed || item.shortClosed || item.isPRNotApproved || item.isWrongPRC || item.isFuturePRC || item.isSystemIssue) return true;
-    const itemS = String(item.status || item.prStatus || '').toLowerCase().trim();
-    if (['short-close', 'short-closed', 'short close', 'short closed', 'shortclose', 'shortclosed', 'wrong prc', 'future prc', 'pr not approved', 'system issue'].includes(itemS)) {
-      return true;
-    }
-  }
-
-  // 3. Find corresponding material on PRC if item links to a material
+  // 2. Find corresponding material on PRC if item links to a material
+  let mat = null;
   if (prc && Array.isArray(prc.materials) && item) {
-    const mat = prc.materials.find(m =>
+    mat = prc.materials.find(m =>
       (item.materialId && m.id === item.materialId) ||
       (item.materialCode && m.materialCode === item.materialCode) ||
+      (item.materialCode && m.itemCode === item.materialCode) ||
       (item.itemCode && m.materialCode === item.itemCode)
     );
-    if (mat && isMaterialShortClosed(mat, prc)) return true;
+  }
+
+  // Check material-level short close & pending quantity = 0
+  if (mat) {
+    if (isMaterialShortClosed(mat, prc) || mat.isFuturePRC || mat.isWrongPRC || mat.isPRNotApproved || mat.isSystemIssue) return true;
+    const matSt = String(mat.status || '').trim().toLowerCase();
+    const matPr = String(mat.prStatus || '').trim().toLowerCase();
+    if (excludedPRCKeywords.includes(matSt) || excludedPRCKeywords.includes(matPr)) return true;
+
+    // Pending quantity is 0 on material
+    if (mat.pendingQty !== undefined && mat.pendingQty !== null && String(mat.pendingQty).trim() !== '') {
+      if (parseFloat(mat.pendingQty) <= 0) return true;
+    }
+    if (mat.pendingQuantity !== undefined && mat.pendingQuantity !== null && String(mat.pendingQuantity).trim() !== '') {
+      if (parseFloat(mat.pendingQuantity) <= 0) return true;
+    }
+    if (mat.quantity !== undefined && mat.quantity !== null && String(mat.quantity).trim() !== '') {
+      if (parseFloat(mat.quantity) <= 0) return true;
+    }
+  }
+
+  // 3. Item-level checks (on allocation / RFQ / TCD item objects)
+  if (item) {
+    if (isMaterialShortClosed(item, prc) || isPRCShortClosed(item) || item.isFuturePRC || item.isWrongPRC || item.isPRNotApproved || item.isSystemIssue) return true;
+    const itemSt = String(item.status || '').trim().toLowerCase();
+    const itemPr = String(item.prStatus || '').trim().toLowerCase();
+    if (excludedPRCKeywords.includes(itemSt) || excludedPRCKeywords.includes(itemPr)) return true;
+
+    // Item-level pendingQty is 0
+    if (item.pendingQty !== undefined && item.pendingQty !== null && String(item.pendingQty).trim() !== '') {
+      if (parseFloat(item.pendingQty) <= 0) return true;
+    }
+    if (item.pendingQuantity !== undefined && item.pendingQuantity !== null && String(item.pendingQuantity).trim() !== '') {
+      if (parseFloat(item.pendingQuantity) <= 0) return true;
+    }
+    if (item.quantity !== undefined && item.quantity !== null && String(item.quantity).trim() !== '') {
+      if (parseFloat(item.quantity) <= 0) return true;
+    }
   }
 
   return false;
