@@ -70,6 +70,7 @@ const state = {
   expandedPRCIds: [],
   searchQuery: '',
   filters: {},
+  columnFilters: {},
   sortField: 'createdAt',
   sortDir: 'desc',
   allocSortField: 'prNumber',
@@ -1381,7 +1382,7 @@ export function updateUserProfile(patch) {
 
 // ── PRC OPERATIONS ────────────────────────────────────────
 
-export function getFilteredPRCs() {
+export function getFilteredPRCs(bypassColumnField = null) {
   let list = [...state.prcs];
 
   // Role-based visibility filter: Only show data pertaining to current user if not Super Admin
@@ -1396,7 +1397,7 @@ export function getFilteredPRCs() {
       p.prNumber?.toLowerCase().includes(q)       ||
       p.allocationNumber?.toLowerCase().includes(q)||
       p.buyerName?.toLowerCase().includes(q)       ||
-      p.allocatedBy?.toLowerCase().includes(q)       ||
+      p.allocatedBy?.toLowerCase().includes(q)     ||
       p.rfqNumber?.toLowerCase().includes(q)      ||
       p.tcdNumber?.toLowerCase().includes(q)      ||
       p.poNumber?.toLowerCase().includes(q)       ||
@@ -1441,6 +1442,66 @@ export function getFilteredPRCs() {
   if (f.dateFrom)   list = list.filter(p => p.createdAt >= f.dateFrom);
   if (f.dateTo)     list = list.filter(p => p.createdAt <= f.dateTo);
 
+  // Apply Excel-style Column Filters
+  if (state.columnFilters && Object.keys(state.columnFilters).length > 0) {
+    Object.entries(state.columnFilters).forEach(([colField, selectedVals]) => {
+      if (bypassColumnField === colField || bypassColumnField === true) return;
+      if (!selectedVals || !Array.isArray(selectedVals) || !selectedVals.length) return;
+      const valSet = new Set(selectedVals.map(v => String(v).trim().toLowerCase()));
+      const allowsBlank = valSet.has('(blanks)');
+
+      list = list.filter(p => {
+        if (colField === 'status') {
+          const st = calculateStatus(p).toLowerCase();
+          return valSet.has(st);
+        }
+        if (colField === 'allocationNumber' || colField === 'allocationDate' || colField === 'allocation') {
+          const pAlloc = (p.allocationNumber || '').trim().toLowerCase();
+          const matAllocs = (p.materials || []).map(m => (m.allocationNumber || '').trim().toLowerCase()).filter(Boolean);
+          if (allowsBlank && !pAlloc && !matAllocs.length) return true;
+          return valSet.has(pAlloc) || matAllocs.some(a => valSet.has(a));
+        }
+        if (colField === 'rfqNumber' || colField === 'rfq') {
+          const pRfq = (p.rfqNumber || '').trim().toLowerCase();
+          const matRfqs = (p.materials || []).map(m => (m.rfqNumber || '').trim().toLowerCase()).filter(Boolean);
+          if (allowsBlank && !pRfq && !matRfqs.length) return true;
+          return valSet.has(pRfq) || matRfqs.some(r => valSet.has(r));
+        }
+        if (colField === 'tcdNumber' || colField === 'tcd') {
+          const pTcd = (p.tcdNumber || '').trim().toLowerCase();
+          const matTcds = (p.materials || []).map(m => (m.tcdNumber || '').trim().toLowerCase()).filter(Boolean);
+          if (allowsBlank && !pTcd && !matTcds.length) return true;
+          return valSet.has(pTcd) || matTcds.some(t => valSet.has(t));
+        }
+        if (colField === 'poNumber' || colField === 'po') {
+          const pPo = (p.poNumber || '').trim().toLowerCase();
+          const matPos = (p.materials || []).map(m => (m.poNumber || '').trim().toLowerCase()).filter(Boolean);
+          if (allowsBlank && !pPo && !matPos.length) return true;
+          return valSet.has(pPo) || matPos.some(po => valSet.has(po));
+        }
+        if (colField === 'vendorName' || colField === 'vendor') {
+          const pV = (p.vendorName || p.vendor || '').trim().toLowerCase();
+          const matVs = (p.materials || []).map(m => (m.vendorName || m.vendor || '').trim().toLowerCase()).filter(Boolean);
+          if (allowsBlank && !pV && !matVs.length) return true;
+          return valSet.has(pV) || matVs.some(v => valSet.has(v));
+        }
+        if (colField === 'buyerName') {
+          const b = (p.buyerName || p.allocatedBy || '').trim().toLowerCase();
+          if (allowsBlank && !b) return true;
+          return valSet.has(b);
+        }
+        if (colField === 'age' || colField === 'createdAt') {
+          const a = `${getPRCAge(p)}d`.toLowerCase();
+          return valSet.has(a);
+        }
+
+        const raw = (p[colField] !== undefined && p[colField] !== null) ? String(p[colField]).trim().toLowerCase() : '';
+        if (allowsBlank && !raw) return true;
+        return valSet.has(raw);
+      });
+    });
+  }
+
   list.sort((a,b) => {
     let av = a[state.sortField] || (state.sortField === 'buyerName' ? a.allocatedBy : '') || '';
     let bv = b[state.sortField] || (state.sortField === 'buyerName' ? b.allocatedBy : '') || '';
@@ -1457,13 +1518,13 @@ export function getPaginatedPRCs() {
   return {
     total:    filtered.length,
     items:    filtered.slice(start, start + state.pageSize),
-    pages:    Math.ceil(filtered.length / state.pageSize),
+    pages:    Math.ceil(filtered.length / state.pageSize) || 1,
     page:     state.currentPage_num
   };
 }
 
-export function getFilteredMaterials() {
-  const prcs = getFilteredPRCs();
+export function getFilteredMaterials(bypassColumnField = null) {
+  const prcs = getFilteredPRCs(bypassColumnField);
   const allMats = [];
 
   prcs.forEach(p => {
@@ -1518,6 +1579,37 @@ export function getFilteredMaterials() {
     );
   }
 
+  // Apply Excel-style Column Filters on materials
+  if (state.columnFilters && Object.keys(state.columnFilters).length > 0) {
+    Object.entries(state.columnFilters).forEach(([colField, selectedVals]) => {
+      if (bypassColumnField === colField || bypassColumnField === true) return;
+      if (!selectedVals || !Array.isArray(selectedVals) || !selectedVals.length) return;
+      const valSet = new Set(selectedVals.map(v => String(v).trim().toLowerCase()));
+      const allowsBlank = valSet.has('(blanks)');
+
+      list = list.filter(m => {
+        if (colField === 'status') {
+          const st = (m.status || calculateMaterialStatus(m) || '').trim().toLowerCase();
+          return valSet.has(st);
+        }
+        if (colField === 'vendorName' || colField === 'vendor') {
+          const v = (m.vendorName || m.vendor || '').trim().toLowerCase();
+          if (allowsBlank && !v) return true;
+          return valSet.has(v);
+        }
+        if (colField === 'buyerName') {
+          const b = (m.buyerName || m.allocatedBy || '').trim().toLowerCase();
+          if (allowsBlank && !b) return true;
+          return valSet.has(b);
+        }
+
+        const raw = (m[colField] !== undefined && m[colField] !== null) ? String(m[colField]).trim().toLowerCase() : '';
+        if (allowsBlank && !raw) return true;
+        return valSet.has(raw);
+      });
+    });
+  }
+
   return list;
 }
 
@@ -1530,6 +1622,126 @@ export function getPaginatedMaterials() {
     pages: Math.ceil(filtered.length / state.pageSize) || 1,
     page:  state.currentPage_num
   };
+}
+
+// ── EXCEL COLUMN FILTER HELPERS ───────────────────────────
+
+export function setColumnFilter(field, values) {
+  const arr = Array.isArray(values) ? values : [values];
+  state.columnFilters = {
+    ...state.columnFilters,
+    [field]: arr
+  };
+  state.currentPage_num = 1;
+  saveToLocalCache();
+  emit('columnFilters');
+  emit('*');
+}
+
+export function clearColumnFilter(field) {
+  const next = { ...state.columnFilters };
+  delete next[field];
+  state.columnFilters = next;
+  state.currentPage_num = 1;
+  saveToLocalCache();
+  emit('columnFilters');
+  emit('*');
+}
+
+export function clearAllColumnFilters() {
+  state.columnFilters = {};
+  state.currentPage_num = 1;
+  saveToLocalCache();
+  emit('columnFilters');
+  emit('*');
+}
+
+export function getActiveColumnFilterCount() {
+  return Object.keys(state.columnFilters || {}).filter(k => (state.columnFilters[k] || []).length > 0).length;
+}
+
+export function getDistinctColumnValues(field, isMaterialView = false) {
+  const list = isMaterialView ? getFilteredMaterials(field) : getFilteredPRCs(field);
+  const valCountMap = new Map();
+
+  list.forEach(item => {
+    let vals = [];
+    if (field === 'status') {
+      const st = isMaterialView ? (item.status || calculateMaterialStatus(item)) : calculateStatus(item);
+      vals = [st || '(Blanks)'];
+    } else if (field === 'allocationNumber' || field === 'allocationDate' || field === 'allocation') {
+      if (item.materials && !isMaterialView) {
+        const set = new Set();
+        if (item.allocationNumber) set.add(item.allocationNumber);
+        (item.materials || []).forEach(m => { if (m.allocationNumber) set.add(m.allocationNumber); });
+        vals = set.size ? Array.from(set) : ['(Blanks)'];
+      } else {
+        vals = [item.allocationNumber || '(Blanks)'];
+      }
+    } else if (field === 'rfqNumber' || field === 'rfq') {
+      if (item.materials && !isMaterialView) {
+        const set = new Set();
+        if (item.rfqNumber) set.add(item.rfqNumber);
+        (item.materials || []).forEach(m => { if (m.rfqNumber) set.add(m.rfqNumber); });
+        vals = set.size ? Array.from(set) : ['(Blanks)'];
+      } else {
+        vals = [item.rfqNumber || '(Blanks)'];
+      }
+    } else if (field === 'tcdNumber' || field === 'tcd') {
+      if (item.materials && !isMaterialView) {
+        const set = new Set();
+        if (item.tcdNumber) set.add(item.tcdNumber);
+        (item.materials || []).forEach(m => { if (m.tcdNumber) set.add(m.tcdNumber); });
+        vals = set.size ? Array.from(set) : ['(Blanks)'];
+      } else {
+        vals = [item.tcdNumber || '(Blanks)'];
+      }
+    } else if (field === 'poNumber' || field === 'po') {
+      if (item.materials && !isMaterialView) {
+        const set = new Set();
+        if (item.poNumber) set.add(item.poNumber);
+        (item.materials || []).forEach(m => { if (m.poNumber) set.add(m.poNumber); });
+        vals = set.size ? Array.from(set) : ['(Blanks)'];
+      } else {
+        vals = [item.poNumber || '(Blanks)'];
+      }
+    } else if (field === 'vendorName' || field === 'vendor') {
+      if (item.materials && !isMaterialView) {
+        const set = new Set();
+        if (item.vendorName || item.vendor) set.add(item.vendorName || item.vendor);
+        (item.materials || []).forEach(m => { if (m.vendorName || m.vendor) set.add(m.vendorName || m.vendor); });
+        vals = set.size ? Array.from(set) : ['(Blanks)'];
+      } else {
+        vals = [item.vendorName || item.vendor || '(Blanks)'];
+      }
+    } else if (field === 'buyerName') {
+      vals = [item.buyerName || item.allocatedBy || '(Blanks)'];
+    } else if (field === 'age' || field === 'createdAt') {
+      const ageDays = isMaterialView ? 0 : getPRCAge(item);
+      vals = [`${ageDays}d`];
+    } else {
+      const raw = item[field];
+      vals = [raw !== undefined && raw !== null && String(raw).trim() !== '' ? String(raw).trim() : '(Blanks)'];
+    }
+
+    vals.forEach(v => {
+      valCountMap.set(v, (valCountMap.get(v) || 0) + 1);
+    });
+  });
+
+  const distinct = Array.from(valCountMap.entries()).map(([value, count]) => ({
+    value,
+    label: value,
+    count
+  }));
+
+  distinct.sort((a, b) => {
+    if (a.value === '(Blanks)') return 1;
+    if (b.value === '(Blanks)') return -1;
+    return String(a.value).localeCompare(String(b.value), undefined, { numeric: true, sensitivity: 'base' });
+  });
+
+  return distinct;
 }
 
 export function updatePRC(id, patch, cascadeToMaterials = false) {

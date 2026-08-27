@@ -336,7 +336,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, getActiveColumnFilterCount, getDistinctColumnValues } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
@@ -1010,6 +1010,9 @@ function renderPRCList(container) {
     </div>
   </div>
 
+  <!-- ACTIVE COLUMN FILTERS BAR -->
+  <div id="prc-active-filters-container"></div>
+
   <!-- TABLE CONTAINER (FIT TO VIEWPORT WITH VERTICAL & HORIZONTAL SCROLLING) -->
   <div class="card" style="padding:0;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden">
     <div class="table-wrapper" id="prc-table-wrapper" style="flex:1;min-height:0;overflow:auto">
@@ -1303,6 +1306,252 @@ window.renderProgressStars = function(item, isPRC) {
   ).join('')}</span>`;
 };
 
+// ── EXCEL COLUMN FILTER CONTROLLER ──────────────────────────
+let _activeExcelPopover = null;
+
+function renderFilterableTh(field, label, isMaterial = false) {
+  const state = getState();
+  const isSorted = state.sortField === field;
+  const sortIcon = isSorted ? (state.sortDir === 'asc' ? '▲' : '▼') : '↕';
+  const activeFilters = state.columnFilters?.[field] || [];
+  const hasFilter = Array.isArray(activeFilters) && activeFilters.length > 0;
+
+  return `
+    <th class="th-filterable ${hasFilter ? 'has-active-filter' : ''}">
+      <div class="th-content">
+        <span class="th-label" onclick="sortTable('${field}')" title="Sort by ${label}">
+          <span>${label}</span>
+          <span class="sort-icon" style="font-size:10px;opacity:${isSorted?1:0.35}">${sortIcon}</span>
+        </span>
+        <button type="button" class="excel-filter-btn ${hasFilter ? 'active' : ''}" onclick="event.stopPropagation(); openExcelFilterMenu('${field}', '${label}', this, event, ${isMaterial})" title="${hasFilter ? `Filtered (${activeFilters.length} active) - Click to edit` : `Filter by ${label}`}">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/>
+          </svg>
+        </button>
+      </div>
+    </th>
+  `;
+}
+
+function renderActiveFiltersBar() {
+  const container = document.getElementById('prc-active-filters-container');
+  if (!container) return;
+  const state = getState();
+  const activeEntries = Object.entries(state.columnFilters || {}).filter(([_, vals]) => Array.isArray(vals) && vals.length > 0);
+
+  if (activeEntries.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const pills = activeEntries.map(([field, vals]) => {
+    const fieldDisplay = field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+    const valText = vals.length === 1 ? vals[0] : `${vals.length} selected`;
+    return `
+      <span class="active-filter-tag" title="${fieldDisplay}: ${vals.join(', ')}">
+        <strong>${fieldDisplay}:</strong> ${valText}
+        <span class="active-filter-tag-remove" onclick="clearColumnFilter('${field}'); renderPRCTable();" title="Remove ${fieldDisplay} filter">✕</span>
+      </span>
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="active-filters-bar">
+      <span style="font-weight:700;color:var(--color-primary);display:inline-flex;align-items:center;gap:4px">
+        <span>⚡</span> Active Filters (${activeEntries.length}):
+      </span>
+      ${pills}
+      <button class="btn btn-ghost btn-xs" style="color:var(--color-danger);font-weight:600;padding:2px 6px;margin-left:auto" onclick="clearAllColumnFilters(); renderPRCTable();" title="Clear all active column filters">✕ Clear All</button>
+    </div>
+  `;
+}
+
+function closeExcelFilterMenu() {
+  if (_activeExcelPopover) {
+    _activeExcelPopover.remove();
+    _activeExcelPopover = null;
+  }
+}
+
+function openExcelFilterMenu(field, label, triggerBtn, event, isMaterial = false) {
+  event?.stopPropagation?.();
+  closeExcelFilterMenu();
+
+  const state = getState();
+  const distinctVals = getDistinctColumnValues(field, isMaterial);
+  const currentSelections = state.columnFilters?.[field] || null;
+  const hasActiveFilter = Array.isArray(currentSelections) && currentSelections.length > 0;
+  const selectedSet = hasActiveFilter ? new Set(currentSelections.map(v => String(v).toLowerCase())) : null;
+
+  const popover = document.createElement('div');
+  popover.className = 'excel-filter-popover';
+  popover.id = 'excel-filter-popover';
+  popover.onclick = e => e.stopPropagation();
+
+  popover.innerHTML = `
+    <div class="excel-popover-header">
+      <span>Filter: ${label}</span>
+      <button type="button" class="btn-ghost btn-icon" style="padding:2px 4px;font-size:12px;cursor:pointer;border:none;background:transparent" onclick="closeExcelFilterMenu()">✕</button>
+    </div>
+
+    <div class="excel-popover-sort-section">
+      <button type="button" class="excel-sort-btn" onclick="sortFromExcelMenu('${field}', 'asc')">
+        <span>⬆️</span> <span>Sort Ascending (A → Z)</span>
+      </button>
+      <button type="button" class="excel-sort-btn" onclick="sortFromExcelMenu('${field}', 'desc')">
+        <span>⬇️</span> <span>Sort Descending (Z → A)</span>
+      </button>
+    </div>
+
+    <div class="excel-search-box">
+      <span class="excel-search-icon">🔍</span>
+      <input type="text" class="excel-search-input" id="excel-search-input" placeholder="Search values..." oninput="filterExcelCheckboxList(this.value)" autocomplete="off"/>
+    </div>
+
+    <div style="padding:4px 8px;border-bottom:1px solid var(--color-border);background:var(--color-surface-2)">
+      <label class="excel-checkbox-item" style="font-weight:600;padding:2px 4px">
+        <input type="checkbox" id="excel-select-all-chk" ${!hasActiveFilter || selectedSet.size === distinctVals.length ? 'checked' : ''} onchange="toggleExcelSelectAll(this)"/>
+        <span class="excel-checkbox-label">(Select All)</span>
+      </label>
+    </div>
+
+    <div class="excel-checkbox-list" id="excel-checkbox-list">
+      ${distinctVals.map((item, idx) => {
+        const valLower = String(item.value).toLowerCase();
+        const isChecked = !hasActiveFilter || (selectedSet && selectedSet.has(valLower));
+        return `
+          <label class="excel-checkbox-item" data-val="${item.value.replace(/"/g, '&quot;')}">
+            <input type="checkbox" class="excel-item-chk" value="${item.value.replace(/"/g, '&quot;')}" ${isChecked ? 'checked' : ''} onchange="updateExcelSelectAllState()"/>
+            <span class="excel-checkbox-label" title="${item.label}">${item.label}</span>
+            <span class="excel-checkbox-count">${item.count}</span>
+          </label>
+        `;
+      }).join('')}
+    </div>
+
+    <div class="excel-popover-footer">
+      ${hasActiveFilter ? `
+        <button type="button" class="btn btn-ghost btn-xs" style="color:var(--color-danger);padding:3px 6px;font-size:11px" onclick="clearExcelFilter('${field}')">Clear</button>
+      ` : '<div></div>'}
+      <div style="display:flex;gap:6px">
+        <button type="button" class="btn btn-secondary btn-xs" style="padding:3px 8px;font-size:11px" onclick="closeExcelFilterMenu()">Cancel</button>
+        <button type="button" class="btn btn-primary btn-xs" style="padding:3px 10px;font-size:11px;font-weight:600" onclick="applyExcelFilter('${field}')">Apply</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(popover);
+  _activeExcelPopover = popover;
+
+  // Positioning
+  const rect = triggerBtn.getBoundingClientRect();
+  const popoverWidth = 270;
+  let left = rect.left;
+  let top = rect.bottom + 4;
+
+  if (left + popoverWidth > window.innerWidth - 12) {
+    left = window.innerWidth - popoverWidth - 12;
+  }
+  if (left < 12) left = 12;
+  if (top + 340 > window.innerHeight - 12) {
+    top = Math.max(12, rect.top - 340);
+  }
+
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+
+  setTimeout(() => {
+    const inp = popover.querySelector('#excel-search-input');
+    if (inp) inp.focus();
+  }, 50);
+}
+
+function filterExcelCheckboxList(query) {
+  const q = (query || '').trim().toLowerCase();
+  const list = document.getElementById('excel-checkbox-list');
+  if (!list) return;
+  const items = list.querySelectorAll('.excel-checkbox-item');
+  items.forEach(item => {
+    const val = (item.getAttribute('data-val') || '').toLowerCase();
+    if (!q || val.includes(q)) {
+      item.style.display = 'flex';
+    } else {
+      item.style.display = 'none';
+    }
+  });
+}
+
+function toggleExcelSelectAll(selectAllChk) {
+  const list = document.getElementById('excel-checkbox-list');
+  if (!list) return;
+  const visibleItems = Array.from(list.querySelectorAll('.excel-checkbox-item')).filter(i => i.style.display !== 'none');
+  visibleItems.forEach(item => {
+    const chk = item.querySelector('.excel-item-chk');
+    if (chk) chk.checked = selectAllChk.checked;
+  });
+}
+
+function updateExcelSelectAllState() {
+  const selectAll = document.getElementById('excel-select-all-chk');
+  const list = document.getElementById('excel-checkbox-list');
+  if (!selectAll || !list) return;
+  const checkboxes = Array.from(list.querySelectorAll('.excel-item-chk'));
+  const checked = checkboxes.filter(c => c.checked);
+  selectAll.checked = checked.length === checkboxes.length;
+  selectAll.indeterminate = checked.length > 0 && checked.length < checkboxes.length;
+}
+
+function applyExcelFilter(field) {
+  const list = document.getElementById('excel-checkbox-list');
+  if (!list) return;
+  const allCheckboxes = Array.from(list.querySelectorAll('.excel-item-chk'));
+  const checked = allCheckboxes.filter(c => c.checked).map(c => c.value);
+
+  if (checked.length === allCheckboxes.length) {
+    clearColumnFilter(field);
+  } else {
+    setColumnFilter(field, checked);
+  }
+
+  closeExcelFilterMenu();
+  renderPRCTable();
+}
+
+function clearExcelFilter(field) {
+  clearColumnFilter(field);
+  closeExcelFilterMenu();
+  renderPRCTable();
+}
+
+function sortFromExcelMenu(field, dir) {
+  setState({ sortField: field, sortDir: dir });
+  closeExcelFilterMenu();
+  renderPRCTable();
+}
+
+window.addEventListener('click', (e) => {
+  if (_activeExcelPopover && !e.target.closest('#excel-filter-popover') && !e.target.closest('.excel-filter-btn')) {
+    closeExcelFilterMenu();
+  }
+});
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && _activeExcelPopover) {
+    closeExcelFilterMenu();
+  }
+});
+
+window.openExcelFilterMenu = openExcelFilterMenu;
+window.closeExcelFilterMenu = closeExcelFilterMenu;
+window.filterExcelCheckboxList = filterExcelCheckboxList;
+window.toggleExcelSelectAll = toggleExcelSelectAll;
+window.updateExcelSelectAllState = updateExcelSelectAllState;
+window.applyExcelFilter = applyExcelFilter;
+window.clearExcelFilter = clearExcelFilter;
+window.sortFromExcelMenu = sortFromExcelMenu;
+window.renderFilterableTh = renderFilterableTh;
+window.clearColumnFilter = clearColumnFilter;
+window.clearAllColumnFilters = clearAllColumnFilters;
+
 function renderPRCTable() {
   const state = getState();
   const countEl = document.getElementById('prc-list-count');
@@ -1312,6 +1561,8 @@ function renderPRCTable() {
   const savedScrollTop = tableWrapper ? tableWrapper.scrollTop : 0;
   const savedScrollLeft = tableWrapper ? tableWrapper.scrollLeft : 0;
 
+  renderActiveFiltersBar();
+
   if (state.viewLevel === 'material') {
     const { total, items, pages, page } = getPaginatedMaterials();
     if(countEl) countEl.textContent = `${fmtNum(total)} material item records found`;
@@ -1319,20 +1570,20 @@ function renderPRCTable() {
     const thead = document.querySelector('#prc-table thead');
     if (thead) {
       thead.innerHTML = `<tr>
-        <th onclick="sortTable('prNumber')">PR Number <span class="sort-icon">↕</span></th>
+        ${renderFilterableTh('prNumber', 'PR Number', true)}
         <th>Sl</th>
-        <th onclick="sortTable('matCode')">Mat Code <span class="sort-icon">↕</span></th>
-        <th onclick="sortTable('description')">Description <span class="sort-icon">↕</span></th>
+        ${renderFilterableTh('matCode', 'Mat Code', true)}
+        ${renderFilterableTh('description', 'Description', true)}
         <th>Req Qty</th>
         <th>Proc Qty</th>
         <th>Pending Qty</th>
         <th>Closed Qty</th>
-        <th onclick="sortTable('status')">Status <span class="sort-icon">↕</span></th>
-        <th>Allocation</th>
-        <th>RFQ</th>
-        <th>TCD</th>
-        <th>PO Info</th>
-        <th>Delivery Date</th>
+        ${renderFilterableTh('status', 'Status', true)}
+        ${renderFilterableTh('allocationNumber', 'Allocation', true)}
+        ${renderFilterableTh('rfqNumber', 'RFQ', true)}
+        ${renderFilterableTh('tcdNumber', 'TCD', true)}
+        ${renderFilterableTh('poNumber', 'PO Info', true)}
+        ${renderFilterableTh('deliveryDate', 'Delivery Date', true)}
         <th>Actions</th>
       </tr>`;
     }
@@ -1414,17 +1665,17 @@ function renderPRCTable() {
     if (thead) {
       thead.innerHTML = `<tr>
         <th style="width:40px;text-align:center"></th>
-        <th onclick="sortTable('prNumber')">PR Number <span class="sort-icon">↕</span></th>
-        <th onclick="sortTable('department')">Department <span class="sort-icon">↕</span></th>
-        <th onclick="sortTable('priority')">Priority <span class="sort-icon">↕</span></th>
-        <th onclick="sortTable('status')">PRC Status <span class="sort-icon">↕</span></th>
-        <th onclick="sortTable('allocationDate')">Allocated <span class="sort-icon">↕</span></th>
-        <th onclick="sortTable('buyerName')">Buyer Name <span class="sort-icon">↕</span></th>
-        <th onclick="sortTable('rfqNumber')">RFQ <span class="sort-icon">↕</span></th>
-        <th onclick="sortTable('tcdNumber')">TCD <span class="sort-icon">↕</span></th>
-        <th onclick="sortTable('poNumber')">PO Number <span class="sort-icon">↕</span></th>
-        <th onclick="sortTable('vendorName')">Vendor <span class="sort-icon">↕</span></th>
-        <th onclick="sortTable('createdAt')">Age <span class="sort-icon">↕</span></th>
+        ${renderFilterableTh('prNumber', 'PR Number', false)}
+        ${renderFilterableTh('department', 'Department', false)}
+        ${renderFilterableTh('priority', 'Priority', false)}
+        ${renderFilterableTh('status', 'PRC Status', false)}
+        ${renderFilterableTh('allocationNumber', 'Allocated', false)}
+        ${renderFilterableTh('buyerName', 'Buyer Name', false)}
+        ${renderFilterableTh('rfqNumber', 'RFQ', false)}
+        ${renderFilterableTh('tcdNumber', 'TCD', false)}
+        ${renderFilterableTh('poNumber', 'PO Number', false)}
+        ${renderFilterableTh('vendorName', 'Vendor', false)}
+        ${renderFilterableTh('age', 'Age', false)}
         <th>Actions</th>
       </tr>`;
     }

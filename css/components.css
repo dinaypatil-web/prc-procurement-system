@@ -1729,4 +1729,252 @@ tr.row-process-completed:hover {
   transform: scale(1.1);
 }
 
+/* ── EXCEL TYPE COLUMN FILTER STYLES ────────────────────────── */
+.th-filterable {
+  position: relative;
+  user-select: none;
+}
+
+.th-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.th-label {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.excel-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.excel-filter-btn:hover {
+  background: var(--color-surface-3);
+  color: var(--color-primary);
+  border-color: var(--color-border);
+}
+
+.excel-filter-btn.active {
+  background: var(--color-primary);
+  color: #ffffff !important;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.28);
+}
+
+/* Floating Excel Filter Popover */
+.excel-filter-popover {
+  position: fixed;
+  z-index: 10000;
+  width: 270px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 10px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22), 0 4px 12px rgba(0, 0, 0, 0.1);
+  font-size: 12px;
+  color: var(--color-text-primary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: excelPopoverIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes excelPopoverIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.excel-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--color-surface-2);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.excel-popover-sort-section {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.excel-sort-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: background 0.12s ease;
+}
+
+.excel-sort-btn:hover {
+  background: var(--color-surface-3);
+  color: var(--color-primary);
+}
+
+.excel-search-box {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  position: relative;
+}
+
+.excel-search-input {
+  width: 100%;
+  padding: 5px 8px 5px 26px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+  font-size: 11.5px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.excel-search-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.excel-search-icon {
+  position: absolute;
+  left: 17px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  pointer-events: none;
+}
+
+.excel-checkbox-list {
+  max-height: 190px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.excel-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  font-size: 11.5px;
+  user-select: none;
+}
+
+.excel-checkbox-item:hover {
+  background: var(--color-surface-3);
+}
+
+.excel-checkbox-item input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--color-primary);
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.excel-checkbox-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.excel-checkbox-count {
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-mono);
+  background: var(--color-surface-3);
+  padding: 1px 5px;
+  border-radius: 10px;
+}
+
+.excel-popover-footer {
+  padding: 8px 10px;
+  background: var(--color-surface-2);
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+/* Active Column Filter Bar */
+.active-filters-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(59, 130, 246, 0.07);
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  border-radius: var(--radius-md, 8px);
+  margin-bottom: 12px;
+  font-size: 11.5px;
+}
+
+.active-filter-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.active-filter-tag-remove {
+  cursor: pointer;
+  color: var(--color-text-tertiary);
+  font-weight: bold;
+  font-size: 12px;
+  transition: color 0.12s ease;
+  padding: 0 2px;
+}
+
+.active-filter-tag-remove:hover {
+  color: var(--color-danger);
+}
+
 
