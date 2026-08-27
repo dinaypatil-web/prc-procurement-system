@@ -204,15 +204,16 @@
 
 <!-- ═══════════ MANDATORY AUTH / LOGIN & SIGNUP PORTAL ═════ -->
 <div class="modal-overlay hidden" id="auth-modal" style="z-index:9999;backdrop-filter:blur(16px);background:rgba(15,23,42,0.88);display:flex;align-items:center;justify-content:center">
-  <div class="modal" style="max-width:440px;padding:32px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.1)">
-    <div style="text-align:center;margin-bottom:24px">
-      <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--brand-600),var(--accent-600));display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#fff;margin:0 auto 14px;box-shadow:0 8px 20px rgba(37,99,235,0.35)">P</div>
+  <div class="modal" style="max-width:460px;padding:30px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.1);position:relative">
+    <button class="modal-close-btn" style="position:absolute;top:16px;right:16px" onclick="closeAuthModal()">✕</button>
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--brand-600),var(--accent-600));display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#fff;margin:0 auto 12px;box-shadow:0 8px 20px rgba(37,99,235,0.35)">P</div>
       <h2 style="font-size:22px;font-weight:800;letter-spacing:-0.02em" id="auth-modal-title">ProcureTrack</h2>
-      <p style="font-size:13px;color:var(--color-text-secondary);margin-top:4px" id="auth-modal-sub">Enterprise Procurement System — Authenticate to Enter</p>
+      <p style="font-size:12.5px;color:var(--color-text-secondary);margin-top:4px" id="auth-modal-sub">Enterprise Procurement System — Authenticate to Enter</p>
     </div>
 
     <!-- Tab switch -->
-    <div style="display:flex;background:var(--color-surface-2);border-radius:10px;padding:4px;margin-bottom:20px">
+    <div style="display:flex;background:var(--color-surface-2);border-radius:10px;padding:4px;margin-bottom:18px">
       <button id="auth-tab-signin" class="btn btn-primary btn-sm" style="flex:1;border-radius:8px" onclick="toggleAuthTab('signin')">Sign In</button>
       <button id="auth-tab-signup" class="btn btn-ghost btn-sm" style="flex:1;border-radius:8px" onclick="toggleAuthTab('signup')">Create User</button>
     </div>
@@ -222,15 +223,36 @@
 
     <!-- Sign In Form -->
     <form id="auth-form-signin" onsubmit="handleAuthSignIn(event)">
+      <!-- Quick Member Selector -->
+      <div class="form-group" style="margin-bottom:14px;background:var(--color-surface-2);padding:10px 12px;border-radius:8px;border:1px solid var(--color-border)">
+        <label class="form-label" style="font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:4px;margin-bottom:6px">
+          <span>⚡</span> Quick Select Registered User
+        </label>
+        <select id="auth-quick-user-select" class="form-control" style="font-size:12px" onchange="document.getElementById('auth-signin-email').value=this.value">
+          <option value="">-- Choose Team Member --</option>
+          <option value="dinay.patil@gmail.com">👑 Patil Dinay Dilip (Super Admin)</option>
+          <option value="admin@company.com">👑 Admin User (Super Admin)</option>
+          <option value="lakshmanan.n@company.com">👤 LAKSHMANAN N (Procurement Engineer)</option>
+          <option value="senthil.kumar.velu@company.com">👤 SENTHIL KUMAR VELU (Procurement Engineer)</option>
+          <option value="deepak.kumar@company.com">👤 DEEPAK KUMAR (Procurement Engineer)</option>
+          <option value="kasireddi.raviteja@company.com">👤 KASIREDDI RAVITEJA (Procurement Engineer)</option>
+          <option value="maheshwarappa.kp@company.com">👤 MAHESHWARAPPA KP (Approving Authority)</option>
+          <option value="karthikeyan.k@company.com">👤 KARTHIKEYAN K (Approving Authority)</option>
+          <option value="marabathina.jagadish@company.com">👤 MARABATHINA JAGADISH (Approving Authority)</option>
+          <option value="ranganathan.la@company.com">👤 RANGANATHAN LA (Approving Authority)</option>
+          <option value="prasad.c@company.com">👤 PRASAD C (Approving Authority)</option>
+        </select>
+      </div>
+
       <div class="form-group" style="margin-bottom:14px">
         <label class="form-label" style="font-size:12px">Email Address</label>
-        <input type="email" id="auth-signin-email" class="form-control" placeholder="user@company.com" required autocomplete="email"/>
+        <input type="email" id="auth-signin-email" class="form-control" placeholder="user@company.com" required autocomplete="email" value="dinay.patil@gmail.com"/>
       </div>
       <div class="form-group" style="margin-bottom:20px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
           <label class="form-label" style="font-size:12px;margin-bottom:0">Password</label>
         </div>
-        <input type="password" id="auth-signin-password" class="form-control" placeholder="••••••••" required autocomplete="current-password"/>
+        <input type="password" id="auth-signin-password" class="form-control" placeholder="••••••••" autocomplete="current-password" value="123456"/>
       </div>
       <button type="submit" id="auth-signin-submit" class="btn btn-primary w-full" style="height:42px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px">
         <span>Sign In to Workspace</span>
@@ -311,7 +333,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
@@ -7015,17 +7037,8 @@ window.handleAuthSignIn = async function(e) {
   const password = document.getElementById('auth-signin-password')?.value;
   const submitBtn = document.getElementById('auth-signin-submit');
 
-  if (!email || !password) {
-    showAuthAlert('Please enter both email and password.');
-    return;
-  }
-
-  if (!isFirebaseConfigured()) {
-    await initFirebase();
-  }
-
-  if (!isFirebaseConfigured()) {
-    showAuthAlert('Firebase configuration not found. Please verify your Vercel Project Environment Variables (FIREBASE_API_KEY, FIREBASE_PROJECT_ID, etc.) and redeploy.');
+  if (!email) {
+    showAuthAlert('Please enter your email address.');
     return;
   }
 
@@ -7034,12 +7047,19 @@ window.handleAuthSignIn = async function(e) {
       submitBtn.disabled = true;
       submitBtn.innerHTML = '<div class="loading-spinner" style="width:16px;height:16px;border-width:2px;margin:auto"></div>';
     }
-    const res = await signIn(email, password);
+
+    const res = await loginUser(email, password);
     if (!res.success) {
-      showAuthAlert(res.error || 'Failed to sign in.');
+      showAuthAlert(res.reason || 'Failed to sign in.');
     } else {
-      toast(`Welcome back, ${res.user.name}!`, 'success');
+      toast(`Welcome back, ${res.user.name} (${res.user.role})!`, 'success');
       window.closeAuthModal();
+      updateUserUI();
+      updateSidebarBadges();
+      const currentPage = getState().currentPage || 'dashboard';
+      if (PAGES[currentPage]) {
+        PAGES[currentPage].render(document.getElementById('page-content'));
+      }
     }
   } catch (err) {
     showAuthAlert(err.message || 'An error occurred during sign in.');
@@ -7059,17 +7079,8 @@ window.handleAuthSignUp = async function(e) {
   const role = document.getElementById('auth-signup-role')?.value || 'Procurement Engineer';
   const submitBtn = document.getElementById('auth-signup-submit');
 
-  if (!name || !email || !password) {
-    showAuthAlert('Please fill in all required fields.');
-    return;
-  }
-
-  if (!isFirebaseConfigured()) {
-    await initFirebase();
-  }
-
-  if (!isFirebaseConfigured()) {
-    showAuthAlert('Firebase configuration not found. Please verify your Vercel Project Environment Variables (FIREBASE_API_KEY, FIREBASE_PROJECT_ID, etc.) and redeploy.');
+  if (!name || !email) {
+    showAuthAlert('Please fill in your name and email address.');
     return;
   }
 
@@ -7078,12 +7089,27 @@ window.handleAuthSignUp = async function(e) {
       submitBtn.disabled = true;
       submitBtn.innerHTML = '<div class="loading-spinner" style="width:16px;height:16px;border-width:2px;margin:auto"></div>';
     }
-    const res = await signUp(email, password, name, role);
-    if (!res.success) {
-      showAuthAlert(res.error || 'Failed to create account.');
-    } else {
-      toast(`User account created! Welcome, ${name}!`, 'success');
-      window.closeAuthModal();
+
+    const newUser = {
+      id: `user-${Date.now()}`,
+      name,
+      email,
+      role,
+      avatar: name.slice(0, 2).toUpperCase(),
+      department: 'Procurement & Sourcing',
+      title: role
+    };
+
+    await updateAnyUserProfile(newUser.id, newUser);
+    const res = await loginUser(email, password);
+
+    toast(`User account created! Welcome, ${name}!`, 'success');
+    window.closeAuthModal();
+    updateUserUI();
+    updateSidebarBadges();
+    const currentPage = getState().currentPage || 'dashboard';
+    if (PAGES[currentPage]) {
+      PAGES[currentPage].render(document.getElementById('page-content'));
     }
   } catch (err) {
     showAuthAlert(err.message || 'An error occurred during registration.');
@@ -7119,18 +7145,17 @@ window.handleInAppCreateUser = async function(e) {
   e?.preventDefault();
   const name = document.getElementById('inapp-user-name')?.value?.trim();
   const email = document.getElementById('inapp-user-email')?.value?.trim();
-  const password = document.getElementById('inapp-user-password')?.value;
   const role = document.getElementById('inapp-user-role')?.value || 'Procurement Engineer';
   const alertEl = document.getElementById('inapp-create-user-alert');
   const submitBtn = document.getElementById('inapp-create-user-submit');
 
-  if (!name || !email || !password) {
+  if (!name || !email) {
     if (alertEl) {
       alertEl.className = '';
       alertEl.style.display = 'block';
       alertEl.style.background = 'rgba(239, 68, 68, 0.15)';
       alertEl.style.color = '#f87171';
-      alertEl.textContent = 'Please fill in all fields.';
+      alertEl.textContent = 'Please fill in name and email.';
     }
     return;
   }
@@ -7138,27 +7163,34 @@ window.handleInAppCreateUser = async function(e) {
   try {
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.textContent = 'Creating...';
+      submitBtn.textContent = 'Creating in Turso...';
     }
-    const res = await signUp(email, password, name, role);
-    if (!res.success) {
+
+    const newUser = {
+      id: `user-${Date.now()}`,
+      name,
+      email,
+      role,
+      avatar: name.slice(0, 2).toUpperCase(),
+      department: 'Procurement & Sourcing',
+      title: role
+    };
+
+    const res = await updateAnyUserProfile(newUser.id, newUser);
+    if (res && res.success) {
+      toast(`User "${name}" (${role}) created successfully in Turso Database!`, 'success');
+      window.closeInAppCreateUserModal();
+      if (getState().currentPage === 'settings') {
+        renderSettings(document.getElementById('page-content'));
+        window.showSettingsTab('users');
+      }
+    } else {
       if (alertEl) {
         alertEl.className = '';
         alertEl.style.display = 'block';
         alertEl.style.background = 'rgba(239, 68, 68, 0.15)';
         alertEl.style.color = '#f87171';
-        alertEl.textContent = res.error || 'Failed to create user.';
-      }
-    } else {
-      toast(`User ${name} (${role}) created successfully in Firebase!`, 'success');
-      // Add to local state list
-      const state = getState();
-      const users = [...state.users, { name, email, role, avatar: name.slice(0, 2).toUpperCase() }];
-      setState({ users });
-      window.closeInAppCreateUserModal();
-      if (state.currentPage === 'settings') {
-        renderSettings(document.getElementById('page-content'));
-        window.showSettingsTab('users');
+        alertEl.textContent = res?.reason || 'Failed to create user.';
       }
     }
   } catch (err) {
@@ -7179,15 +7211,8 @@ window.handleInAppCreateUser = async function(e) {
 
 window.handleAuthAction = async function() {
   const state = getState();
-  if (state.isAuthenticated && isFirebaseConfigured()) {
-    const confirmed = await confirmDialog("Sign out of your user account and database session?", "Sign Out");
-    if (confirmed) {
-      await signOutUser();
-      clearAuthenticatedUser();
-      toast("Signed out successfully.", "info");
-      window.showAuthModal('signin');
-    }
-  } else {
+  const confirmed = await confirmDialog(`Signed in as "${state.currentUser?.name}" (${state.currentUser?.role}). Do you want to switch user or sign in with another account?`, "Switch User / Sign In");
+  if (confirmed) {
     window.showAuthModal('signin');
   }
 };

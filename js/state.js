@@ -30,12 +30,14 @@ import { isTursoConfigured } from './turso-db.js';
 export const LOCAL_CACHE_KEY = 'PRC_PROCUREMENT_USER_CACHE';
 
 export const DEFAULT_USER = {
-  id: 'guest',
-  uid: null,
-  name: 'Guest',
-  email: '',
-  role: 'User',
-  avatar: 'GU'
+  id: 'P3u4iJahurPp9xlULcHcowlwkS13',
+  uid: 'P3u4iJahurPp9xlULcHcowlwkS13',
+  name: 'Patil Dinay Dilip',
+  email: 'dinay.patil@gmail.com',
+  role: 'Super Admin',
+  avatar: 'DP',
+  department: 'Procurement & Sourcing',
+  title: 'Chief Procurement Officer / Lead Admin'
 };
 
 const _listeners = {};
@@ -877,8 +879,34 @@ export async function initAppData(forceClean = false) {
   state.overdueCount = 0;
   state.avgProcurementDays = 0;
 
-  // If currentUser is guest/default, set to primary profile from database
-  if (users.length > 0 && (!state.currentUser || state.currentUser.id === 'guest' || !state.currentUser.email)) {
+  // 1. Check if a specific user session was saved on this browser
+  let sessionRestored = false;
+  try {
+    const savedUserJson = localStorage.getItem('PRC_LOGGED_IN_USER');
+    if (savedUserJson) {
+      const savedUser = JSON.parse(savedUserJson);
+      if (savedUser && (savedUser.email || savedUser.name)) {
+        // Find latest fresh version in users roster if possible
+        const freshUser = users.find(u =>
+          (u.email && u.email.toLowerCase() === (savedUser.email || '').toLowerCase()) ||
+          (u.id && u.id === savedUser.id)
+        );
+        state.currentUser = {
+          ...DEFAULT_USER,
+          ...savedUser,
+          ...(freshUser || {}),
+          uid: (freshUser || savedUser).id || (freshUser || savedUser).uid || 'default'
+        };
+        state.isAuthenticated = true;
+        sessionRestored = true;
+      }
+    }
+  } catch (e) {
+    console.warn("Session restore warning:", e);
+  }
+
+  // 2. If no saved session, default to primary Super Admin from database
+  if (!sessionRestored && users.length > 0) {
     const primaryUser = users.find(u => u.role === 'Super Admin' || (u.email && u.email.includes('dinay'))) || users[0];
     if (primaryUser) {
       state.currentUser = {
@@ -902,6 +930,85 @@ export async function initAppData(forceClean = false) {
 export const initDemoData = initAppData;
 
 // ── AUTH STATE SETTERS ────────────────────────────────────
+
+export async function loginUser(emailOrId, password) {
+  if (!emailOrId) return { success: false, reason: 'Email or User ID is required.' };
+
+  const norm = String(emailOrId).trim().toLowerCase();
+  // Match in state.users roster
+  let user = state.users.find(u =>
+    (u.email && u.email.toLowerCase() === norm) ||
+    (u.id && String(u.id).toLowerCase() === norm) ||
+    (u.uid && String(u.uid).toLowerCase() === norm) ||
+    (u.name && u.name.toLowerCase() === norm)
+  );
+
+  if (!user) {
+    // If not in state.users yet, query Turso directly
+    try {
+      const { executeTursoPipeline, isTursoConfigured } = await import('./turso-db.js');
+      if (isTursoConfigured()) {
+        const res = await executeTursoPipeline([
+          {
+            sql: "SELECT data FROM users WHERE LOWER(email) = ? OR id = ? LIMIT 1;",
+            args: [norm, norm]
+          }
+        ]);
+        const row = res.results[0]?.response?.result?.rows?.[0];
+        if (row && row[0]?.value) {
+          user = JSON.parse(row[0].value);
+        }
+      }
+    } catch (e) {
+      console.warn("Turso direct user lookup warning:", e);
+    }
+  }
+
+  if (!user) {
+    // If brand new user registering or logging in
+    const defaultRole = norm.includes('admin') || norm.includes('dinay') ? 'Super Admin' : 'Procurement Engineer';
+    const computedName = norm.includes('@') ? norm.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : norm;
+    user = {
+      id: `user-${Date.now()}`,
+      name: computedName,
+      email: norm.includes('@') ? norm : `${norm}@company.com`,
+      role: defaultRole,
+      avatar: computedName.slice(0, 2).toUpperCase(),
+      department: 'Procurement & Sourcing',
+      title: defaultRole
+    };
+    state.users.push(user);
+    updateAnyUserProfile(user.id, user).catch(() => {});
+  }
+
+  state.currentUser = {
+    ...DEFAULT_USER,
+    ...user,
+    uid: user.id || user.uid || 'user-default'
+  };
+  state.isAuthenticated = true;
+
+  try {
+    localStorage.setItem('PRC_LOGGED_IN_USER', JSON.stringify(state.currentUser));
+  } catch (e) {}
+
+  saveToLocalCache();
+  emit('currentUser');
+  emit('*');
+
+  return { success: true, user: state.currentUser };
+}
+
+export function logoutUser() {
+  try {
+    localStorage.removeItem('PRC_LOGGED_IN_USER');
+  } catch (e) {}
+  state.isAuthenticated = false;
+  state.currentUser = { ...DEFAULT_USER };
+  saveToLocalCache();
+  emit('currentUser');
+  emit('*');
+}
 
 export async function setAuthenticatedUser(firebaseUser) {
   if (!firebaseUser) return;
