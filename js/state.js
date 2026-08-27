@@ -1173,20 +1173,105 @@ export function doesRecordPertainToCurrentUser(record, user = state.currentUser)
     return false;
   };
 
-  if (matches(record.buyerName) || matches(record.allocatedBy) || matches(record.requestedBy) ||
-      matches(record.createdBy) || matches(record.engineer) || matches(record.userId) || matches(record.authorizedBy)) {
+  // 1. Direct fields on PRC / Allocation / RFQ / TCD / POD / ActivityLog
+  if (
+    matches(record.buyerName) ||
+    matches(record.allocatedBy) ||
+    matches(record.requestedBy) ||
+    matches(record.createdBy) ||
+    matches(record.engineer) ||
+    matches(record.userId) ||
+    matches(record.userEmail) ||
+    matches(record.user) ||
+    matches(record.authorizedBy) ||
+    matches(record.authorisedBy) ||
+    matches(record.buyer) ||
+    matches(record.poBy) ||
+    matches(record.tcdBy) ||
+    matches(record.rfqBy) ||
+    matches(record.preparedBy) ||
+    matches(record.approvedBy)
+  ) {
     return true;
   }
 
+  // 2. Material lines on PRC
   if (Array.isArray(record.materials)) {
-    return record.materials.some(m => matches(m.buyerName) || matches(m.engineer) || matches(m.allocatedBy) || matches(m.requestedBy));
+    if (record.materials.some(m =>
+      matches(m.buyerName) ||
+      matches(m.engineer) ||
+      matches(m.allocatedBy) ||
+      matches(m.requestedBy) ||
+      matches(m.createdBy) ||
+      matches(m.buyer)
+    )) {
+      return true;
+    }
   }
 
+  // 3. Items inside Allocation / RFQ / POD
   if (Array.isArray(record.items)) {
-    return record.items.some(i => matches(i.buyerName) || matches(i.engineer) || matches(i.allocatedBy) || matches(i.requestedBy));
+    // Check item-level fields
+    if (record.items.some(i =>
+      matches(i.buyerName) ||
+      matches(i.engineer) ||
+      matches(i.allocatedBy) ||
+      matches(i.requestedBy) ||
+      matches(i.createdBy) ||
+      matches(i.buyer)
+    )) {
+      return true;
+    }
+    // Check if item links to a PRC in state.prcs that pertains to the user
+    if (record.items.some(i => {
+      const parentPRC = (state.prcs || []).find(p => p.id === i.prcId || p.prNumber === i.prNumber);
+      return parentPRC && doesRecordPertainToCurrentUser(parentPRC, user);
+    })) {
+      return true;
+    }
+  }
+
+  // 4. Vendor allocations in TCD
+  if (Array.isArray(record.vendorAllocations) || Array.isArray(record.vendors)) {
+    const vas = record.vendorAllocations || record.vendors || [];
+    for (const va of vas) {
+      if (Array.isArray(va.items)) {
+        if (va.items.some(i => {
+          const parentPRC = (state.prcs || []).find(p => p.id === i.prcId || p.prNumber === i.prNumber);
+          return parentPRC && doesRecordPertainToCurrentUser(parentPRC, user);
+        })) {
+          return true;
+        }
+      }
+    }
   }
 
   return false;
+}
+
+export function getFilteredAllocations(user = state.currentUser) {
+  if (isSuperAdmin(user)) return state.allocations || [];
+  return (state.allocations || []).filter(a => doesRecordPertainToCurrentUser(a, user));
+}
+
+export function getFilteredRFQs(user = state.currentUser) {
+  if (isSuperAdmin(user)) return state.rfqs || [];
+  return (state.rfqs || []).filter(r => doesRecordPertainToCurrentUser(r, user));
+}
+
+export function getFilteredTCDs(user = state.currentUser) {
+  if (isSuperAdmin(user)) return state.tcds || [];
+  return (state.tcds || []).filter(t => doesRecordPertainToCurrentUser(t, user));
+}
+
+export function getFilteredPODs(user = state.currentUser) {
+  if (isSuperAdmin(user)) return state.pods || [];
+  return (state.pods || []).filter(p => doesRecordPertainToCurrentUser(p, user));
+}
+
+export function getFilteredActivityLogs(user = state.currentUser) {
+  if (isSuperAdmin(user)) return state.activityLogs || [];
+  return (state.activityLogs || []).filter(l => doesRecordPertainToCurrentUser(l, user));
 }
 
 export async function updateAnyUserProfile(targetIdOrEmail, patch) {
@@ -1968,7 +2053,8 @@ export function isPRCAuthorised(p) {
 }
 
 export function getAvailablePRCsForAllocation() {
-  return (state.prcs || []).filter(p => {
+  const prcs = isSuperAdmin() ? (state.prcs || []) : (state.prcs || []).filter(p => doesRecordPertainToCurrentUser(p));
+  return prcs.filter(p => {
     if (isPRCShortClosed(p)) return false;
     // Only PRCs in Authorised status are eligible for allocation
     if (!isPRCAuthorised(p)) return false;

@@ -333,7 +333,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
@@ -629,8 +629,10 @@ window.filterByDashboardTile = function(filterType, filterValue) {
 // ═══════════════════════════════════════════════════════════
 function renderDashboard(container) {
   const state = getState();
-  const s     = state.statusSummary || {};
-  const prcs  = state.prcs || [];
+  const prcs  = getFilteredPRCs();
+  const s     = buildStatusSummary(prcs);
+  const totalMats = prcs.reduce((sum, p) => sum + (p.materials || []).length, 0);
+  const poToday = prcs.filter(p => p.poDate === new Date().toISOString().split('T')[0]).length;
 
   const kpis = [
     { label:'Total PRCs',        value: prcs.length,                       icon:'📦', style:'--kpi-accent:#3b82f6;--kpi-icon-bg:rgba(59,130,246,0.12)', onclick: "filterByDashboardTile('all')" },
@@ -643,10 +645,10 @@ function renderDashboard(container) {
     { label:'PR Not Approved',   value: s[STATUS.PR_NOT_APPROVED]||0,       icon:'🚫', style:'--kpi-accent:#9333ea;--kpi-icon-bg:rgba(147,51,234,0.12)', onclick: `filterByDashboardTile('status','${STATUS.PR_NOT_APPROVED}')` },
     { label:'Future PRC',        value: s[STATUS.FUTURE_PRC]||0,            icon:'🔮', style:'--kpi-accent:#0284c7;--kpi-icon-bg:rgba(2,132,199,0.12)', onclick: `filterByDashboardTile('status','${STATUS.FUTURE_PRC}')` },
     { label:'System Issue',      value: s[STATUS.SYSTEM_ISSUE]||0,          icon:'⚙️', style:'--kpi-accent:#475569;--kpi-icon-bg:rgba(71,85,105,0.12)', onclick: `filterByDashboardTile('status','${STATUS.SYSTEM_ISSUE}')` },
-    { label:'Total Materials',   value: state.totalMaterials||0,            icon:'🔩', style:'--kpi-accent:#3b82f6;--kpi-icon-bg:rgba(59,130,246,0.12)', onclick: "filterByDashboardTile('viewLevel','material')" },
+    { label:'Total Materials',   value: totalMats,                          icon:'🔩', style:'--kpi-accent:#3b82f6;--kpi-icon-bg:rgba(59,130,246,0.12)', onclick: "filterByDashboardTile('viewLevel','material')" },
     { label:'Overdue PRCs',      value: state.overdueCount||0,              icon:'🚨', style:'--kpi-accent:#ef4444;--kpi-icon-bg:rgba(239,68,68,0.12)', onclick: "filterByDashboardTile('overdue')" },
     { label:'Avg Days (PO)',     value: state.avgProcurementDays||0,        icon:'📅', style:'--kpi-accent:#f59e0b;--kpi-icon-bg:rgba(245,158,11,0.12)', suffix:' days', onclick: "filterByDashboardTile('all')" },
-    { label:'PO Issued Today',   value: state.poToday||0,                   icon:'🛒', style:'--kpi-accent:#10b981;--kpi-icon-bg:rgba(16,185,129,0.12)', onclick: "filterByDashboardTile('poToday')" }
+    { label:'PO Issued Today',   value: poToday,                            icon:'🛒', style:'--kpi-accent:#10b981;--kpi-icon-bg:rgba(16,185,129,0.12)', onclick: "filterByDashboardTile('poToday')" }
   ];
 
   container.innerHTML = `
@@ -762,7 +764,7 @@ function renderDashboard(container) {
 
   // Render recent activity
   const activityEl = document.getElementById('recent-activity');
-  const logs = (state.activityLogs||[]).slice(0,5);
+  const logs = getFilteredActivityLogs().slice(0, 5);
   activityEl.innerHTML = logs.length ? logs.map(l => `
     <div class="notif-item">
       <div class="notif-icon" style="background:var(--color-info-bg)">${l.action==='import'?'📥':l.action==='create'?'➕':'✏️'}</div>
@@ -2726,7 +2728,7 @@ function renderVendors(container) {
 // ═══════════════════════════════════════════════════════════
 function renderAudit(container) {
   const state = getState();
-  const logs  = state.activityLogs || [];
+  const logs  = getFilteredActivityLogs();
 
   container.innerHTML = `
 <div class="page-header">
@@ -3682,7 +3684,7 @@ window.handleDeletePRC = async function(id) {
 // ═══════════════════════════════════════════════════════════
 function renderAllocationsPage(container) {
   const state = getState();
-  const allocs = [...(state.allocations || [])];
+  const allocs = [...getFilteredAllocations()];
   const sf = state.allocSortField || 'allocationNumber';
   const sd = state.allocSortDir === 'desc' ? -1 : 1;
 
@@ -4560,7 +4562,7 @@ function getRFQTCDCoverage(rfq, allTCDs) {
 }
 function renderRFQsPage(container) {
   const state = getState();
-  const rfqs = [...(state.rfqs || [])];
+  const rfqs = [...getFilteredRFQs()];
   const available = getAvailableForRFQ();
   const sf = state.rfqSortField || 'rfqNumber';
   const sd = state.rfqSortDir === 'desc' ? -1 : 1;
@@ -5666,7 +5668,7 @@ function getTCDPOCoverage(tcd, allPODs = [], allPRCs = []) {
 }
 function renderTCDsPage(container) {
   const state = getState();
-  const tcds = [...(state.tcds || [])];
+  const tcds = [...getFilteredTCDs()];
   const available = getAvailableForTCD();
   const sf = state.tcdSortField || 'tcdNumber';
   const sd = state.tcdSortDir === 'desc' ? -1 : 1;
@@ -6380,7 +6382,7 @@ window.filterTCDDocs = function(query) {
 // ═══════════════════════════════════════════════════════════
 function renderPODsPage(container) {
   const state = getState();
-  const pods = [...(state.pods || [])];
+  const pods = [...getFilteredPODs()];
   const sf = state.poSortField || 'poNumber';
   const sd = state.poSortDir === 'desc' ? -1 : 1;
 
@@ -6985,13 +6987,12 @@ window.filterPODDocs = function(query) {
 // SIDEBAR BADGE UPDATES
 // ═══════════════════════════════════════════════════════════
 function updateSidebarBadges() {
-  const state = getState();
   const setBadge = (id, count) => { const el = document.getElementById(id); if (el) el.textContent = count || ''; };
-  setBadge('nav-prc-count', state.prcs.length);
-  setBadge('nav-alloc-count', state.allocations.length);
-  setBadge('nav-rfq-count', state.rfqs.length);
-  setBadge('nav-tcd-count', state.tcds.length);
-  setBadge('nav-pod-count', state.pods.length);
+  setBadge('nav-prc-count', getFilteredPRCs().length);
+  setBadge('nav-alloc-count', getFilteredAllocations().length);
+  setBadge('nav-rfq-count', getFilteredRFQs().length);
+  setBadge('nav-tcd-count', getFilteredTCDs().length);
+  setBadge('nav-pod-count', getFilteredPODs().length);
 }
 
 // ═══════════════════════════════════════════════════════════
