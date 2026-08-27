@@ -1500,30 +1500,113 @@ export function getPRCById(id) {
   return state.prcs.find(p => p.id === id) || null;
 }
 
-export function deletePRC(id) {
-  const hasAllocations = state.allocations.some(a => a.items.some(i => i.prcId === id));
-  const hasRFQs = state.rfqs.some(r => r.items.some(i => i.prcId === id));
-  const hasTCDs = state.tcds.some(t => (t.vendorAllocations || []).some(va => va.items.some(i => i.prcId === id)));
-  const hasPODs = state.pods.some(p => p.items.some(i => i.prcId === id));
+export function deletePRC(id, forceCascade = true) {
+  const prc = state.prcs.find(p => p.id === id || p.prNumber === id);
+  if (!prc) return { success: false, reason: 'PRC record not found.' };
 
-  if (hasAllocations || hasRFQs || hasTCDs || hasPODs) {
-    return { success: false, reason: 'Cannot delete PRC — it has downstream Allocation, RFQ, TCD, or PO documents. Delete those first.' };
+  const prcId = prc.id;
+  const prNumber = prc.prNumber;
+
+  const hasAllocations = state.allocations.some(a => (a.items || []).some(i => i.prcId === prcId || i.prNumber === prNumber));
+  const hasRFQs = state.rfqs.some(r => (r.items || []).some(i => i.prcId === prcId || i.prNumber === prNumber));
+  const hasTCDs = state.tcds.some(t => (t.vendorAllocations || []).some(va => (va.items || []).some(i => i.prcId === prcId || i.prNumber === prNumber)));
+  const hasPODs = state.pods.some(p => (p.items || []).some(i => i.prcId === prcId || i.prNumber === prNumber));
+  const hasTrails = hasAllocations || hasRFQs || hasTCDs || hasPODs;
+
+  const isAdmin = isSuperAdmin();
+
+  if (hasTrails && !isAdmin && !forceCascade) {
+    return { success: false, reason: 'Cannot delete PRC — it has downstream Allocation, RFQ, TCD, or PO documents. Only Super Admin has right to delete PRC and all its trails.' };
   }
 
-  const prc = state.prcs.find(p => p.id === id);
-  if (!prc) return { success: false, reason: 'PRC not found.' };
+  const effectiveUid = _getEffectiveUid();
 
-  const prcs = state.prcs.filter(p => p.id !== id);
-  setState({ prcs, statusSummary: buildStatusSummary(prcs), totalMaterials: prcs.reduce((a, p) => a + (p.materials || []).length, 0) });
+  // If Super Admin or cascade requested, remove all downstream trails
+  if (hasTrails && (isAdmin || forceCascade)) {
+    // 1. Clean Allocations
+    let updatedAllocs = [];
+    state.allocations.forEach(a => {
+      const remainingItems = (a.items || []).filter(i => i.prcId !== prcId && i.prNumber !== prNumber);
+      if (remainingItems.length > 0) {
+        const updatedAlloc = { ...a, items: remainingItems, updatedAt: new Date().toISOString() };
+        updatedAllocs.push(updatedAlloc);
+        directSaveAllocation(effectiveUid, updatedAlloc);
+      } else {
+        directDeleteAllocation(effectiveUid, a.id);
+      }
+    });
+    state.allocations = updatedAllocs;
 
-  // Direct Firestore delete
-  directDeletePRC(_getEffectiveUid(), id);
+    // 2. Clean RFQs
+    let updatedRFQs = [];
+    state.rfqs.forEach(r => {
+      const remainingItems = (r.items || []).filter(i => i.prcId !== prcId && i.prNumber !== prNumber);
+      if (remainingItems.length > 0) {
+        const updatedRfq = { ...r, items: remainingItems, updatedAt: new Date().toISOString() };
+        updatedRFQs.push(updatedRfq);
+        directSaveRFQ(effectiveUid, updatedRfq);
+      } else {
+        directDeleteRFQ(effectiveUid, r.id);
+      }
+    });
+    state.rfqs = updatedRFQs;
+
+    // 3. Clean TCDs
+    let updatedTCDs = [];
+    state.tcds.forEach(t => {
+      let remainingVAs = [];
+      (t.vendorAllocations || []).forEach(va => {
+        const remainingItems = (va.items || []).filter(i => i.prcId !== prcId && i.prNumber !== prNumber);
+        if (remainingItems.length > 0) {
+          remainingVAs.push({ ...va, items: remainingItems });
+        }
+      });
+      if (remainingVAs.length > 0) {
+        const updatedTcd = { ...t, vendorAllocations: remainingVAs, updatedAt: new Date().toISOString() };
+        updatedTCDs.push(updatedTcd);
+        directSaveTCD(effectiveUid, updatedTcd);
+      } else {
+        directDeleteTCD(effectiveUid, t.id);
+      }
+    });
+    state.tcds = updatedTCDs;
+
+    // 4. Clean PODs
+    let updatedPODs = [];
+    state.pods.forEach(p => {
+      const remainingItems = (p.items || []).filter(i => i.prcId !== prcId && i.prNumber !== prNumber);
+      if (remainingItems.length > 0) {
+        const updatedPod = { ...p, items: remainingItems, updatedAt: new Date().toISOString() };
+        updatedPODs.push(updatedPod);
+        directSavePOD(effectiveUid, updatedPod);
+      } else {
+        directDeletePOD(effectiveUid, p.id);
+      }
+    });
+    state.pods = updatedPODs;
+  }
+
+  // Delete the PRC itself
+  const prcs = state.prcs.filter(p => p.id !== prcId && p.prNumber !== prNumber);
+  state.prcs = prcs;
+  state.statusSummary = buildStatusSummary(prcs);
+  state.totalMaterials = prcs.reduce((a, p) => a + (p.materials || []).length, 0);
+
+  saveToLocalCache();
+
+  // Direct Turso delete
+  directDeletePRC(effectiveUid, prcId);
+  directDeletePRC(effectiveUid, prNumber);
 
   addAuditLog({
-    action: 'delete_prc', collection: 'PRCs', docId: id,
-    changes: { prNumber: prc.prNumber, materialsCount: (prc.materials || []).length }
+    action: 'delete_prc_with_trails',
+    collection: 'PRCs',
+    docId: prNumber,
+    changes: { prNumber, hadTrails: hasTrails, deletedBy: state.currentUser?.name || 'Super Admin' }
   });
-  return { success: true };
+
+  emit('*');
+  return { success: true, prNumber, hadTrails: hasTrails };
 }
 
 export function updateMaterial(prcId, materialId, patch) {

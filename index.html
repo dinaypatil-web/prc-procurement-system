@@ -1548,7 +1548,7 @@ function renderPRCTable() {
           <td onclick="event.stopPropagation()">
             <button class="btn btn-ghost btn-sm btn-icon" onclick="openPRCDetail('${p.id}')" title="View Details">👁️</button>
             <button class="btn btn-ghost btn-sm btn-icon" onclick="openEditPRC('${p.id}')" title="Edit">✏️</button>
-            <button class="btn btn-ghost btn-sm btn-icon" onclick="handleDeletePRC('${p.id}')" title="Delete PRC" style="color:var(--color-danger)">🗑️</button>
+            ${isSuperAdmin() ? `<button class="btn btn-ghost btn-sm btn-icon" onclick="handleDeletePRC('${p.id}')" title="Delete PRC & All Trails (Super Admin)" style="color:var(--color-danger)">🗑️</button>` : ''}
           </td>
         </tr>`;
 
@@ -1560,6 +1560,7 @@ function renderPRCTable() {
                 <div style="display:flex;gap:6px;align-items:center">
                   <button class="btn btn-secondary btn-xs" style="font-size:11px;padding:3px 8px" onclick="event.stopPropagation();openBulkMaterialEditModal('${p.id}')" title="Bulk update material status/vendors">⚙️ Bulk Update Items</button>
                   <button class="btn btn-primary btn-xs" style="font-size:11px;padding:3px 8px" onclick="event.stopPropagation();openAddMaterialModal('${p.id}')" title="Add material item">➕ Add Material</button>
+                  ${isSuperAdmin() ? `<button class="btn btn-danger btn-xs" style="font-size:11px;padding:3px 8px" onclick="event.stopPropagation();handleDeletePRC('${p.id}')" title="Delete entire PRC and all its material trails">🗑️ Delete PRC & Trails</button>` : ''}
                 </div>
               </div>
               ${materials.length === 0 ? `
@@ -1629,7 +1630,10 @@ function renderPRCTable() {
                         <td>${m.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${m.poNumber}','PO Number',event)" title="Click to copy PO Number"><strong class="text-brand">${highlight(m.poNumber,q)}</strong><span class="copy-icon">📋</span></span><br><span style="font-size:10px;color:var(--color-text-tertiary)">${fmtDate(m.poDate)}${m.vendorName||m.vendor ? ' · ' + (m.vendorName||m.vendor) : ''}</span>` : `<button class="btn btn-secondary btn-xs" style="padding:2px 7px;font-size:10px;font-weight:600;white-space:nowrap;border-radius:6px" onclick="event.stopPropagation();quickCreatePOD('${m.tcdNumber||''}','${m.tcdId||''}','${(m.vendorName||m.vendor||'').replace(/'/g, "\\'")}','${p.id}')" title="Create Purchase Order Document">➕ Create PO Document</button>`}</td>
                         <td>${fmtDate(m.deliveryDate||m.deliveryEndDate)}</td>
                         <td onclick="event.stopPropagation()">
-                          <button class="btn btn-primary btn-xs" style="padding:3px 7px;font-size:10px" onclick="openEditMaterialWorkflow('${p.id}','${m.id}')" title="Edit Material Record">✏️ Edit Material</button>
+                          <div style="display:flex;gap:4px;align-items:center">
+                            <button class="btn btn-primary btn-xs" style="padding:3px 7px;font-size:10px" onclick="openEditMaterialWorkflow('${p.id}','${m.id}')" title="Edit Material Record">✏️ Edit Material</button>
+                            ${isSuperAdmin() ? `<button class="btn btn-ghost btn-xs btn-icon" style="color:var(--color-danger);padding:3px 6px" onclick="handleDeletePRC('${p.id}')" title="Delete Entire PRC & Trails (Super Admin)">🗑️</button>` : ''}
+                          </div>
                         </td>
                       </tr>`;
                     }).join('')}
@@ -1764,6 +1768,13 @@ window.openPRCDetail = function(id) {
       ${renderToggle('End User',    prc.inputFromEndUser,      `setFlag('${id}','inputFromEndUser',this.checked)`)}
       ${renderToggle('Vendor',      prc.inputFromVendor,       `setFlag('${id}','inputFromVendor',this.checked)`)}
     </div>
+
+    ${isSuperAdmin() ? `
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--color-border)">
+      <button class="btn btn-danger btn-sm w-full" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:8px" onclick="handleDeletePRC('${prc.id}')" title="Delete PRC and all downstream trails">
+        <span>🗑️</span> <span>Delete PRC & All Trails</span>
+      </button>
+    </div>` : ''}
   </div>
 
   <!-- RIGHT: Tabs -->
@@ -3634,20 +3645,35 @@ window.handleResetCreatorDB   = window.handleResetUserDB;
 // DELETE PRC HANDLER
 // ═══════════════════════════════════════════════════════════
 window.handleDeletePRC = async function(id) {
+  if (!isSuperAdmin()) {
+    toast("Permission Denied: Only Super Admin has the right to delete PRC records and their trails.", "error");
+    return;
+  }
   const prc = getPRCById(id);
   if (!prc) return;
-  const confirmed = await confirmDialog(`Delete PRC "${prc.prNumber}" and all its ${(prc.materials||[]).length} materials? This cannot be undone.`, 'Delete PRC');
+
+  const prNumber = prc.prNumber;
+  const matCount = (prc.materials || []).length;
+
+  const confirmed = await confirmDialog(
+    `⚠️ SUPER ADMIN ACTION:\n\nAre you sure you want to permanently delete PRC "${prNumber}" (${matCount} materials) along with ALL its downstream Allocation, RFQ, TCD, and Purchase Order trails directly from the database?\n\nThis action cannot be undone.`,
+    `Delete PRC "${prNumber}" & Trails`
+  );
   if (!confirmed) return;
 
-  const result = deletePRC(id);
+  const result = deletePRC(id, true);
   if (result.success) {
-    toast(`PRC ${prc.prNumber} deleted successfully`, 'success');
+    toast(`✅ PRC ${prNumber} and all associated trails were permanently deleted from Turso DB!`, 'success');
     closePRCDetail();
-    if (getState().currentPage === 'prc-list') preserveScroll(() => renderPRCTable());
-    const badge = document.getElementById('nav-prc-count');
-    if (badge) badge.textContent = getState().prcs.length;
+    if (getState().currentPage === 'prc-list') {
+      preserveScroll(() => renderPRCTable());
+    } else {
+      const page = getState().currentPage || 'dashboard';
+      if (PAGES[page]) PAGES[page].render(document.getElementById('page-content'));
+    }
+    updateSidebarBadges();
   } else {
-    toast(result.reason, 'error');
+    toast(result.reason || 'Failed to delete PRC.', 'error');
   }
 };
 
