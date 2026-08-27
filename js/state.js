@@ -877,6 +877,19 @@ export async function initAppData(forceClean = false) {
   state.overdueCount = 0;
   state.avgProcurementDays = 0;
 
+  // If currentUser is guest/default, set to primary profile from database
+  if (users.length > 0 && (!state.currentUser || state.currentUser.id === 'guest' || !state.currentUser.email)) {
+    const primaryUser = users.find(u => u.role === 'Super Admin' || (u.email && u.email.includes('dinay'))) || users[0];
+    if (primaryUser) {
+      state.currentUser = {
+        ...DEFAULT_USER,
+        ...primaryUser,
+        uid: primaryUser.id || primaryUser.uid || 'default'
+      };
+      state.isAuthenticated = true;
+    }
+  }
+
   saveToLocalCache();
   emit('*');
 
