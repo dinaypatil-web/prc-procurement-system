@@ -3387,39 +3387,6 @@ function renderSettings(container) {
         <div id="firestore-diag-output" style="margin-top:12px;background:var(--color-surface-3);border-radius:8px;padding:12px;min-height:20px"></div>
       </div>
 
-      <div style="background:var(--color-surface-2);border:1px solid var(--color-border);padding:18px;border-radius:12px;margin-bottom:24px">
-        <h4 style="font-size:14px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px">
-          <span>⚙️</span> Firebase Project Credentials & Setup
-        </h4>
-        <p style="font-size:12.5px;color:var(--color-text-secondary);margin-bottom:14px;line-height:1.5">
-          Active Project: <code>${FIREBASE_CONFIG.projectId || 'procuretrack-3cb1c'}</code> | Auth Domain: <code>${FIREBASE_CONFIG.authDomain || 'procuretrack-3cb1c.firebaseapp.com'}</code>. To connect to a different Firebase project, enter your web app SDK values from Firebase Console (Project Settings › General › Your Apps).
-        </p>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:14px">
-          <div>
-            <label class="form-label" style="font-size:11.5px">Project ID</label>
-            <input type="text" id="cfg-project-id" class="form-input" style="font-size:12px" value="${FIREBASE_CONFIG.projectId || ''}" placeholder="e.g. procuretrack-3cb1c"/>
-          </div>
-          <div>
-            <label class="form-label" style="font-size:11.5px">API Key 🔒</label>
-            <div style="position:relative;display:flex;align-items:center">
-              <input type="password" id="cfg-api-key" class="form-input" style="font-size:12px;padding-right:36px" value="${FIREBASE_CONFIG.apiKey || ''}" placeholder="e.g. AIzaSy..." autocomplete="off"/>
-              <button type="button" class="btn btn-ghost btn-xs" style="position:absolute;right:4px;padding:2px 6px;font-size:12px;color:var(--color-text-secondary);cursor:pointer;border:none;background:transparent" onclick="toggleApiKeyVisibility(event)" title="Toggle API Key visibility">👁️</button>
-            </div>
-          </div>
-          <div>
-            <label class="form-label" style="font-size:11.5px">Auth Domain</label>
-            <input type="text" id="cfg-auth-domain" class="form-input" style="font-size:12px" value="${FIREBASE_CONFIG.authDomain || ''}" placeholder="e.g. procuretrack-3cb1c.firebaseapp.com"/>
-          </div>
-          <div>
-            <label class="form-label" style="font-size:11.5px">Storage Bucket</label>
-            <input type="text" id="cfg-storage-bucket" class="form-input" style="font-size:12px" value="${FIREBASE_CONFIG.storageBucket || ''}" placeholder="e.g. procuretrack-3cb1c.firebasestorage.app"/>
-          </div>
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-primary btn-sm" onclick="handleSaveCustomFirebaseConfig()">💾 Save & Reconnect</button>
-          <button class="btn btn-secondary btn-sm" onclick="handleResetCustomFirebaseConfig()">🔄 Reset to Environment Defaults</button>
-        </div>
-      </div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;padding-top:16px;border-top:1px solid var(--color-border);flex-wrap:wrap;gap:10px">
         <div style="display:flex;gap:10px;flex-wrap:wrap">
