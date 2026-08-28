@@ -3,7 +3,8 @@
 // Data is saved directly to Firebase Cloud Firestore per-user
 // Supports Real-Time Multi-Device Synchronization & Safe ID Escaping
 // =========================================================
-import { calculateStatus, calculateMaterialStatus, buildStatusSummary } from './status-engine.js';
+import { calculateStatus, calculateMaterialStatus, buildStatusSummary, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus } from './status-engine.js';
+export { isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus };
 import {
   loadAllUserData,
   saveAllUserData,
@@ -2581,9 +2582,9 @@ export function _isExcludedFromPending(item, prc) {
   if (prc && Array.isArray(prc.materials) && item) {
     mat = prc.materials.find(m =>
       (item.materialId && m.id === item.materialId) ||
-      (item.materialCode && m.materialCode === item.materialCode) ||
-      (item.materialCode && m.itemCode === item.materialCode) ||
-      (item.itemCode && m.materialCode === item.itemCode)
+      (item.materialCode && (m.materialCode === item.materialCode || m.matCode === item.materialCode || m.itemCode === item.materialCode)) ||
+      (item.matCode && (m.matCode === item.matCode || m.materialCode === item.matCode || m.itemCode === item.matCode)) ||
+      (item.itemCode && (m.materialCode === item.itemCode || m.matCode === item.itemCode || m.itemCode === item.itemCode))
     );
   }
 
@@ -2915,14 +2916,16 @@ export function createRFQ(data) {
     rfqs[existingIdx] = rfq;
   } else {
     // Create fresh RFQ
+    const newItems = data.items || [];
+    const initialStatus = getRFQStatus({ items: newItems, isClosed: false }, state.prcs);
     rfq = {
       id: `rfq-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
       rfqNumber: normNum,
       rfqDate: data.rfqDate,
-      items: data.items || [],
+      items: newItems,
       createdAt: new Date().toISOString(),
       createdBy: state.currentUser?.name || 'User',
-      status: 'Active',
+      status: initialStatus,
       offersReceived: false
     };
     rfqs = [rfq, ...state.rfqs];
@@ -3154,7 +3157,7 @@ export function toggleRFQClose(id, isClosed) {
 
   const rfq = { ...state.rfqs[rfqIdx] };
   rfq.isClosed = !!isClosed;
-  rfq.status = isClosed ? 'Closed' : 'Active';
+  rfq.status = isClosed ? 'Closed' : getRFQStatus({ ...rfq, isClosed: false }, state.prcs);
   rfq.updatedAt = new Date().toISOString();
   rfq.updatedBy = state.currentUser?.name || 'App User';
 

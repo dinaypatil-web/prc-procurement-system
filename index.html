@@ -337,7 +337,7 @@
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues } from './js/state.js';
-import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete } from './js/status-engine.js';
+import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
@@ -4132,20 +4132,24 @@ function renderAllocationsPage(container) {
         <th>Allocation Number</th><th>Date</th><th>Buyer</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th>
       </tr></thead>
       <tbody id="alloc-docs-tbody">
-        ${allocs.map(a => `
+        ${allocs.map(a => {
+          const allocStatus = getAllocationStatus(a, state.prcs);
+          const allocChipClass = allocStatus === 'Not Active' ? 'chip-not-active' : 'chip-completed';
+          return `
           <tr>
             <td><span class="copy-badge" onclick="copyToClipboard('${a.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><span class="font-mono font-semibold">${a.allocationNumber}</span><span class="copy-icon">📋</span></span></td>
             <td>${fmtDate(a.allocationDate)}</td>
             <td>${a.buyerName || '—'}</td>
             <td><span class="chip chip-pending">${(a.items || []).length} items</span></td>
-            <td><span class="chip chip-completed">${a.status || 'Active'}</span></td>
+            <td><span class="chip ${allocChipClass}">${allocStatus === 'Not Active' ? '🔒 Not Active' : allocStatus}</span></td>
             <td>${fmtDate(a.createdAt)}</td>
             <td>
               <button class="btn btn-ghost btn-sm" onclick="viewAllocationDetail('${a.id}')" title="View Details">👁️ View</button>
               <button class="btn btn-ghost btn-sm" onclick="openEditAllocationModal('${a.id}')" title="Edit Allocation">✏️ Edit</button>
               <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleDeleteAllocation('${a.id}')" title="Delete Allocation">🗑️</button>
             </td>
-          </tr>`).join('')}
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>
   </div>` : `
@@ -4718,11 +4722,13 @@ window.viewAllocationDetail = function(id) {
   el = document.createElement('div');
   el.id = modalId;
   el.className = 'modal-overlay open';
-  el.innerHTML = `
+    const allocStatus = getAllocationStatus(alloc, getState().prcs);
+    const allocChipClass = allocStatus === 'Not Active' ? 'chip-not-active' : 'chip-completed';
+    el.innerHTML = `
     <div class="modal modal-lg fade-in-up" style="max-width:850px">
       <div class="modal-header">
         <div><h3 class="modal-title">📦 Allocation: <span class="copy-badge" onclick="copyToClipboard('${alloc.allocationNumber}','Allocation Number',event)" title="Click to copy Allocation Number"><span class="font-mono font-bold">${alloc.allocationNumber}</span><span class="copy-icon">📋</span></span></h3>
-        <div style="font-size:13px;color:var(--color-text-secondary)">Date: ${fmtDate(alloc.allocationDate)} · Buyer: ${alloc.buyerName || '—'} · Created by ${alloc.createdBy || 'Admin'}</div></div>
+        <div style="font-size:13px;color:var(--color-text-secondary)">Date: ${fmtDate(alloc.allocationDate)} · Buyer: ${alloc.buyerName || '—'} · Status: <span class="chip ${allocChipClass}" style="font-size:11px">${allocStatus === 'Not Active' ? '🔒 Not Active' : allocStatus}</span> · Created by ${alloc.createdBy || 'Admin'}</div></div>
         <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
       </div>
       <div class="modal-body" style="padding:20px">
@@ -4925,8 +4931,9 @@ function renderRFQsPage(container) {
     return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * sd;
   });
 
-  const activeRFQs = rfqs.filter(r => !(r.isClosed || String(r.status||'').trim().toLowerCase() === 'closed'));
-  const closedRFQs = rfqs.filter(r => (r.isClosed || String(r.status||'').trim().toLowerCase() === 'closed'));
+  const activeRFQs = rfqs.filter(r => getRFQStatus(r, state.prcs) === 'Active');
+  const notActiveRFQs = rfqs.filter(r => getRFQStatus(r, state.prcs) === 'Not Active');
+  const closedRFQs = rfqs.filter(r => getRFQStatus(r, state.prcs) === 'Closed');
 
   container.innerHTML = `
 <div class="page-header">
@@ -4947,7 +4954,7 @@ function renderRFQsPage(container) {
     <div class="summary-stat-icon" style="background:rgba(59,130,246,0.12);color:var(--color-primary)">📨</div>
     <div class="summary-stat-info">
       <div class="summary-stat-val">${rfqs.length}</div>
-      <div class="summary-stat-lbl">Total RFQs (${activeRFQs.length} Active, ${closedRFQs.length} Closed)</div>
+      <div class="summary-stat-lbl">Total RFQs (${activeRFQs.length} Active${notActiveRFQs.length > 0 ? `, ${notActiveRFQs.length} Not Active` : ''}, ${closedRFQs.length} Closed)</div>
     </div>
   </div>
   <div class="summary-stat-card">
@@ -5010,8 +5017,10 @@ function renderRFQsPage(container) {
       <thead><tr><th>RFQ Number</th><th>Date</th><th>Materials</th><th>Status</th><th>TCD</th><th>Created</th><th>Actions</th></tr></thead>
       <tbody id="rfq-docs-tbody">
         ${rfqs.map(r => {
-          const isClosed = !!(r.isClosed || String(r.status||'').trim().toLowerCase() === 'closed');
-          const statusChipClass = isClosed ? 'chip-completed' : (r.status === 'Short-Close' ? 'chip-shortclosed' : 'chip-pending');
+          const rfqSt = getRFQStatus(r, state.prcs);
+          const isClosed = rfqSt === 'Closed';
+          const isNotActive = rfqSt === 'Not Active';
+          const statusChipClass = isClosed ? 'chip-completed' : (isNotActive ? 'chip-not-active' : 'chip-pending');
           const tcdCov = getRFQTCDCoverage(r, state.tcds || []);
 
           // Build TCD cell HTML
@@ -5051,7 +5060,7 @@ function renderRFQsPage(container) {
             <td><span class="chip chip-pending">${(r.items || []).length} items</span></td>
             <td>
               <span class="chip ${statusChipClass}">
-                ${isClosed ? '🔒 Closed (TCD Eligible)' : (r.status || 'Active')}
+                ${isClosed ? '🔒 Closed (TCD Eligible)' : (isNotActive ? '🔒 Not Active' : (r.status || 'Active'))}
               </span>
             </td>
             <td style="min-width:160px">${tcdCellHTML}</td>
@@ -5456,7 +5465,10 @@ window.changeRFQSort = function(field, dir) {
 window.viewRFQDetail = function(id) {
   const rfq = getRFQById(id);
   if (!rfq) return;
-  const isClosed = !!(rfq.isClosed || String(rfq.status||'').trim().toLowerCase() === 'closed');
+  const rfqSt = getRFQStatus(rfq, getState().prcs);
+  const isClosed = rfqSt === 'Closed';
+  const isNotActive = rfqSt === 'Not Active';
+  const statusChipClass = isClosed ? 'chip-completed' : (isNotActive ? 'chip-not-active' : 'chip-pending');
   const modalId = 'rfq-detail-modal';
   let el = document.getElementById(modalId);
   if (el) el.remove();
@@ -5468,7 +5480,7 @@ window.viewRFQDetail = function(id) {
       <div class="modal-header">
         <div>
           <h3 class="modal-title">📨 RFQ: <span class="copy-badge" onclick="copyToClipboard('${rfq.rfqNumber}','RFQ Number',event)" title="Click to copy RFQ Number"><span class="font-mono font-bold">${rfq.rfqNumber}</span><span class="copy-icon">📋</span></span></h3>
-          <div style="font-size:13px;color:var(--color-text-secondary)">Date: ${fmtDate(rfq.rfqDate)} · Status: <span class="chip ${isClosed ? 'chip-completed' : (rfq.status === 'Short-Close' ? 'chip-shortclosed' : 'chip-pending')}">${isClosed ? '🔒 Closed (TCD Eligible)' : (rfq.status || 'Active')}</span> · Created by ${rfq.createdBy || 'Admin'}</div>
+          <div style="font-size:13px;color:var(--color-text-secondary)">Date: ${fmtDate(rfq.rfqDate)} · Status: <span class="chip ${statusChipClass}">${isClosed ? '🔒 Closed (TCD Eligible)' : (isNotActive ? '🔒 Not Active' : (rfq.status || 'Active'))}</span> · Created by ${rfq.createdBy || 'Admin'}</div>
         </div>
         <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
       </div>
@@ -5510,7 +5522,10 @@ window.viewRFQDetail = function(id) {
 window.openEditRFQModal = function(id) {
   const rfq = getRFQById(id);
   if (!rfq) return;
-  const isClosed = !!(rfq.isClosed || String(rfq.status||'').trim().toLowerCase() === 'closed');
+  const rfqSt = getRFQStatus(rfq, getState().prcs);
+  const isClosed = rfqSt === 'Closed';
+  const isNotActive = rfqSt === 'Not Active';
+  const statusChipClass = isClosed ? 'chip-completed' : (isNotActive ? 'chip-not-active' : 'chip-pending');
   const modalId = 'edit-rfq-modal';
   let el = document.getElementById(modalId);
   if (el) el.remove();
@@ -5532,7 +5547,7 @@ window.openEditRFQModal = function(id) {
         <div>
           <h3 class="modal-title">✏️ Edit RFQ Document: ${rfq.rfqNumber}</h3>
           <p style="font-size:12px;color:var(--color-text-secondary);margin:2px 0 0 0">
-            Update header details, adjust quantities, add materials from other PRCs, or remove line items. Status: <span class="chip ${isClosed ? 'chip-completed' : 'chip-pending'}" style="font-size:11px">${isClosed ? '🔒 Closed' : 'Active'}</span>
+            Update header details, adjust quantities, add materials from other PRCs, or remove line items. Status: <span class="chip ${statusChipClass}" style="font-size:11px">${isClosed ? '🔒 Closed' : (isNotActive ? '🔒 Not Active' : 'Active')}</span>
           </p>
         </div>
         <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
@@ -6238,7 +6253,12 @@ function renderCreateTCDPage(container) {
       <div>
         <div style="display:flex;align-items:center;gap:8px">
           <div style="font-size:13px;font-weight:700;color:var(--color-primary)">Filtered to RFQ Context: ${rfqNum}</div>
-          ${filterRFQ ? `<span class="chip ${filterRFQ.isClosed || String(filterRFQ.status||'').trim().toLowerCase() === 'closed' ? 'chip-completed' : 'chip-pending'}" style="font-size:10px">${filterRFQ.isClosed || String(filterRFQ.status||'').trim().toLowerCase() === 'closed' ? '🔒 Closed RFQ' : '🔓 Active RFQ'}</span>` : ''}
+          ${filterRFQ ? (() => {
+            const filterSt = getRFQStatus(filterRFQ, state.prcs);
+            const chipCls = filterSt === 'Closed' ? 'chip-completed' : (filterSt === 'Not Active' ? 'chip-not-active' : 'chip-pending');
+            const badgeTxt = filterSt === 'Closed' ? '🔒 Closed RFQ' : (filterSt === 'Not Active' ? '🔒 Not Active RFQ' : '🔓 Active RFQ');
+            return `<span class="chip ${chipCls}" style="font-size:10px">${badgeTxt}</span>`;
+          })() : ''}
         </div>
         <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">
           ${isRfqNotClosed 

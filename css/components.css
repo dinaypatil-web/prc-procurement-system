@@ -453,6 +453,8 @@
 .chip-draft .chip-dot      { background: #9ca3af; }
 .chip-shortclosed  { background: rgba(107, 114, 128, 0.2);  color: #9ca3af; border: 1px solid rgba(156, 163, 175, 0.3); }
 .chip-shortclosed .chip-dot { background: #9ca3af; }
+.chip-not-active   { background: rgba(107, 114, 128, 0.2);  color: #9ca3af; border: 1px solid rgba(156, 163, 175, 0.3); }
+.chip-not-active .chip-dot  { background: #9ca3af; }
 .chip-rejected    { background: rgba(239, 68, 68, 0.15);    color: #ef4444; }
 .chip-rejected .chip-dot   { background: #ef4444; }
 

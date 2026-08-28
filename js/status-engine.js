@@ -21,6 +21,7 @@ import { parseDateObj } from './utils.js';
 export const STATUS = {
   AUTHORISED:      'Authorised',
   SHORT_CLOSED:    'Short-Close',
+  NOT_ACTIVE:      'Not Active',
   WRONG_PRC:       'Wrong PRC',
   PR_NOT_APPROVED: 'PR Not Approved',
   FUTURE_PRC:      'Future PRC',
@@ -37,6 +38,7 @@ export const STATUS = {
 export const STATUS_CHIP = {
   [STATUS.AUTHORISED]:      'chip-authorised',
   [STATUS.SHORT_CLOSED]:    'chip-shortclosed',
+  [STATUS.NOT_ACTIVE]:      'chip-not-active',
   [STATUS.WRONG_PRC]:       'chip-wrong',
   [STATUS.PR_NOT_APPROVED]: 'chip-pr-not',
   [STATUS.FUTURE_PRC]:      'chip-future',
@@ -53,6 +55,7 @@ export const STATUS_CHIP = {
 export const STATUS_ICON = {
   [STATUS.AUTHORISED]:      '✅',
   [STATUS.SHORT_CLOSED]:    '🔒',
+  [STATUS.NOT_ACTIVE]:      '🔒',
   [STATUS.WRONG_PRC]:       '❌',
   [STATUS.PR_NOT_APPROVED]: '🚫',
   [STATUS.FUTURE_PRC]:      '🔮',
@@ -465,4 +468,126 @@ export function buildTimeline(prc) {
     }
   ];
 }
+
+/**
+ * Checks if a PRC or Material line item is inactive (Shortclosed or Closed with 0 pending quantity).
+ * Rule: If PRC is shortclosed OR Material Line Item is closed & pending quantity is 0, returns true.
+ * @param {Object} prc
+ * @param {Object} material
+ * @returns {boolean}
+ */
+export function isPRCOrMaterialInactive(prc, material) {
+  const shortKeywords = ['short-close', 'short-closed', 'short close', 'short closed', 'shortclose', 'shortclosed'];
+  
+  // 1. Check parent PRC shortclose
+  if (prc) {
+    if (prc.isShortClosed === true || prc.shortClosed === true) return true;
+    const prcS = String(prc.status || prc.prStatus || '').trim().toLowerCase();
+    if (shortKeywords.includes(prcS)) return true;
+  }
+
+  // 2. Check Material Line Item closed & pending quantity is 0
+  if (material) {
+    if (material.isShortClosed === true || material.shortClosed === true) return true;
+    const matSt = String(material.status || '').trim().toLowerCase();
+    const matPr = String(material.prStatus || '').trim().toLowerCase();
+    if (shortKeywords.includes(matSt) || shortKeywords.includes(matPr)) return true;
+
+    const isClosed = material.isClosed === true || material.closed === true ||
+                     matSt === 'closed' || matPr === 'closed' ||
+                     (parseFloat(material.closedQty) || 0) > 0;
+
+    const totalQty = parseFloat(material.quantity) || 0;
+    const procQty  = parseFloat(material.processedQty) || 0;
+    const clsQty   = parseFloat(material.closedQty) || 0;
+    const pendQty  = (material.pendingQty !== undefined && material.pendingQty !== null && String(material.pendingQty).trim() !== '')
+      ? parseFloat(material.pendingQty)
+      : Math.max(0, totalQty - procQty - clsQty);
+
+    if (isClosed && pendQty === 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Evaluates the effective status of an RFQ document.
+ * Rule: If PRC is shortclosed OR Material Line Item is closed & pending quantity is 0 & RFQ for the same is created,
+ * it shall be tagged as "Not Active" instead of "Active".
+ * @param {Object} rfq
+ * @param {Array}  prcs - Array of PRC records to resolve items
+ * @returns {string} 'Closed' | 'Not Active' | 'Active' | ...
+ */
+export function getRFQStatus(rfq, prcs = []) {
+  if (!rfq) return STATUS.PENDING;
+
+  // Explicitly Closed RFQ
+  const isClosed = !!(rfq.isClosed || String(rfq.status || '').trim().toLowerCase() === 'closed');
+  if (isClosed) return 'Closed';
+
+  const rfqStatusRaw = String(rfq.status || '').trim().toLowerCase();
+  const shortKeywords = ['short-close', 'short-closed', 'short close', 'short closed', 'shortclose', 'shortclosed', 'not active'];
+  if (rfq.isShortClosed || shortKeywords.includes(rfqStatusRaw)) {
+    return STATUS.NOT_ACTIVE;
+  }
+
+  const items = rfq.items || [];
+  if (items.length > 0 && Array.isArray(prcs) && prcs.length > 0) {
+    const allInactive = items.every(item => {
+      const prc = prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
+      const mat = prc?.materials?.find(m =>
+        (item.materialId && m.id === item.materialId) ||
+        (item.matCode && (m.matCode === item.matCode || m.materialCode === item.matCode)) ||
+        (item.materialCode && (m.matCode === item.materialCode || m.materialCode === item.materialCode))
+      );
+      return isPRCOrMaterialInactive(prc, mat || item);
+    });
+
+    if (allInactive) {
+      return STATUS.NOT_ACTIVE;
+    }
+  }
+
+  return rfq.status || 'Active';
+}
+
+/**
+ * Evaluates the effective status of an Allocation document.
+ * Rule: If all items' parent PRCs are shortclosed OR material line items closed & pending quantity is 0,
+ * tagged as "Not Active" instead of "Active".
+ * @param {Object} alloc
+ * @param {Array}  prcs
+ * @returns {string}
+ */
+export function getAllocationStatus(alloc, prcs = []) {
+  if (!alloc) return 'Active';
+
+  const allocStatusRaw = String(alloc.status || '').trim().toLowerCase();
+  const shortKeywords = ['short-close', 'short-closed', 'short close', 'short closed', 'shortclose', 'shortclosed', 'not active'];
+  if (alloc.isShortClosed || shortKeywords.includes(allocStatusRaw)) {
+    return STATUS.NOT_ACTIVE;
+  }
+
+  const items = alloc.items || [];
+  if (items.length > 0 && Array.isArray(prcs) && prcs.length > 0) {
+    const allInactive = items.every(item => {
+      const prc = prcs.find(p => p.id === item.prcId || p.prNumber === item.prNumber);
+      const mat = prc?.materials?.find(m =>
+        (item.materialId && m.id === item.materialId) ||
+        (item.matCode && (m.matCode === item.matCode || m.materialCode === item.matCode)) ||
+        (item.materialCode && (m.matCode === item.materialCode || m.materialCode === item.materialCode))
+      );
+      return isPRCOrMaterialInactive(prc, mat || item);
+    });
+
+    if (allInactive) {
+      return STATUS.NOT_ACTIVE;
+    }
+  }
+
+  return alloc.status || 'Active';
+}
+
 
