@@ -931,11 +931,26 @@ function renderPRCList(container) {
   const state = getState();
   const depts = uniqueBy(state.prcs, 'department');
   const statusOpts = Object.values(STATUS);
+  const userPRCs = typeof getUserPRCs === 'function' ? getUserPRCs() : (state.prcs || []);
+  const summary = typeof buildStatusSummary === 'function' ? buildStatusSummary(userPRCs) : {};
+  const currentActiveStatus = (state.filters?.status || '').trim();
+
+  const statusTabs = [
+    { id: '', label: 'All Records', icon: '📑', count: userPRCs.length, color: 'var(--brand-500, #3b82f6)' },
+    { id: 'Pending', label: 'Pending', icon: '⏳', count: (summary['Pending'] || 0) + (summary['Authorised'] || 0), color: '#f59e0b' },
+    { id: 'Awaiting Offer', label: 'Awaiting Offer', icon: '📨', count: summary['Awaiting Offer'] || 0, color: '#3b82f6' },
+    { id: 'Partly Completed', label: 'Partly Completed', icon: '⚡', count: summary['Partly Completed'] || 0, color: '#8b5cf6' },
+    { id: 'Process Completed', label: 'Process Completed', icon: '✅', count: summary['Process Completed'] || 0, color: '#10b981' },
+    { id: 'Short-Close', label: 'Short-Close', icon: '🔒', count: summary['Short-Close'] || 0, color: '#64748b' },
+    { id: 'Wrong PRC', label: 'Wrong PRC', icon: '❌', count: summary['Wrong PRC'] || 0, color: '#ef4444' },
+    { id: 'Future PRC', label: 'Future PRC', icon: '📅', count: summary['Future PRC'] || 0, color: '#06b6d4' },
+    { id: 'PR Not Approved', label: 'PR Not Approved', icon: '🚫', count: summary['PR Not Approved'] || 0, color: '#e11d48' }
+  ];
 
   container.innerHTML = `
 <div style="display:flex;flex-direction:column;height:calc(100vh - 90px);min-height:480px;overflow:hidden">
   <!-- PAGE HEADER -->
-  <div class="page-header" style="margin-bottom:10px;flex-shrink:0">
+  <div class="page-header" style="margin-bottom:8px;flex-shrink:0">
     <div>
       <h1 class="page-title">PRC & Material Records</h1>
       <p class="page-subtitle" id="prc-list-count">Loading…</p>
@@ -956,8 +971,30 @@ function renderPRCList(container) {
     </div>
   </div>
 
+  <!-- STATUS SEPARATION TABS -->
+  <div class="prc-status-tabs-container" style="margin-bottom:8px;flex-shrink:0">
+    <div class="prc-status-tabs-scroll">
+      ${statusTabs.map(tab => {
+        const isActive = (tab.id === '' && !currentActiveStatus) || (tab.id.toLowerCase() === currentActiveStatus.toLowerCase());
+        const badgeBg = isActive ? tab.color : 'var(--color-surface-3, rgba(0,0,0,0.06))';
+        const badgeColor = isActive ? '#ffffff' : 'var(--color-text-secondary)';
+
+        return `
+          <button type="button" 
+            class="prc-status-tab-btn ${isActive ? 'active' : ''}" 
+            onclick="filterPRCByStatusTab('${tab.id}')"
+            style="${isActive ? `border-color:${tab.color};box-shadow:0 2px 8px rgba(0,0,0,0.08);` : ''}">
+            <span style="font-size:15px;line-height:1">${tab.icon}</span>
+            <span>${tab.label}</span>
+            <span class="tab-badge" style="background:${badgeBg};color:${badgeColor}">${tab.count}</span>
+          </button>
+        `;
+      }).join('')}
+    </div>
+  </div>
+
   <!-- FILTERS BAR -->
-  <div class="card" style="margin-bottom:10px;padding:10px 16px;flex-shrink:0">
+  <div class="card" style="margin-bottom:8px;padding:8px 16px;flex-shrink:0">
     <div class="flex gap-3 flex-wrap items-center">
       <select class="form-control" style="width:160px" id="filter-status" onchange="applyFilters()">
         <option value="">All Statuses</option>
@@ -1049,6 +1086,18 @@ function renderPRCList(container) {
 
   renderPRCTable();
 }
+
+window.filterPRCByStatusTab = function(status) {
+  const currentFilters = { ...(getState().filters || {}) };
+  currentFilters.status = status || '';
+  currentFilters.isOverdue = false;
+  currentFilters.poToday = false;
+  setState({
+    filters: currentFilters,
+    currentPage_num: 1
+  });
+  preserveScroll(() => renderPRCList(document.getElementById('page-content')));
+};
 
 window.switchViewLevel = function(level) {
   setState({ viewLevel: level, currentPage_num: 1 });
