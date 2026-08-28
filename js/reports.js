@@ -100,7 +100,8 @@ export function getMaterialDocuments(mat, prc = null) {
   const tcdNo = mat.tcdNumber || (prc?.tcdNumber) || '—';
   const tcdDate = (mat.tcdDate || prc?.tcdDate) ? fmtDate(mat.tcdDate || prc?.tcdDate) : '—';
 
-  const poNo = mat.poNumber || (prc?.poNumber) || '—';
+  const rawPo = mat.poNumber || (prc?.poNumber) || '';
+  const poNo = (rawPo && !rawPo.startsWith('pod-')) ? rawPo : '—';
   const poDate = (mat.poDate || prc?.poDate) ? fmtDate(mat.poDate || prc?.poDate) : '—';
 
   const vendor = mat.vendorName || mat.vendor || (prc?.vendorName) || (prc?.vendor) || '—';

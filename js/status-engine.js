@@ -403,7 +403,8 @@ export function buildTimeline(prc) {
   const tcdAppr   = !!(prc.tcdApproved || mats.some(m => m.tcdApproved));
   const tcdApprDt = prc.tcdApprovedDate || mats.find(m => m.tcdApprovedDate)?.tcdApprovedDate || tcdDt;
 
-  const poNo      = prc.poNumber || mats.find(m => m.poNumber)?.poNumber;
+  const rawPo     = prc.poNumber || mats.find(m => m.poNumber)?.poNumber;
+  const poNo      = (rawPo && !String(rawPo).startsWith('pod-')) ? rawPo : '';
   const poDt      = prc.poDate   || mats.find(m => m.poDate)?.poDate || prc.updatedAt;
 
   const offersDone = !!(prc.offersReceived || mats.some(m => m.offersReceived) || tcdNo || tcdAppr || poNo);

@@ -376,15 +376,17 @@ function _mapTCDItem(m) {
 }
 
 function _mapPODHeader(m) {
+  const rawPo = (m.po_number || '').trim();
+  const isPodId = !rawPo || rawPo === m.id || rawPo.startsWith('pod-');
   return {
     id: m.id,
     userId: m.user_id,
-    poNumber: m.po_number || m.id,
+    poNumber: isPodId ? '' : rawPo,
     poDate: m.po_date || '',
     tcdId: m.tcd_id || '',
     tcdNumber: m.tcd_number || '',
     vendorName: m.vendor_name || '',
-    status: m.status || 'Active',
+    status: m.status || (isPodId ? 'Pending PO Number' : 'Issued'),
     createdBy: m.created_by || '',
     createdAt: m.created_at || '',
     updatedAt: m.updated_at || '',
@@ -1044,10 +1046,12 @@ export async function directDeleteTCD(uid, tcdId) {
 }
 
 export async function directSavePOD(uid, pod) {
-  if (!pod || !pod.id && !pod.poNumber) return false;
+  if (!pod || (!pod.id && !pod.poNumber)) return false;
   const effectiveUid = (uid && uid !== 'default') ? uid : (pod.userId || 'guest');
   const podId = pod.id || pod.poNumber;
   const now = new Date().toISOString();
+  const rawPo = (pod.poNumber || '').trim();
+  const poNum = (rawPo && rawPo !== podId && !rawPo.startsWith('pod-')) ? rawPo : '';
 
   const statements = [
     {
@@ -1066,12 +1070,12 @@ export async function directSavePOD(uid, pod) {
       args: [
         podId,
         effectiveUid,
-        pod.poNumber || podId,
+        poNum,
         pod.poDate || '',
         pod.tcdId || '',
         pod.tcdNumber || '',
         pod.vendorName || '',
-        pod.status || 'Active',
+        pod.status || (poNum ? 'Issued' : 'Pending PO Number'),
         pod.createdBy || '',
         pod.createdAt || now,
         now

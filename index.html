@@ -1254,21 +1254,25 @@ window.getPRCDocumentSummary = function(p) {
 
   // 3. POs with corresponding Vendor and Date
   const poVendorMap = new Map();
-  if (p.poNumber) {
+  if (p.poNumber && !String(p.poNumber).startsWith('pod-')) {
     const pNum = String(p.poNumber).trim();
-    poVendorMap.set(pNum, {
-      number: pNum,
-      date: p.poDate || '',
-      vendor: p.vendorName || p.vendor || ''
-    });
+    if (pNum) {
+      poVendorMap.set(pNum, {
+        number: pNum,
+        date: p.poDate || '',
+        vendor: p.vendorName || p.vendor || ''
+      });
+    }
   }
   mats.forEach(m => {
-    if (m.poNumber) {
+    if (m.poNumber && !String(m.poNumber).startsWith('pod-')) {
       const num = String(m.poNumber).trim();
-      const existing = poVendorMap.get(num) || { number: num, date: '', vendor: '' };
-      if (!existing.date && m.poDate) existing.date = m.poDate;
-      if (!existing.vendor && (m.vendorName || m.vendor)) existing.vendor = m.vendorName || m.vendor;
-      poVendorMap.set(num, existing);
+      if (num) {
+        const existing = poVendorMap.get(num) || { number: num, date: '', vendor: '' };
+        if (!existing.date && m.poDate) existing.date = m.poDate;
+        if (!existing.vendor && (m.vendorName || m.vendor)) existing.vendor = m.vendorName || m.vendor;
+        poVendorMap.set(num, existing);
+      }
     }
   });
 
@@ -1331,8 +1335,8 @@ window.renderProgressStars = function(item, isPRC) {
       mats.some(m => m.tcdNumber));
 
     // PO
-    stages[4].filled = !!(item.poNumber ||
-      mats.some(m => m.poNumber));
+    stages[4].filled = !!((item.poNumber && !String(item.poNumber).startsWith('pod-')) ||
+      mats.some(m => m.poNumber && !String(m.poNumber).startsWith('pod-')));
   } else {
     // Material-level: complete allocation requires ALL 3: allocationNumber, allocationDate & buyerName
     const state = getState();
@@ -1351,7 +1355,7 @@ window.renderProgressStars = function(item, isPRC) {
     }
 
     stages[3].filled = !!(item.tcdNumber);
-    stages[4].filled = !!(item.poNumber);
+    stages[4].filled = !!(item.poNumber && !String(item.poNumber).startsWith('pod-'));
   }
 
   return `<span class="progress-stars">${stages.map(s =>
@@ -2078,7 +2082,8 @@ window.openPRCDetail = function(id) {
   const tcdNo     = prc.tcdNumber || mats.find(m => m.tcdNumber)?.tcdNumber || '';
   const tcdDt     = prc.tcdDate   || mats.find(m => m.tcdDate)?.tcdDate || '';
 
-  const poNo      = prc.poNumber || mats.find(m => m.poNumber)?.poNumber || '';
+  const rawPo     = prc.poNumber || mats.find(m => m.poNumber)?.poNumber || '';
+  const poNo      = (rawPo && !rawPo.startsWith('pod-')) ? rawPo : '';
   const poDt      = prc.poDate   || mats.find(m => m.poDate)?.poDate || '';
 
   const vendor    = prc.vendorName || mats.find(m => m.vendor || m.vendorName)?.vendor || mats.find(m => m.vendor || m.vendorName)?.vendorName || '';
