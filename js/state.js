@@ -1382,6 +1382,30 @@ export function updateUserProfile(patch) {
 
 // ── PRC OPERATIONS ────────────────────────────────────────
 
+/**
+ * Returns all PRCs accessible to the current user (role-based security partition),
+ * without any UI-level temporary filters (search, status filter, column filter).
+ */
+export function getUserPRCs(user = state.currentUser) {
+  let list = [...state.prcs];
+  if (!isSuperAdmin(user)) {
+    list = list.filter(p => doesRecordPertainToCurrentUser(p, user));
+  }
+  return list;
+}
+
+export function clearAllFilters() {
+  state.filters = {};
+  state.columnFilters = {};
+  state.searchQuery = '';
+  state.currentPage_num = 1;
+  saveToLocalCache();
+  emit('filters');
+  emit('columnFilters');
+  emit('searchQuery');
+  emit('*');
+}
+
 export function getFilteredPRCs(bypassColumnField = null) {
   let list = [...state.prcs];
 

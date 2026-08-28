@@ -336,7 +336,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, getActiveColumnFilterCount, getDistinctColumnValues } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
@@ -589,6 +589,9 @@ document.addEventListener('keydown', e => {
 document.querySelectorAll('.nav-item[data-page]').forEach(el => {
   el.addEventListener('click', e => {
     e.preventDefault();
+    if (el.dataset.page === 'dashboard') {
+      clearAllFilters();
+    }
     navigate(el.dataset.page);
     closeMobileSidebar();
   });
@@ -596,6 +599,7 @@ document.querySelectorAll('.nav-item[data-page]').forEach(el => {
 
 window.filterByDashboardTile = function(filterType, filterValue) {
   const currentFilters = { ...(getState().filters || {}) };
+  clearAllColumnFilters();
 
   if (filterType === 'all') {
     currentFilters.status = '';
@@ -632,7 +636,7 @@ window.filterByDashboardTile = function(filterType, filterValue) {
 // ═══════════════════════════════════════════════════════════
 function renderDashboard(container) {
   const state = getState();
-  const prcs  = getFilteredPRCs();
+  const prcs  = getUserPRCs();
   const s     = buildStatusSummary(prcs);
   const totalMats = prcs.reduce((sum, p) => sum + (p.materials || []).length, 0);
   const poToday = prcs.filter(p => p.poDate === new Date().toISOString().split('T')[0]).length;
@@ -1114,7 +1118,7 @@ window.clearFilters = function() {
     const el = document.getElementById(id);
     if(el) el.value = '';
   });
-  setState({ filters: {}, currentPage_num: 1 });
+  clearAllFilters();
   preserveScroll(() => renderPRCList(document.getElementById('page-content')));
 };
 
@@ -7281,7 +7285,7 @@ window.filterPODDocs = function(query) {
 // ═══════════════════════════════════════════════════════════
 function updateSidebarBadges() {
   const setBadge = (id, count) => { const el = document.getElementById(id); if (el) el.textContent = count || ''; };
-  setBadge('nav-prc-count', getFilteredPRCs().length);
+  setBadge('nav-prc-count', getUserPRCs().length);
   setBadge('nav-alloc-count', getFilteredAllocations().length);
   setBadge('nav-rfq-count', getFilteredRFQs().length);
   setBadge('nav-tcd-count', getFilteredTCDs().length);

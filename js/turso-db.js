@@ -1,6 +1,6 @@
 // =========================================================
 // TURSO DATABASE CLIENT (libSQL on Edge)
-// High performance, unlimited-write SQL storage for Procurement System
+// Relational Architecture: Hierarchical Header + Line Items
 // =========================================================
 
 import { getEnv, loadEnv } from './env.js';
@@ -14,19 +14,6 @@ let _tursoUrl = DEFAULT_TURSO_CONFIG.url;
 let _tursoToken = DEFAULT_TURSO_CONFIG.token;
 let _isConfigured = true;
 let _initPromise = null;
-
-const COLLECTION_TABLE_MAP = {
-  'prcs': 'prcs',
-  'allocations': 'allocations',
-  'rfqs': 'rfqs',
-  'tcds': 'tcds',
-  'pods': 'pods',
-  'vendors': 'vendors',
-  'users': 'users',
-  'notifications': 'notifications',
-  'activityLogs': 'activity_logs',
-  'activity_logs': 'activity_logs'
-};
 
 const COLLECTIONS = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'users', 'notifications', 'activityLogs'];
 
@@ -44,8 +31,10 @@ export async function initTurso() {
     // Check custom localStorage override
     let customCfg = null;
     try {
-      const raw = localStorage.getItem('PRC_CUSTOM_TURSO_CONFIG');
-      if (raw) customCfg = JSON.parse(raw);
+      if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem('PRC_CUSTOM_TURSO_CONFIG');
+        if (raw) customCfg = JSON.parse(raw);
+      }
     } catch (e) {}
 
     let url = customCfg?.url || getEnv('TURSO_DATABASE_URL', DEFAULT_TURSO_CONFIG.url);
@@ -61,7 +50,7 @@ export async function initTurso() {
       _tursoUrl = url;
       _tursoToken = token;
       _isConfigured = true;
-      console.info('⚡ Turso Database Client active (libSQL Edge DB)');
+      console.info('⚡ Turso Database Client active (Relational libSQL Edge DB)');
     } else {
       _isConfigured = false;
     }
@@ -100,7 +89,6 @@ export async function executeTursoPipeline(statements) {
     await initTurso();
   }
   if (!_tursoUrl || !_tursoToken) {
-    // Try fallback to serverless proxy /api/turso
     try {
       const proxyRes = await fetch('/api/turso', {
         method: 'POST',
@@ -168,105 +156,320 @@ function _formatArg(val) {
   return { type: 'text', value: String(val) };
 }
 
-function _getTableName(collectionName) {
-  return COLLECTION_TABLE_MAP[collectionName] || collectionName.toLowerCase();
+// ═══════════════════════════════════════════════════════════
+// ROW CONVERTERS (DB Snake_Case Columns -> JS CamelCase Models)
+// ═══════════════════════════════════════════════════════════
+
+function _rowToMap(cols, row) {
+  const obj = {};
+  cols.forEach((col, idx) => {
+    obj[col] = row[idx]?.value;
+  });
+  return obj;
 }
 
-// ═══════════════════════════════════════════════════════════
-// DIRECT DOCUMENT LEVEL WRITES
-// ═══════════════════════════════════════════════════════════
-
-/**
- * Save / Update a single document directly to Turso
- */
-export async function directSaveDoc(uid, collectionName, docId, docData) {
-  if (!docId) return false;
-  const table = _getTableName(collectionName);
-  const effectiveUid = (uid && uid !== 'default') ? uid : 'guest';
-  const now = new Date().toISOString();
-  const cleanData = _sanitize({ ...docData, id: docId, userId: effectiveUid });
-  const dataJson = JSON.stringify(cleanData);
-
-  const stmt = {
-    sql: `INSERT INTO ${table} (id, user_id, data, updated_at)
-          VALUES (?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
-            user_id = excluded.user_id,
-            data = excluded.data,
-            updated_at = excluded.updated_at;`,
-    args: [String(docId), String(effectiveUid), dataJson, now]
+function _mapPRCHeader(m) {
+  return {
+    id: m.id,
+    userId: m.user_id,
+    prNumber: m.pr_number || m.id,
+    prDate: m.pr_date || '',
+    status: m.status || 'Pending',
+    prStatus: m.pr_status || '',
+    department: m.department || '',
+    job: m.job || '',
+    jobCode: m.job_code || '',
+    jobDesc: m.job_desc || '',
+    wbsCode: m.wbs_code || '',
+    wbsDesc: m.wbs_desc || '',
+    cpCode: m.cp_code || '',
+    cpDesc: m.cp_desc || '',
+    category: m.category || '',
+    categoryDesc: m.category_desc || '',
+    priority: m.priority || 'Medium',
+    budgetReference: m.budget_reference || '',
+    warehouseCode: m.warehouse_code || '',
+    warehouseDesc: m.warehouse_desc || '',
+    buyerName: m.buyer_name || '',
+    allocatedBy: m.allocated_by || '',
+    allocationNumber: m.allocation_number || '',
+    allocationDate: m.allocation_date || '',
+    rfqNumber: m.rfq_number || '',
+    rfqDate: m.rfq_date || '',
+    tcdNumber: m.tcd_number || '',
+    tcdDate: m.tcd_date || '',
+    tcdApproved: Boolean(m.tcd_approved),
+    tcdApprovedBy: m.tcd_approved_by || '',
+    tcdApprovedDate: m.tcd_approved_date || '',
+    poNumber: m.po_number || '',
+    poDate: m.po_date || '',
+    vendorName: m.vendor_name || '',
+    isShortClosed: Boolean(m.is_short_closed),
+    isWrongPRC: Boolean(m.is_wrong_prc),
+    isPRNotApproved: Boolean(m.is_pr_not_approved),
+    isFuturePRC: Boolean(m.is_future_prc),
+    isSystemIssue: Boolean(m.is_system_issue),
+    offersReceived: Boolean(m.offers_received),
+    remarks: m.remarks || '',
+    createdBy: m.created_by || '',
+    requestedBy: m.requested_by || '',
+    authorizedBy: m.authorized_by || '',
+    authorizedOn: m.authorized_on || '',
+    createdAt: m.created_at || '',
+    updatedAt: m.updated_at || '',
+    materials: []
   };
-
-  const result = await executeTursoPipeline([stmt]);
-  return result && result.results && result.results[0] && result.results[0].type === 'ok';
 }
 
-/**
- * Delete a single document directly from Turso
- */
-export async function directDeleteDoc(uid, collectionName, docId) {
-  if (!docId) return false;
-  const table = _getTableName(collectionName);
-  const effectiveUid = (uid && uid !== 'default') ? uid : 'guest';
-
-  const stmt = {
-    sql: `DELETE FROM ${table} WHERE id = ? AND (user_id = ? OR user_id = 'guest');`,
-    args: [String(docId), String(effectiveUid)]
+function _mapPRCMaterial(m) {
+  return {
+    id: m.id,
+    prcId: m.prc_id,
+    userId: m.user_id,
+    serialNumber: m.serial_number || '',
+    matCode: m.mat_code || '',
+    description: m.description || '',
+    quantity: parseFloat(m.quantity) || 0,
+    unit: m.unit || '',
+    suggestedRate: parseFloat(m.suggested_rate) || 0,
+    value: parseFloat(m.value) || 0,
+    processedQty: parseFloat(m.processed_qty) || 0,
+    closedQty: parseFloat(m.closed_qty) || 0,
+    pendingQty: parseFloat(m.pending_qty) || 0,
+    status: m.status || 'Pending',
+    allocationNumber: m.allocation_number || '',
+    allocationDate: m.allocation_date || '',
+    buyerName: m.buyer_name || '',
+    allocatedBy: m.allocated_by || '',
+    rfqNumber: m.rfq_number || '',
+    rfqDate: m.rfq_date || '',
+    offersReceived: Boolean(m.offers_received),
+    tcdNumber: m.tcd_number || '',
+    tcdDate: m.tcd_date || '',
+    tcdApproved: Boolean(m.tcd_approved),
+    poNumber: m.po_number || '',
+    poDate: m.po_date || '',
+    vendorName: m.vendor_name || '',
+    vendor: m.vendor_name || '',
+    deliveryDate: m.delivery_date || '',
+    deliveryStartDate: m.delivery_start_date || '',
+    deliveryEndDate: m.delivery_end_date || '',
+    materialGroupCode: m.material_group_code || '',
+    materialGroupDesc: m.material_group_desc || '',
+    materialClass: m.material_class || '',
+    warehouseCode: m.warehouse_code || '',
+    warehouseDesc: m.warehouse_desc || '',
+    warehouse: m.warehouse_desc || '',
+    wbsCode: m.wbs_code || '',
+    wbsDesc: m.wbs_desc || '',
+    cpCode: m.cp_code || '',
+    cpDesc: m.cp_desc || '',
+    drawingNumber: m.drawing_number || '',
+    remarks: m.remarks || '',
+    updatedAt: m.updated_at || ''
   };
-
-  const result = await executeTursoPipeline([stmt]);
-  return result && result.results && result.results[0] && result.results[0].type === 'ok';
 }
 
-/**
- * Direct helpers for specific business entities
- */
-export async function directSavePRC(uid, prc) {
-  return directSaveDoc(uid, 'prcs', prc.id || prc.prNumber, prc);
+function _mapAllocationHeader(m) {
+  return {
+    id: m.id,
+    userId: m.user_id,
+    allocationNumber: m.allocation_number || m.id,
+    allocationDate: m.allocation_date || '',
+    buyerName: m.buyer_name || '',
+    allocatedBy: m.allocated_by || m.buyer_name || '',
+    status: m.status || 'Active',
+    createdBy: m.created_by || '',
+    createdAt: m.created_at || '',
+    updatedAt: m.updated_at || '',
+    items: []
+  };
 }
 
-export async function directDeletePRC(uid, prcId) {
-  return directDeleteDoc(uid, 'prcs', prcId);
+function _mapAllocationItem(m) {
+  return {
+    id: m.id,
+    allocationId: m.allocation_id,
+    prcId: m.prc_id || '',
+    materialId: m.material_id || '',
+    prNumber: m.pr_number || '',
+    matCode: m.mat_code || '',
+    description: m.description || '',
+    quantity: parseFloat(m.quantity) || 0,
+    unit: m.unit || ''
+  };
 }
 
-export async function directSaveAllocation(uid, allocation) {
-  return directSaveDoc(uid, 'allocations', allocation.id || allocation.allocationNumber, allocation);
+function _mapRFQHeader(m) {
+  return {
+    id: m.id,
+    userId: m.user_id,
+    rfqNumber: m.rfq_number || m.id,
+    rfqDate: m.rfq_date || '',
+    status: m.status || 'Active',
+    offersReceived: Boolean(m.offers_received),
+    isClosed: Boolean(m.is_closed),
+    createdBy: m.created_by || '',
+    createdAt: m.created_at || '',
+    updatedAt: m.updated_at || '',
+    items: []
+  };
 }
 
-export async function directDeleteAllocation(uid, allocId) {
-  return directDeleteDoc(uid, 'allocations', allocId);
+function _mapRFQItem(m) {
+  return {
+    id: m.id,
+    rfqId: m.rfq_id,
+    prcId: m.prc_id || '',
+    materialId: m.material_id || '',
+    allocationId: m.allocation_id || '',
+    prNumber: m.pr_number || '',
+    matCode: m.mat_code || '',
+    description: m.description || '',
+    quantity: parseFloat(m.quantity) || 0,
+    unit: m.unit || ''
+  };
 }
 
-export async function directSaveRFQ(uid, rfq) {
-  return directSaveDoc(uid, 'rfqs', rfq.id || rfq.rfqNumber, rfq);
+function _mapTCDHeader(m) {
+  return {
+    id: m.id,
+    userId: m.user_id,
+    tcdNumber: m.tcd_number || m.id,
+    tcdDate: m.tcd_date || '',
+    status: m.status || 'Active',
+    approved: Boolean(m.approved),
+    approvedBy: m.approved_by || '',
+    approvedDate: m.approved_date || '',
+    createdBy: m.created_by || '',
+    createdAt: m.created_at || '',
+    updatedAt: m.updated_at || '',
+    vendorAllocations: []
+  };
 }
 
-export async function directDeleteRFQ(uid, rfqId) {
-  return directDeleteDoc(uid, 'rfqs', rfqId);
+function _mapTCDItem(m) {
+  return {
+    id: m.id,
+    tcdId: m.tcd_id,
+    vendorName: m.vendor_name || '',
+    prcId: m.prc_id || '',
+    materialId: m.material_id || '',
+    rfqId: m.rfq_id || '',
+    prNumber: m.pr_number || '',
+    matCode: m.mat_code || '',
+    description: m.description || '',
+    quantity: parseFloat(m.quantity) || 0,
+    unit: m.unit || ''
+  };
 }
 
-export async function directSaveTCD(uid, tcd) {
-  return directSaveDoc(uid, 'tcds', tcd.id || tcd.tcdNumber, tcd);
+function _mapPODHeader(m) {
+  return {
+    id: m.id,
+    userId: m.user_id,
+    poNumber: m.po_number || m.id,
+    poDate: m.po_date || '',
+    tcdId: m.tcd_id || '',
+    tcdNumber: m.tcd_number || '',
+    vendorName: m.vendor_name || '',
+    status: m.status || 'Active',
+    createdBy: m.created_by || '',
+    createdAt: m.created_at || '',
+    updatedAt: m.updated_at || '',
+    items: []
+  };
 }
 
-export async function directDeleteTCD(uid, tcdId) {
-  return directDeleteDoc(uid, 'tcds', tcdId);
+function _mapPODItem(m) {
+  return {
+    id: m.id,
+    podId: m.pod_id,
+    prcId: m.prc_id || '',
+    materialId: m.material_id || '',
+    rfqId: m.rfq_id || '',
+    prNumber: m.pr_number || '',
+    matCode: m.mat_code || '',
+    description: m.description || '',
+    quantity: parseFloat(m.quantity) || 0,
+    unit: m.unit || ''
+  };
 }
 
-export async function directSavePOD(uid, pod) {
-  return directSaveDoc(uid, 'pods', pod.id || pod.poNumber, pod);
+function _mapUser(m) {
+  return {
+    id: m.id,
+    userId: m.user_id,
+    uid: m.id,
+    name: m.name || '',
+    email: m.email || '',
+    password: m.password || '',
+    role: m.role || 'User',
+    department: m.department || '',
+    title: m.title || '',
+    phone: m.phone || '',
+    avatar: m.avatar || '',
+    passwordUpdated: m.password_updated || null,
+    createdAt: m.created_at || '',
+    updatedAt: m.updated_at || ''
+  };
 }
 
-export async function directDeletePOD(uid, podId) {
-  return directDeleteDoc(uid, 'pods', podId);
+function _mapVendor(m) {
+  return {
+    id: m.id,
+    userId: m.user_id,
+    name: m.name || '',
+    code: m.code || '',
+    contactPerson: m.contact_person || '',
+    email: m.email || '',
+    phone: m.phone || '',
+    category: m.category || '',
+    rating: parseFloat(m.rating) || 5.0,
+    status: m.status || 'Active',
+    createdAt: m.created_at || '',
+    updatedAt: m.updated_at || ''
+  };
 }
 
-export async function directSaveActivityLog(uid, log) {
-  return directSaveDoc(uid, 'activityLogs', log.id, log);
+function _mapActivityLog(m) {
+  let changes = {};
+  try {
+    changes = JSON.parse(m.changes || '{}');
+  } catch (e) {
+    changes = m.changes;
+  }
+  return {
+    id: m.id,
+    userId: m.user_id,
+    docId: m.doc_id || '',
+    collection: m.collection_name || '',
+    collectionName: m.collection_name || '',
+    action: m.action || '',
+    user: m.user_name || '',
+    userName: m.user_name || '',
+    changes,
+    timestamp: m.timestamp || m.updated_at || '',
+    updatedAt: m.updated_at || ''
+  };
+}
+
+function _mapNotification(m) {
+  return {
+    id: m.id,
+    userId: m.user_id,
+    title: m.title || '',
+    message: m.message || '',
+    type: m.type || 'info',
+    isRead: Boolean(m.is_read),
+    link: m.link || '',
+    createdAt: m.created_at || '',
+    updatedAt: m.updated_at || ''
+  };
 }
 
 // ═══════════════════════════════════════════════════════════
-// COLLECTION AND BULK DATA OPERATIONS
+// DATA LOADING (Header + Line Items Assembly)
 // ═══════════════════════════════════════════════════════════
 
 /**
@@ -279,22 +482,24 @@ export async function loadAllUserData(uid, forceServer = false) {
   if (!_isConfigured) return null;
 
   const effectiveUid = (uid && uid !== 'default') ? uid : 'guest';
-  const result = {};
 
-  // Build select queries for each collection (Load workspace records)
-  const queries = COLLECTIONS.map(col => {
-    const table = _getTableName(col);
-    return {
-      sql: `SELECT id, user_id, data, updated_at FROM ${table} ORDER BY rowid ASC;`,
-      args: []
-    };
-  });
-
-  // Query profile
-  queries.push({
-    sql: `SELECT data FROM user_profiles WHERE user_id = ?;`,
-    args: [effectiveUid]
-  });
+  const queries = [
+    { sql: `SELECT * FROM prcs ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM prc_materials ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM allocations ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM allocation_items ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM rfqs ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM rfq_items ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM tcds ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM tcd_items ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM pods ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM pod_items ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM vendors ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM users ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM notifications ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM activity_logs ORDER BY rowid ASC;`, args: [] },
+    { sql: `SELECT * FROM user_profiles WHERE user_id = ?;`, args: [effectiveUid] }
+  ];
 
   const response = await executeTursoPipeline(queries);
   if (!response || !response.results) {
@@ -302,73 +507,785 @@ export async function loadAllUserData(uid, forceServer = false) {
     return null;
   }
 
-  COLLECTIONS.forEach((col, idx) => {
+  function getRows(idx) {
     const resObj = response.results[idx];
     if (resObj && resObj.type === 'ok' && resObj.response && resObj.response.result) {
-      const rows = resObj.response.result.rows || [];
-      result[col] = rows.map(r => {
-        try {
-          // Row structure: [id, user_id, data, updated_at]
-          const dataJson = r[2]?.value;
-          const parsed = JSON.parse(dataJson);
-          return { ...parsed, id: parsed.id || r[0]?.value };
-        } catch (e) {
-          return null;
-        }
-      }).filter(Boolean);
-    } else {
-      result[col] = [];
+      const cols = resObj.response.result.cols.map(c => c.name);
+      return (resObj.response.result.rows || []).map(r => _rowToMap(cols, r));
+    }
+    return [];
+  }
+
+  // 1. PRCs & Materials
+  const prcHeaders = getRows(0).map(_mapPRCHeader);
+  const prcMaterials = getRows(1).map(_mapPRCMaterial);
+  const prcMap = new Map();
+  prcHeaders.forEach(p => { prcMap.set(p.id, p); });
+  prcMaterials.forEach(m => {
+    const prc = prcMap.get(m.prcId);
+    if (prc) {
+      prc.materials.push(m);
     }
   });
 
-  // Profile
-  const profileRes = response.results[COLLECTIONS.length];
-  if (profileRes && profileRes.type === 'ok' && profileRes.response?.result?.rows?.length > 0) {
-    try {
-      result.profile = JSON.parse(profileRes.response.result.rows[0][0]?.value);
-    } catch(e) {
-      result.profile = null;
+  // 2. Allocations & Items
+  const allocHeaders = getRows(2).map(_mapAllocationHeader);
+  const allocItems = getRows(3).map(_mapAllocationItem);
+  const allocMap = new Map();
+  allocHeaders.forEach(a => { allocMap.set(a.id, a); });
+  allocItems.forEach(i => {
+    const alloc = allocMap.get(i.allocationId);
+    if (alloc) {
+      alloc.items.push(i);
     }
+  });
+
+  // 3. RFQs & Items
+  const rfqHeaders = getRows(4).map(_mapRFQHeader);
+  const rfqItems = getRows(5).map(_mapRFQItem);
+  const rfqMap = new Map();
+  rfqHeaders.forEach(r => { rfqMap.set(r.id, r); });
+  rfqItems.forEach(i => {
+    const rfq = rfqMap.get(i.rfqId);
+    if (rfq) {
+      rfq.items.push(i);
+    }
+  });
+
+  // 4. TCDs & Items (reconstruct vendorAllocations)
+  const tcdHeaders = getRows(6).map(_mapTCDHeader);
+  const tcdItems = getRows(7).map(_mapTCDItem);
+  const tcdMap = new Map();
+  tcdHeaders.forEach(t => { tcdMap.set(t.id, t); });
+  tcdItems.forEach(i => {
+    const tcd = tcdMap.get(i.tcdId);
+    if (tcd) {
+      let va = tcd.vendorAllocations.find(v => v.vendorName === i.vendorName);
+      if (!va) {
+        va = { vendorName: i.vendorName, items: [] };
+        tcd.vendorAllocations.push(va);
+      }
+      va.items.push(i);
+    }
+  });
+
+  // 5. PODs & Items
+  const podHeaders = getRows(8).map(_mapPODHeader);
+  const podItems = getRows(9).map(_mapPODItem);
+  const podMap = new Map();
+  podHeaders.forEach(p => { podMap.set(p.id, p); });
+  podItems.forEach(i => {
+    const pod = podMap.get(i.podId);
+    if (pod) {
+      pod.items.push(i);
+    }
+  });
+
+  // Flat Collections
+  const vendors = getRows(10).map(_mapVendor);
+  const users = getRows(11).map(_mapUser);
+  const notifications = getRows(12).map(_mapNotification);
+  const activityLogs = getRows(13).map(_mapActivityLog);
+
+  // Profile
+  const profileRows = getRows(14);
+  let profile = null;
+  if (profileRows.length > 0) {
+    const p = profileRows[0];
+    profile = {
+      name: p.name || '',
+      email: p.email || '',
+      role: p.role || 'User',
+      avatar: p.avatar || 'U',
+      lastSyncedAt: p.last_synced_at || ''
+    };
   }
 
-  console.info(`⚡ Loaded user data for '${effectiveUid}' from Turso Database (PRCs: ${result.prcs?.length || 0})`);
+  const result = {
+    prcs: prcHeaders,
+    allocations: allocHeaders,
+    rfqs: rfqHeaders,
+    tcds: tcdHeaders,
+    pods: podHeaders,
+    vendors,
+    users,
+    notifications,
+    activityLogs,
+    profile
+  };
+
+  console.info(`⚡ Loaded relational data for '${effectiveUid}' from Turso (PRCs: ${result.prcs.length}, Materials: ${prcMaterials.length}, Allocs: ${result.allocations.length}, RFQs: ${result.rfqs.length}, TCDs: ${result.tcds.length}, PODs: ${result.pods.length})`);
   return result;
 }
 
-/**
- * Bulk save a collection using single batched Turso HTTP pipeline
- */
-export async function saveCollection(uid, collectionName, items) {
-  if (!items || items.length === 0) return true;
-  const table = _getTableName(collectionName);
-  const effectiveUid = (uid && uid !== 'default') ? uid : 'guest';
+// ═══════════════════════════════════════════════════════════
+// DIRECT DOCUMENT LEVEL WRITES (Header + Line Items)
+// ═══════════════════════════════════════════════════════════
+
+export async function directSavePRC(uid, prc) {
+  if (!prc || !prc.id && !prc.prNumber) return false;
+  const effectiveUid = (uid && uid !== 'default') ? uid : (prc.userId || 'guest');
+  const prcId = prc.id || prc.prNumber;
   const now = new Date().toISOString();
 
-  const statements = items.map(item => {
-    const rawId = item.id || item.prNumber || item.allocationNumber || item.rfqNumber || item.tcdNumber || item.poNumber;
-    if (!rawId) return null;
-    const cleanData = _sanitize({ ...item, id: rawId, userId: effectiveUid });
-    return {
-      sql: `INSERT INTO ${table} (id, user_id, data, updated_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              user_id = excluded.user_id,
-              data = excluded.data,
-              updated_at = excluded.updated_at;`,
-      args: [String(rawId), String(effectiveUid), JSON.stringify(cleanData), now]
-    };
-  }).filter(Boolean);
+  const statements = [
+    {
+      sql: `INSERT INTO prcs (
+        id, user_id, pr_number, pr_date, status, pr_status, department, job, job_code, job_desc,
+        wbs_code, wbs_desc, cp_code, cp_desc, category, category_desc, priority, budget_reference,
+        warehouse_code, warehouse_desc, buyer_name, allocated_by, allocation_number, allocation_date,
+        rfq_number, rfq_date, tcd_number, tcd_date, tcd_approved, tcd_approved_by, tcd_approved_date,
+        po_number, po_date, vendor_name, is_short_closed, is_wrong_prc, is_pr_not_approved,
+        is_future_prc, is_system_issue, offers_received, remarks, created_by, requested_by,
+        authorized_by, authorized_on, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        user_id = excluded.user_id,
+        pr_number = excluded.pr_number,
+        pr_date = excluded.pr_date,
+        status = excluded.status,
+        pr_status = excluded.pr_status,
+        department = excluded.department,
+        job = excluded.job,
+        job_code = excluded.job_code,
+        job_desc = excluded.job_desc,
+        wbs_code = excluded.wbs_code,
+        wbs_desc = excluded.wbs_desc,
+        cp_code = excluded.cp_code,
+        cp_desc = excluded.cp_desc,
+        category = excluded.category,
+        category_desc = excluded.category_desc,
+        priority = excluded.priority,
+        budget_reference = excluded.budget_reference,
+        warehouse_code = excluded.warehouse_code,
+        warehouse_desc = excluded.warehouse_desc,
+        buyer_name = excluded.buyer_name,
+        allocated_by = excluded.allocated_by,
+        allocation_number = excluded.allocation_number,
+        allocation_date = excluded.allocation_date,
+        rfq_number = excluded.rfq_number,
+        rfq_date = excluded.rfq_date,
+        tcd_number = excluded.tcd_number,
+        tcd_date = excluded.tcd_date,
+        tcd_approved = excluded.tcd_approved,
+        tcd_approved_by = excluded.tcd_approved_by,
+        tcd_approved_date = excluded.tcd_approved_date,
+        po_number = excluded.po_number,
+        po_date = excluded.po_date,
+        vendor_name = excluded.vendor_name,
+        is_short_closed = excluded.is_short_closed,
+        is_wrong_prc = excluded.is_wrong_prc,
+        is_pr_not_approved = excluded.is_pr_not_approved,
+        is_future_prc = excluded.is_future_prc,
+        is_system_issue = excluded.is_system_issue,
+        offers_received = excluded.offers_received,
+        remarks = excluded.remarks,
+        created_by = excluded.created_by,
+        requested_by = excluded.requested_by,
+        authorized_by = excluded.authorized_by,
+        authorized_on = excluded.authorized_on,
+        updated_at = excluded.updated_at;`,
+      args: [
+        prcId,
+        effectiveUid,
+        prc.prNumber || prcId,
+        prc.prDate || prc.createdOn || '',
+        prc.status || 'Pending',
+        prc.prStatus || '',
+        prc.department || '',
+        prc.job || '',
+        prc.jobCode || '',
+        prc.jobDesc || '',
+        prc.wbsCode || '',
+        prc.wbsDesc || '',
+        prc.cpCode || '',
+        prc.cpDesc || '',
+        prc.category || '',
+        prc.categoryDesc || '',
+        prc.priority || 'Medium',
+        prc.budgetReference || '',
+        prc.warehouseCode || '',
+        prc.warehouseDesc || '',
+        prc.buyerName || '',
+        prc.allocatedBy || '',
+        prc.allocationNumber || '',
+        prc.allocationDate || '',
+        prc.rfqNumber || '',
+        prc.rfqDate || '',
+        prc.tcdNumber || '',
+        prc.tcdDate || '',
+        prc.tcdApproved ? 1 : 0,
+        prc.tcdApprovedBy || '',
+        prc.tcdApprovedDate || '',
+        prc.poNumber || '',
+        prc.poDate || '',
+        prc.vendorName || '',
+        prc.isShortClosed ? 1 : 0,
+        prc.isWrongPRC ? 1 : 0,
+        prc.isPRNotApproved ? 1 : 0,
+        prc.isFuturePRC ? 1 : 0,
+        prc.isSystemIssue ? 1 : 0,
+        prc.offersReceived ? 1 : 0,
+        prc.remarks || '',
+        prc.createdBy || '',
+        prc.requestedBy || '',
+        prc.authorizedBy || '',
+        prc.authorizedOn || '',
+        prc.createdAt || prc.createdOn || now,
+        now
+      ]
+    },
+    {
+      sql: `DELETE FROM prc_materials WHERE prc_id = ?;`,
+      args: [prcId]
+    }
+  ];
 
-  if (statements.length === 0) return true;
+  (prc.materials || []).forEach((m, idx) => {
+    const matId = m.id || `${prcId}-mat-${idx + 1}`;
+    statements.push({
+      sql: `INSERT INTO prc_materials (
+        id, prc_id, user_id, serial_number, mat_code, description, quantity, unit,
+        suggested_rate, value, processed_qty, closed_qty, pending_qty, status,
+        allocation_number, allocation_date, buyer_name, allocated_by, rfq_number,
+        rfq_date, offers_received, tcd_number, tcd_date, tcd_approved, po_number,
+        po_date, vendor_name, delivery_date, delivery_start_date, delivery_end_date,
+        material_group_code, material_group_desc, material_class, warehouse_code,
+        warehouse_desc, wbs_code, wbs_desc, cp_code, cp_desc, drawing_number, remarks, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      args: [
+        matId,
+        prcId,
+        effectiveUid,
+        String(m.serialNumber || idx + 1),
+        m.matCode || '',
+        m.description || '',
+        parseFloat(m.quantity) || 0,
+        m.unit || '',
+        parseFloat(m.suggestedRate) || 0,
+        parseFloat(m.value) || 0,
+        parseFloat(m.processedQty) || 0,
+        parseFloat(m.closedQty) || 0,
+        parseFloat(m.pendingQty) || 0,
+        m.status || 'Pending',
+        m.allocationNumber || '',
+        m.allocationDate || '',
+        m.buyerName || '',
+        m.allocatedBy || '',
+        m.rfqNumber || '',
+        m.rfqDate || '',
+        m.offersReceived ? 1 : 0,
+        m.tcdNumber || '',
+        m.tcdDate || '',
+        m.tcdApproved ? 1 : 0,
+        m.poNumber || '',
+        m.poDate || '',
+        m.vendorName || m.vendor || '',
+        m.deliveryDate || '',
+        m.deliveryStartDate || '',
+        m.deliveryEndDate || '',
+        m.materialGroupCode || '',
+        m.materialGroupDesc || '',
+        m.materialClass || '',
+        m.warehouseCode || '',
+        m.warehouseDesc || m.warehouse || '',
+        m.wbsCode || '',
+        m.wbsDesc || '',
+        m.cpCode || '',
+        m.cpDesc || '',
+        m.drawingNumber || '',
+        m.remarks || '',
+        now
+      ]
+    });
+  });
 
   const result = await executeTursoPipeline(statements);
-  console.info(`⚡ Turso synced ${statements.length} items to table: ${table}`);
-  return Boolean(result);
+  return result && result.results && result.results[0] && result.results[0].type === 'ok';
 }
 
-/**
- * Full state save to Turso Database
- */
+export async function directDeletePRC(uid, prcId) {
+  if (!prcId) return false;
+  const statements = [
+    { sql: `DELETE FROM prc_materials WHERE prc_id = ?;`, args: [String(prcId)] },
+    { sql: `DELETE FROM prcs WHERE id = ?;`, args: [String(prcId)] }
+  ];
+  const result = await executeTursoPipeline(statements);
+  return result && result.results && result.results[1]?.type === 'ok';
+}
+
+export async function directSaveAllocation(uid, alloc) {
+  if (!alloc || !alloc.id && !alloc.allocationNumber) return false;
+  const effectiveUid = (uid && uid !== 'default') ? uid : (alloc.userId || 'guest');
+  const allocId = alloc.id || alloc.allocationNumber;
+  const now = new Date().toISOString();
+
+  const statements = [
+    {
+      sql: `INSERT INTO allocations (id, user_id, allocation_number, allocation_date, buyer_name, allocated_by, status, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              user_id = excluded.user_id,
+              allocation_number = excluded.allocation_number,
+              allocation_date = excluded.allocation_date,
+              buyer_name = excluded.buyer_name,
+              allocated_by = excluded.allocated_by,
+              status = excluded.status,
+              created_by = excluded.created_by,
+              updated_at = excluded.updated_at;`,
+      args: [
+        allocId,
+        effectiveUid,
+        alloc.allocationNumber || allocId,
+        alloc.allocationDate || '',
+        alloc.buyerName || '',
+        alloc.allocatedBy || alloc.buyerName || '',
+        alloc.status || 'Active',
+        alloc.createdBy || '',
+        alloc.createdAt || now,
+        now
+      ]
+    },
+    {
+      sql: `DELETE FROM allocation_items WHERE allocation_id = ?;`,
+      args: [allocId]
+    }
+  ];
+
+  (alloc.items || []).forEach((item, idx) => {
+    statements.push({
+      sql: `INSERT INTO allocation_items (id, allocation_id, prc_id, material_id, pr_number, mat_code, description, quantity, unit)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      args: [
+        item.id || `${allocId}-item-${idx + 1}`,
+        allocId,
+        item.prcId || '',
+        item.materialId || '',
+        item.prNumber || '',
+        item.matCode || '',
+        item.description || '',
+        parseFloat(item.quantity) || 0,
+        item.unit || ''
+      ]
+    });
+  });
+
+  const result = await executeTursoPipeline(statements);
+  return result && result.results && result.results[0]?.type === 'ok';
+}
+
+export async function directDeleteAllocation(uid, allocId) {
+  if (!allocId) return false;
+  const statements = [
+    { sql: `DELETE FROM allocation_items WHERE allocation_id = ?;`, args: [String(allocId)] },
+    { sql: `DELETE FROM allocations WHERE id = ?;`, args: [String(allocId)] }
+  ];
+  const result = await executeTursoPipeline(statements);
+  return result && result.results && result.results[1]?.type === 'ok';
+}
+
+export async function directSaveRFQ(uid, rfq) {
+  if (!rfq || !rfq.id && !rfq.rfqNumber) return false;
+  const effectiveUid = (uid && uid !== 'default') ? uid : (rfq.userId || 'guest');
+  const rfqId = rfq.id || rfq.rfqNumber;
+  const now = new Date().toISOString();
+
+  const statements = [
+    {
+      sql: `INSERT INTO rfqs (id, user_id, rfq_number, rfq_date, status, offers_received, is_closed, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              user_id = excluded.user_id,
+              rfq_number = excluded.rfq_number,
+              rfq_date = excluded.rfq_date,
+              status = excluded.status,
+              offers_received = excluded.offers_received,
+              is_closed = excluded.is_closed,
+              created_by = excluded.created_by,
+              updated_at = excluded.updated_at;`,
+      args: [
+        rfqId,
+        effectiveUid,
+        rfq.rfqNumber || rfqId,
+        rfq.rfqDate || '',
+        rfq.status || 'Active',
+        rfq.offersReceived ? 1 : 0,
+        rfq.isClosed ? 1 : 0,
+        rfq.createdBy || '',
+        rfq.createdAt || now,
+        now
+      ]
+    },
+    {
+      sql: `DELETE FROM rfq_items WHERE rfq_id = ?;`,
+      args: [rfqId]
+    }
+  ];
+
+  (rfq.items || []).forEach((item, idx) => {
+    statements.push({
+      sql: `INSERT INTO rfq_items (id, rfq_id, prc_id, material_id, allocation_id, pr_number, mat_code, description, quantity, unit)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      args: [
+        item.id || `${rfqId}-item-${idx + 1}`,
+        rfqId,
+        item.prcId || '',
+        item.materialId || '',
+        item.allocationId || '',
+        item.prNumber || '',
+        item.matCode || '',
+        item.description || '',
+        parseFloat(item.quantity) || 0,
+        item.unit || ''
+      ]
+    });
+  });
+
+  const result = await executeTursoPipeline(statements);
+  return result && result.results && result.results[0]?.type === 'ok';
+}
+
+export async function directDeleteRFQ(uid, rfqId) {
+  if (!rfqId) return false;
+  const statements = [
+    { sql: `DELETE FROM rfq_items WHERE rfq_id = ?;`, args: [String(rfqId)] },
+    { sql: `DELETE FROM rfqs WHERE id = ?;`, args: [String(rfqId)] }
+  ];
+  const result = await executeTursoPipeline(statements);
+  return result && result.results && result.results[1]?.type === 'ok';
+}
+
+export async function directSaveTCD(uid, tcd) {
+  if (!tcd || !tcd.id && !tcd.tcdNumber) return false;
+  const effectiveUid = (uid && uid !== 'default') ? uid : (tcd.userId || 'guest');
+  const tcdId = tcd.id || tcd.tcdNumber;
+  const now = new Date().toISOString();
+
+  const statements = [
+    {
+      sql: `INSERT INTO tcds (id, user_id, tcd_number, tcd_date, status, approved, approved_by, approved_date, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              user_id = excluded.user_id,
+              tcd_number = excluded.tcd_number,
+              tcd_date = excluded.tcd_date,
+              status = excluded.status,
+              approved = excluded.approved,
+              approved_by = excluded.approved_by,
+              approved_date = excluded.approved_date,
+              created_by = excluded.created_by,
+              updated_at = excluded.updated_at;`,
+      args: [
+        tcdId,
+        effectiveUid,
+        tcd.tcdNumber || tcdId,
+        tcd.tcdDate || '',
+        tcd.status || 'Active',
+        tcd.approved ? 1 : 0,
+        tcd.approvedBy || '',
+        tcd.approvedDate || '',
+        tcd.createdBy || '',
+        tcd.createdAt || now,
+        now
+      ]
+    },
+    {
+      sql: `DELETE FROM tcd_items WHERE tcd_id = ?;`,
+      args: [tcdId]
+    }
+  ];
+
+  (tcd.vendorAllocations || []).forEach((va, vIdx) => {
+    const vendorName = va.vendorName || '';
+    (va.items || []).forEach((item, iIdx) => {
+      statements.push({
+        sql: `INSERT INTO tcd_items (id, tcd_id, vendor_name, prc_id, material_id, rfq_id, pr_number, mat_code, description, quantity, unit)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        args: [
+          item.id || `${tcdId}-item-${vIdx + 1}-${iIdx + 1}`,
+          tcdId,
+          vendorName,
+          item.prcId || '',
+          item.materialId || '',
+          item.rfqId || '',
+          item.prNumber || '',
+          item.matCode || '',
+          item.description || '',
+          parseFloat(item.quantity) || 0,
+          item.unit || ''
+        ]
+      });
+    });
+  });
+
+  const result = await executeTursoPipeline(statements);
+  return result && result.results && result.results[0]?.type === 'ok';
+}
+
+export async function directDeleteTCD(uid, tcdId) {
+  if (!tcdId) return false;
+  const statements = [
+    { sql: `DELETE FROM tcd_items WHERE tcd_id = ?;`, args: [String(tcdId)] },
+    { sql: `DELETE FROM tcds WHERE id = ?;`, args: [String(tcdId)] }
+  ];
+  const result = await executeTursoPipeline(statements);
+  return result && result.results && result.results[1]?.type === 'ok';
+}
+
+export async function directSavePOD(uid, pod) {
+  if (!pod || !pod.id && !pod.poNumber) return false;
+  const effectiveUid = (uid && uid !== 'default') ? uid : (pod.userId || 'guest');
+  const podId = pod.id || pod.poNumber;
+  const now = new Date().toISOString();
+
+  const statements = [
+    {
+      sql: `INSERT INTO pods (id, user_id, po_number, po_date, tcd_id, tcd_number, vendor_name, status, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              user_id = excluded.user_id,
+              po_number = excluded.po_number,
+              po_date = excluded.po_date,
+              tcd_id = excluded.tcd_id,
+              tcd_number = excluded.tcd_number,
+              vendor_name = excluded.vendor_name,
+              status = excluded.status,
+              created_by = excluded.created_by,
+              updated_at = excluded.updated_at;`,
+      args: [
+        podId,
+        effectiveUid,
+        pod.poNumber || podId,
+        pod.poDate || '',
+        pod.tcdId || '',
+        pod.tcdNumber || '',
+        pod.vendorName || '',
+        pod.status || 'Active',
+        pod.createdBy || '',
+        pod.createdAt || now,
+        now
+      ]
+    },
+    {
+      sql: `DELETE FROM pod_items WHERE pod_id = ?;`,
+      args: [podId]
+    }
+  ];
+
+  (pod.items || []).forEach((item, idx) => {
+    statements.push({
+      sql: `INSERT INTO pod_items (id, pod_id, prc_id, material_id, rfq_id, pr_number, mat_code, description, quantity, unit)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      args: [
+        item.id || `${podId}-item-${idx + 1}`,
+        podId,
+        item.prcId || '',
+        item.materialId || '',
+        item.rfqId || '',
+        item.prNumber || '',
+        item.matCode || '',
+        item.description || '',
+        parseFloat(item.quantity) || 0,
+        item.unit || ''
+      ]
+    });
+  });
+
+  const result = await executeTursoPipeline(statements);
+  return result && result.results && result.results[0]?.type === 'ok';
+}
+
+export async function directDeletePOD(uid, podId) {
+  if (!podId) return false;
+  const statements = [
+    { sql: `DELETE FROM pod_items WHERE pod_id = ?;`, args: [String(podId)] },
+    { sql: `DELETE FROM pods WHERE id = ?;`, args: [String(podId)] }
+  ];
+  const result = await executeTursoPipeline(statements);
+  return result && result.results && result.results[1]?.type === 'ok';
+}
+
+export async function directSaveActivityLog(uid, log) {
+  if (!log || !log.id) return false;
+  const effectiveUid = (uid && uid !== 'default') ? uid : (log.userId || 'guest');
+  const now = new Date().toISOString();
+
+  const stmt = {
+    sql: `INSERT INTO activity_logs (id, user_id, doc_id, collection_name, action, user_name, changes, timestamp, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            user_id = excluded.user_id,
+            doc_id = excluded.doc_id,
+            collection_name = excluded.collection_name,
+            action = excluded.action,
+            user_name = excluded.user_name,
+            changes = excluded.changes,
+            timestamp = excluded.timestamp,
+            updated_at = excluded.updated_at;`,
+    args: [
+      log.id,
+      effectiveUid,
+      log.docId || '',
+      log.collection || log.collectionName || '',
+      log.action || '',
+      log.user || log.userName || '',
+      typeof log.changes === 'object' ? JSON.stringify(log.changes) : String(log.changes || ''),
+      log.timestamp || now,
+      now
+    ]
+  };
+
+  const result = await executeTursoPipeline([stmt]);
+  return result && result.results && result.results[0]?.type === 'ok';
+}
+
+export async function directSaveDoc(uid, collectionName, docId, docData) {
+  if (!docId || !docData) return false;
+  const effectiveUid = (uid && uid !== 'default') ? uid : (docData.userId || 'guest');
+  const now = new Date().toISOString();
+
+  if (collectionName === 'prcs') return directSavePRC(effectiveUid, docData);
+  if (collectionName === 'allocations') return directSaveAllocation(effectiveUid, docData);
+  if (collectionName === 'rfqs') return directSaveRFQ(effectiveUid, docData);
+  if (collectionName === 'tcds') return directSaveTCD(effectiveUid, docData);
+  if (collectionName === 'pods') return directSavePOD(effectiveUid, docData);
+  if (collectionName === 'activityLogs' || collectionName === 'activity_logs') return directSaveActivityLog(effectiveUid, { ...docData, id: docId });
+
+  if (collectionName === 'users') {
+    const stmt = {
+      sql: `INSERT INTO users (id, user_id, name, email, password, role, department, title, phone, avatar, password_updated, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              user_id = excluded.user_id,
+              name = excluded.name,
+              email = excluded.email,
+              password = CASE WHEN excluded.password != '' THEN excluded.password ELSE users.password END,
+              role = excluded.role,
+              department = excluded.department,
+              title = excluded.title,
+              phone = excluded.phone,
+              avatar = excluded.avatar,
+              password_updated = excluded.password_updated,
+              updated_at = excluded.updated_at;`,
+      args: [
+        String(docId),
+        effectiveUid,
+        docData.name || '',
+        docData.email || '',
+        docData.password || '',
+        docData.role || 'User',
+        docData.department || '',
+        docData.title || '',
+        docData.phone || '',
+        docData.avatar || '',
+        docData.passwordUpdated || null,
+        docData.createdAt || now,
+        now
+      ]
+    };
+    const result = await executeTursoPipeline([stmt]);
+    return result && result.results && result.results[0]?.type === 'ok';
+  }
+
+  if (collectionName === 'vendors') {
+    const stmt = {
+      sql: `INSERT INTO vendors (id, user_id, name, code, contact_person, email, phone, category, rating, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              user_id = excluded.user_id,
+              name = excluded.name,
+              code = excluded.code,
+              contact_person = excluded.contact_person,
+              email = excluded.email,
+              phone = excluded.phone,
+              category = excluded.category,
+              rating = excluded.rating,
+              status = excluded.status,
+              updated_at = excluded.updated_at;`,
+      args: [
+        String(docId),
+        effectiveUid,
+        docData.name || '',
+        docData.code || '',
+        docData.contactPerson || '',
+        docData.email || '',
+        docData.phone || '',
+        docData.category || '',
+        parseFloat(docData.rating) || 5.0,
+        docData.status || 'Active',
+        docData.createdAt || now,
+        now
+      ]
+    };
+    const result = await executeTursoPipeline([stmt]);
+    return result && result.results && result.results[0]?.type === 'ok';
+  }
+
+  if (collectionName === 'notifications') {
+    const stmt = {
+      sql: `INSERT INTO notifications (id, user_id, title, message, type, is_read, link, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              user_id = excluded.user_id,
+              title = excluded.title,
+              message = excluded.message,
+              type = excluded.type,
+              is_read = excluded.is_read,
+              link = excluded.link,
+              updated_at = excluded.updated_at;`,
+      args: [
+        String(docId),
+        effectiveUid,
+        docData.title || '',
+        docData.message || '',
+        docData.type || 'info',
+        docData.isRead ? 1 : 0,
+        docData.link || '',
+        docData.createdAt || now,
+        now
+      ]
+    };
+    const result = await executeTursoPipeline([stmt]);
+    return result && result.results && result.results[0]?.type === 'ok';
+  }
+
+  return false;
+}
+
+export async function directDeleteDoc(uid, collectionName, docId) {
+  if (!docId) return false;
+  if (collectionName === 'prcs') return directDeletePRC(uid, docId);
+  if (collectionName === 'allocations') return directDeleteAllocation(uid, docId);
+  if (collectionName === 'rfqs') return directDeleteRFQ(uid, docId);
+  if (collectionName === 'tcds') return directDeleteTCD(uid, docId);
+  if (collectionName === 'pods') return directDeletePOD(uid, docId);
+
+  const table = collectionName === 'activityLogs' ? 'activity_logs' : collectionName;
+  const stmt = {
+    sql: `DELETE FROM ${table} WHERE id = ?;`,
+    args: [String(docId)]
+  };
+  const result = await executeTursoPipeline([stmt]);
+  return result && result.results && result.results[0]?.type === 'ok';
+}
+
+// ═══════════════════════════════════════════════════════════
+// COLLECTION AND BULK SAVE
+// ═══════════════════════════════════════════════════════════
+
+export async function saveCollection(uid, collectionName, items) {
+  if (!items || items.length === 0) return true;
+  const effectiveUid = (uid && uid !== 'default') ? uid : 'guest';
+
+  for (const item of items) {
+    const rawId = item.id || item.prNumber || item.allocationNumber || item.rfqNumber || item.tcdNumber || item.poNumber;
+    if (rawId) {
+      await directSaveDoc(effectiveUid, collectionName, rawId, item);
+    }
+  }
+  return true;
+}
+
 export async function saveAllUserData(uid, stateData) {
   if (!_isConfigured) {
     await initTurso();
@@ -377,52 +1294,39 @@ export async function saveAllUserData(uid, stateData) {
 
   const effectiveUid = (uid && uid !== 'default') ? uid : 'guest';
   const now = new Date().toISOString();
-  const allStatements = [];
 
-  // User profile
+  // Save profile
   if (effectiveUid !== 'guest' && stateData.currentUser) {
-    const profileData = {
-      name: stateData.currentUser?.name || '',
-      email: stateData.currentUser?.email || '',
-      role: stateData.currentUser?.role || 'User',
-      avatar: stateData.currentUser?.avatar || 'U',
-      lastSyncedAt: now
-    };
-    allStatements.push({
-      sql: `INSERT INTO user_profiles (user_id, data, updated_at)
-            VALUES (?, ?, ?)
+    await executeTursoPipeline([{
+      sql: `INSERT INTO user_profiles (user_id, name, email, role, avatar, last_synced_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
-              data = excluded.data,
+              name = excluded.name,
+              email = excluded.email,
+              role = excluded.role,
+              avatar = excluded.avatar,
+              last_synced_at = excluded.last_synced_at,
               updated_at = excluded.updated_at;`,
-      args: [effectiveUid, JSON.stringify(profileData), now]
-    });
+      args: [
+        effectiveUid,
+        stateData.currentUser.name || '',
+        stateData.currentUser.email || '',
+        stateData.currentUser.role || 'User',
+        stateData.currentUser.avatar || 'U',
+        now,
+        now
+      ]
+    }]);
   }
 
-  // All collections
+  // Save all entities
   for (const colName of COLLECTIONS) {
-    const table = _getTableName(colName);
     const items = stateData[colName] || [];
-    for (const item of items) {
-      const rawId = item.id || item.prNumber || item.allocationNumber || item.rfqNumber || item.tcdNumber || item.poNumber;
-      if (!rawId) continue;
-      const cleanData = _sanitize({ ...item, id: rawId, userId: effectiveUid });
-      allStatements.push({
-        sql: `INSERT INTO ${table} (id, user_id, data, updated_at)
-              VALUES (?, ?, ?, ?)
-              ON CONFLICT(id) DO UPDATE SET
-                user_id = excluded.user_id,
-                data = excluded.data,
-                updated_at = excluded.updated_at;`,
-        args: [String(rawId), String(effectiveUid), JSON.stringify(cleanData), now]
-      });
-    }
+    await saveCollection(effectiveUid, colName, items);
   }
 
-  if (allStatements.length === 0) return true;
-
-  const result = await executeTursoPipeline(allStatements);
-  console.info(`⚡ Synced all collections to Turso Database for user '${effectiveUid}' (${allStatements.length} statements)`);
-  return Boolean(result);
+  console.info(`⚡ Synced all collections to relational Turso tables for '${effectiveUid}'`);
+  return true;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -433,36 +1337,28 @@ let _pollTimer = null;
 
 export async function subscribeToRealtimeUserData(uid, onUpdate) {
   unsubscribeRealtimeUserData();
-
   const effectiveUid = (uid && uid !== 'default') ? uid : 'guest';
   let lastChecked = new Date().toISOString();
 
-  // Poll for updates every 15 seconds
   _pollTimer = setInterval(async () => {
     try {
-      const queries = COLLECTIONS.map(col => {
-        const table = _getTableName(col);
-        return {
-          sql: `SELECT id, data, updated_at FROM ${table} WHERE (user_id = ? OR user_id = 'guest') AND updated_at > ?;`,
-          args: [effectiveUid, lastChecked]
-        };
-      });
-
-      const response = await executeTursoPipeline(queries);
-      if (response && response.results) {
-        lastChecked = new Date().toISOString();
-        COLLECTIONS.forEach((col, idx) => {
-          const resObj = response.results[idx];
-          if (resObj && resObj.type === 'ok' && resObj.response?.result?.rows?.length > 0) {
-            const updatedItems = resObj.response.result.rows.map(r => {
-              try { return JSON.parse(r[1]?.value); } catch(e) { return null; }
-            }).filter(Boolean);
-
-            if (updatedItems.length > 0 && typeof onUpdate === 'function') {
-              onUpdate(col, updatedItems);
-            }
+      const queries = [
+        { sql: `SELECT COUNT(*) FROM prcs WHERE updated_at > ?;`, args: [lastChecked] },
+        { sql: `SELECT COUNT(*) FROM allocations WHERE updated_at > ?;`, args: [lastChecked] },
+        { sql: `SELECT COUNT(*) FROM rfqs WHERE updated_at > ?;`, args: [lastChecked] },
+        { sql: `SELECT COUNT(*) FROM tcds WHERE updated_at > ?;`, args: [lastChecked] },
+        { sql: `SELECT COUNT(*) FROM pods WHERE updated_at > ?;`, args: [lastChecked] }
+      ];
+      const res = await executeTursoPipeline(queries);
+      if (res && res.results) {
+        const hasUpdates = res.results.some(r => (parseInt(r.response?.result?.rows[0]?.[0]?.value) || 0) > 0);
+        if (hasUpdates) {
+          lastChecked = new Date().toISOString();
+          const freshData = await loadAllUserData(effectiveUid);
+          if (freshData && typeof onUpdate === 'function') {
+            onUpdate('*', freshData);
           }
-        });
+        }
       }
     } catch (e) {
       console.warn('Turso sync poll error:', e);
@@ -477,27 +1373,4 @@ export function unsubscribeRealtimeUserData() {
     clearInterval(_pollTimer);
     _pollTimer = null;
   }
-}
-
-// ═══════════════════════════════════════════════════════════
-// INTERNAL SANITIZER
-// ═══════════════════════════════════════════════════════════
-
-function _sanitize(obj) {
-  if (obj === null || obj === undefined) return null;
-  if (typeof obj === 'number') {
-    if (isNaN(obj) || !isFinite(obj)) return 0;
-    return obj;
-  }
-  if (typeof obj === 'boolean' || typeof obj === 'string') return obj;
-  if (obj instanceof Date) return obj.toISOString();
-  if (Array.isArray(obj)) return obj.map(item => _sanitize(item));
-  if (typeof obj !== 'object') return null;
-
-  const clean = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value === undefined || typeof value === 'function') continue;
-    clean[key] = _sanitize(value);
-  }
-  return clean;
 }
