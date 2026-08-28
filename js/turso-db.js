@@ -6,11 +6,23 @@
 import { getEnv, loadEnv } from './env.js';
 
 const DEFAULT_TURSO_CONFIG = {
-  url: "https://prc-procurement-db-dinay-patil.aws-ap-south-1.turso.io",
+  url: "https://prc-procurement-db-dinay-patil.aws-ap-south-1.turso.io/v2/pipeline",
   token: "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODc4NDgwMzUsImlkIjoiMDFhMDQ0MGEtZTAwMS03Y2M3LTg1YTMtNmM1NjFhYjM0NzljIiwia2lkIjoibDdvQl9hXzkxQ3dlS3B2RS1BbkZWTU9mU1VjWDBGRmgyQmhtLVhLeTZhVSIsInJpZCI6IjkyODU0ZGNhLWRmYmItNDNmMy1hMWU3LTU3Zjg4MjFjOWU4MCJ9.pwXwdT-JWWrHoSTTB7Ml10vak3vgq78M_bXRWB8SyC3LRgmdQKmQ1K0eKHbgWjblRw2rEXBLv-20krGk9jUAAw"
 };
 
-let _tursoUrl = DEFAULT_TURSO_CONFIG.url;
+function _normalizeTursoUrl(url) {
+  if (!url) return '';
+  let u = String(url).trim();
+  if (u.startsWith('libsql://')) {
+    u = u.replace('libsql://', 'https://');
+  }
+  if (!u.endsWith('/v2/pipeline')) {
+    u = u.replace(/\/+$/, '') + '/v2/pipeline';
+  }
+  return u;
+}
+
+let _tursoUrl = _normalizeTursoUrl(DEFAULT_TURSO_CONFIG.url);
 let _tursoToken = DEFAULT_TURSO_CONFIG.token;
 let _isConfigured = true;
 let _initPromise = null;
@@ -37,16 +49,10 @@ export async function initTurso() {
       }
     } catch (e) {}
 
-    let url = customCfg?.url || getEnv('TURSO_DATABASE_URL', DEFAULT_TURSO_CONFIG.url);
+    let url = _normalizeTursoUrl(customCfg?.url || getEnv('TURSO_DATABASE_URL', DEFAULT_TURSO_CONFIG.url));
     let token = customCfg?.token || getEnv('TURSO_AUTH_TOKEN', DEFAULT_TURSO_CONFIG.token);
 
     if (url && token) {
-      if (url.startsWith('libsql://')) {
-        url = url.replace('libsql://', 'https://');
-      }
-      if (!url.endsWith('/v2/pipeline')) {
-        url = url.replace(/\/+$/, '') + '/v2/pipeline';
-      }
       _tursoUrl = url;
       _tursoToken = token;
       _isConfigured = true;
@@ -156,6 +162,11 @@ function _formatArg(val) {
   return { type: 'text', value: String(val) };
 }
 
+function _toBool(val) {
+  if (val === true || val === 1 || val === '1' || val === 'true') return true;
+  return false;
+}
+
 // ═══════════════════════════════════════════════════════════
 // ROW CONVERTERS (DB Snake_Case Columns -> JS CamelCase Models)
 // ═══════════════════════════════════════════════════════════
@@ -198,18 +209,18 @@ function _mapPRCHeader(m) {
     rfqDate: m.rfq_date || '',
     tcdNumber: m.tcd_number || '',
     tcdDate: m.tcd_date || '',
-    tcdApproved: Boolean(m.tcd_approved),
+    tcdApproved: _toBool(m.tcd_approved),
     tcdApprovedBy: m.tcd_approved_by || '',
     tcdApprovedDate: m.tcd_approved_date || '',
     poNumber: m.po_number || '',
     poDate: m.po_date || '',
     vendorName: m.vendor_name || '',
-    isShortClosed: Boolean(m.is_short_closed),
-    isWrongPRC: Boolean(m.is_wrong_prc),
-    isPRNotApproved: Boolean(m.is_pr_not_approved),
-    isFuturePRC: Boolean(m.is_future_prc),
-    isSystemIssue: Boolean(m.is_system_issue),
-    offersReceived: Boolean(m.offers_received),
+    isShortClosed: _toBool(m.is_short_closed),
+    isWrongPRC: _toBool(m.is_wrong_prc),
+    isPRNotApproved: _toBool(m.is_pr_not_approved),
+    isFuturePRC: _toBool(m.is_future_prc),
+    isSystemIssue: _toBool(m.is_system_issue),
+    offersReceived: _toBool(m.offers_received),
     remarks: m.remarks || '',
     createdBy: m.created_by || '',
     requestedBy: m.requested_by || '',
@@ -243,10 +254,10 @@ function _mapPRCMaterial(m) {
     allocatedBy: m.allocated_by || '',
     rfqNumber: m.rfq_number || '',
     rfqDate: m.rfq_date || '',
-    offersReceived: Boolean(m.offers_received),
+    offersReceived: _toBool(m.offers_received),
     tcdNumber: m.tcd_number || '',
     tcdDate: m.tcd_date || '',
-    tcdApproved: Boolean(m.tcd_approved),
+    tcdApproved: _toBool(m.tcd_approved),
     poNumber: m.po_number || '',
     poDate: m.po_date || '',
     vendorName: m.vendor_name || '',
@@ -307,8 +318,8 @@ function _mapRFQHeader(m) {
     rfqNumber: m.rfq_number || m.id,
     rfqDate: m.rfq_date || '',
     status: m.status || 'Active',
-    offersReceived: Boolean(m.offers_received),
-    isClosed: Boolean(m.is_closed),
+    offersReceived: _toBool(m.offers_received),
+    isClosed: _toBool(m.is_closed),
     createdBy: m.created_by || '',
     createdAt: m.created_at || '',
     updatedAt: m.updated_at || '',
@@ -338,7 +349,7 @@ function _mapTCDHeader(m) {
     tcdNumber: m.tcd_number || m.id,
     tcdDate: m.tcd_date || '',
     status: m.status || 'Active',
-    approved: Boolean(m.approved),
+    approved: _toBool(m.approved),
     approvedBy: m.approved_by || '',
     approvedDate: m.approved_date || '',
     createdBy: m.created_by || '',
@@ -461,7 +472,7 @@ function _mapNotification(m) {
     title: m.title || '',
     message: m.message || '',
     type: m.type || 'info',
-    isRead: Boolean(m.is_read),
+    isRead: _toBool(m.is_read),
     link: m.link || '',
     createdAt: m.created_at || '',
     updatedAt: m.updated_at || ''
