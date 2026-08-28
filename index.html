@@ -2420,6 +2420,8 @@ window.openBulkMaterialEditModal = function(prcId) {
           <div><label class="form-label">Assigned Buyer</label><input type="text" id="bulk-mat-buyer" class="form-control" placeholder="Leave blank to keep current"/></div>
           <div><label class="form-label">RFQ Number</label><input type="text" id="bulk-mat-rfq-num" class="form-control" placeholder="Leave blank to keep current"/></div>
           <div><label class="form-label">RFQ Date</label><input type="date" id="bulk-mat-rfq-date" class="form-control"/></div>
+          <div><label class="form-label">TCD Number</label><input type="text" id="bulk-mat-tcd-num" class="form-control" placeholder="Leave blank to keep current"/></div>
+          <div><label class="form-label">TCD Date</label><input type="date" id="bulk-mat-tcd-date" class="form-control"/></div>
           <div><label class="form-label">PO Number</label><input type="text" id="bulk-mat-po-num" class="form-control" placeholder="Leave blank to keep current"/></div>
           <div><label class="form-label">PO Date</label><input type="date" id="bulk-mat-po-date" class="form-control"/></div>
           <div><label class="form-label">Vendor Name</label><input type="text" id="bulk-mat-vendor" class="form-control" placeholder="Leave blank to keep current"/></div>
@@ -2441,6 +2443,8 @@ window.saveBulkMaterialWorkflow = function(prcId, selectedIds, modalId) {
   const buyer = document.getElementById('bulk-mat-buyer')?.value.trim();
   const rfqNum = document.getElementById('bulk-mat-rfq-num')?.value.trim();
   const rfqDate = document.getElementById('bulk-mat-rfq-date')?.value;
+  const tcdNum = document.getElementById('bulk-mat-tcd-num')?.value.trim();
+  const tcdDate = document.getElementById('bulk-mat-tcd-date')?.value;
   const poNum = document.getElementById('bulk-mat-po-num')?.value.trim();
   const poDate = document.getElementById('bulk-mat-po-date')?.value;
   const vendor = document.getElementById('bulk-mat-vendor')?.value.trim();
@@ -2450,6 +2454,8 @@ window.saveBulkMaterialWorkflow = function(prcId, selectedIds, modalId) {
   if (buyer) { patch.buyerName = buyer; patch.allocatedBy = buyer; }
   if (rfqNum) patch.rfqNumber = rfqNum;
   if (rfqDate) patch.rfqDate = rfqDate;
+  if (tcdNum) patch.tcdNumber = tcdNum;
+  if (tcdDate) patch.tcdDate = tcdDate;
   if (poNum) patch.poNumber = poNum;
   if (poDate) patch.poDate = poDate;
   if (vendor) { patch.vendorName = vendor; patch.vendor = vendor; }

@@ -1932,13 +1932,52 @@ export function deletePRC(id, forceCascade = true) {
   return { success: true, prNumber, hadTrails: hasTrails };
 }
 
+function _syncPRCHeaderFromMaterials(prc) {
+  const mats = prc.materials || [];
+  const updated = { ...prc };
+
+  const mAlloc = mats.find(m => m.allocationNumber);
+  if (mAlloc) {
+    updated.allocationNumber = mAlloc.allocationNumber;
+    if (mAlloc.allocationDate) updated.allocationDate = mAlloc.allocationDate;
+    if (mAlloc.buyerName || mAlloc.allocatedBy) {
+      updated.buyerName = mAlloc.buyerName || mAlloc.allocatedBy;
+      updated.allocatedBy = mAlloc.allocatedBy || mAlloc.buyerName;
+    }
+  }
+
+  const mRfq = mats.find(m => m.rfqNumber);
+  if (mRfq) {
+    updated.rfqNumber = mRfq.rfqNumber;
+    if (mRfq.rfqDate) updated.rfqDate = mRfq.rfqDate;
+    if (mRfq.offersReceived !== undefined) updated.offersReceived = mRfq.offersReceived;
+  }
+
+  const mTcd = mats.find(m => m.tcdNumber);
+  if (mTcd) {
+    updated.tcdNumber = mTcd.tcdNumber;
+    if (mTcd.tcdDate) updated.tcdDate = mTcd.tcdDate;
+    if (mTcd.tcdApproved !== undefined) updated.tcdApproved = mTcd.tcdApproved;
+    if (mTcd.vendorName || mTcd.vendor) updated.vendorName = mTcd.vendorName || mTcd.vendor;
+  }
+
+  const mPo = mats.find(m => m.poNumber);
+  if (mPo) {
+    updated.poNumber = mPo.poNumber;
+    if (mPo.poDate) updated.poDate = mPo.poDate;
+    if (mPo.vendorName || mPo.vendor) updated.vendorName = mPo.vendorName || mPo.vendor;
+  }
+
+  return updated;
+}
+
 export function updateMaterial(prcId, materialId, patch) {
-  const prcIdx = state.prcs.findIndex(p => p.id === prcId);
+  const prcIdx = state.prcs.findIndex(p => p.id === prcId || p.prNumber === prcId);
   if (prcIdx === -1) return;
   const prc = state.prcs[prcIdx];
 
   const materials = (prc.materials || []).map(m => {
-    if (m.id === materialId) {
+    if (m.id === materialId || (patch.matCode && m.matCode === patch.matCode)) {
       const updatedMat = { ...m, ...patch };
       const totalQty = parseFloat(updatedMat.quantity) || 0;
       const procQty  = parseFloat(updatedMat.processedQty) || 0;
@@ -1950,12 +1989,29 @@ export function updateMaterial(prcId, materialId, patch) {
     return m;
   });
 
-  const updatedPRC = {
+  let updatedPRC = {
     ...prc,
     materials,
     updatedAt: new Date().toISOString(),
-    updatedBy: state.currentUser.name
+    updatedBy: state.currentUser?.name || 'User'
   };
+
+  updatedPRC = _syncPRCHeaderFromMaterials(updatedPRC);
+
+  if (patch.allocationNumber) updatedPRC.allocationNumber = patch.allocationNumber;
+  if (patch.allocationDate) updatedPRC.allocationDate = patch.allocationDate;
+  if (patch.buyerName) { updatedPRC.buyerName = patch.buyerName; updatedPRC.allocatedBy = patch.buyerName; }
+  if (patch.allocatedBy) { updatedPRC.allocatedBy = patch.allocatedBy; updatedPRC.buyerName = patch.allocatedBy; }
+  if (patch.rfqNumber) updatedPRC.rfqNumber = patch.rfqNumber;
+  if (patch.rfqDate) updatedPRC.rfqDate = patch.rfqDate;
+  if (patch.offersReceived !== undefined) updatedPRC.offersReceived = patch.offersReceived;
+  if (patch.tcdNumber) updatedPRC.tcdNumber = patch.tcdNumber;
+  if (patch.tcdDate) updatedPRC.tcdDate = patch.tcdDate;
+  if (patch.tcdApproved !== undefined) updatedPRC.tcdApproved = patch.tcdApproved;
+  if (patch.vendorName || patch.vendor) updatedPRC.vendorName = patch.vendorName || patch.vendor;
+  if (patch.poNumber) updatedPRC.poNumber = patch.poNumber;
+  if (patch.poDate) updatedPRC.poDate = patch.poDate;
+
   updatedPRC.status = calculateStatus(updatedPRC, materials);
 
   const prcs = [...state.prcs];
@@ -1974,7 +2030,7 @@ export function updateMaterial(prcId, materialId, patch) {
 }
 
 export function bulkUpdateMaterials(prcId, materialIds, patch) {
-  const prcIdx = state.prcs.findIndex(p => p.id === prcId);
+  const prcIdx = state.prcs.findIndex(p => p.id === prcId || p.prNumber === prcId);
   if (prcIdx === -1) return;
   const prc = state.prcs[prcIdx];
 
@@ -1992,12 +2048,29 @@ export function bulkUpdateMaterials(prcId, materialIds, patch) {
     return m;
   });
 
-  const updatedPRC = {
+  let updatedPRC = {
     ...prc,
     materials,
     updatedAt: new Date().toISOString(),
-    updatedBy: state.currentUser.name
+    updatedBy: state.currentUser?.name || 'User'
   };
+
+  updatedPRC = _syncPRCHeaderFromMaterials(updatedPRC);
+
+  if (patch.allocationNumber) updatedPRC.allocationNumber = patch.allocationNumber;
+  if (patch.allocationDate) updatedPRC.allocationDate = patch.allocationDate;
+  if (patch.buyerName) { updatedPRC.buyerName = patch.buyerName; updatedPRC.allocatedBy = patch.buyerName; }
+  if (patch.allocatedBy) { updatedPRC.allocatedBy = patch.allocatedBy; updatedPRC.buyerName = patch.allocatedBy; }
+  if (patch.rfqNumber) updatedPRC.rfqNumber = patch.rfqNumber;
+  if (patch.rfqDate) updatedPRC.rfqDate = patch.rfqDate;
+  if (patch.offersReceived !== undefined) updatedPRC.offersReceived = patch.offersReceived;
+  if (patch.tcdNumber) updatedPRC.tcdNumber = patch.tcdNumber;
+  if (patch.tcdDate) updatedPRC.tcdDate = patch.tcdDate;
+  if (patch.tcdApproved !== undefined) updatedPRC.tcdApproved = patch.tcdApproved;
+  if (patch.vendorName || patch.vendor) updatedPRC.vendorName = patch.vendorName || patch.vendor;
+  if (patch.poNumber) updatedPRC.poNumber = patch.poNumber;
+  if (patch.poDate) updatedPRC.poDate = patch.poDate;
+
   updatedPRC.status = calculateStatus(updatedPRC, materials);
 
   const prcs = [...state.prcs];
@@ -2050,9 +2123,8 @@ const _STAGE_FIELDS = {
 
 /**
  * Propagates a material-level patch to all Allocation / RFQ / TCD / POD
- * documents that contain an item for (prcId, materialId).
- * Only the relevant field subsets are applied to each document type.
- * directSave* is called only for documents that actually changed.
+ * documents that contain an item for (prcId, materialId), creating or attaching
+ * downstream document items where necessary.
  *
  * @param {string} prcId
  * @param {string} materialId
@@ -2060,6 +2132,13 @@ const _STAGE_FIELDS = {
  */
 function _syncMaterialPatchToDownstream(prcId, materialId, patch) {
   const uid = _getEffectiveUid();
+  const prc = state.prcs.find(p => p.id === prcId || p.prNumber === prcId);
+  const mat = prc?.materials?.find(m => m.id === materialId || (patch.matCode && m.matCode === patch.matCode));
+  const prNumber = prc?.prNumber || patch.prNumber || '';
+  const matCode = mat?.matCode || patch.matCode || '';
+  const description = mat?.description || patch.description || '';
+  const unit = mat?.unit || patch.unit || '';
+  const quantity = parseFloat(patch.quantity !== undefined ? patch.quantity : (mat?.quantity || 0)) || 0;
 
   // Build per-stage sub-patches (identity fields always included)
   const identityPatch = {};
@@ -2072,89 +2151,274 @@ function _syncMaterialPatchToDownstream(prcId, materialId, patch) {
     }
   });
 
-  const hasAllocPatch = Object.keys(stagePatch.alloc).length > 0;
-  const hasRFQPatch   = Object.keys(stagePatch.rfq).length > 0;
-  const hasTCDPatch   = Object.keys(stagePatch.tcd).length > 0;
-  const hasPODPatch   = Object.keys(stagePatch.pod).length > 0;
-
-  // ── Allocation documents ──────────────────────────────────
-  if (hasAllocPatch) {
+  // 1. ALLOCATION
+  const targetAllocNum = (patch.allocationNumber || mat?.allocationNumber || '').trim();
+  if (targetAllocNum) {
     let allocations = [...state.allocations];
-    let allocChanged = false;
-    allocations = allocations.map(alloc => {
-      const hasMatch = (alloc.items || []).some(i => i.prcId === prcId && i.materialId === materialId);
-      if (!hasMatch) return alloc;
-      const updatedItems = alloc.items.map(i =>
-        (i.prcId === prcId && i.materialId === materialId) ? { ...i, ...stagePatch.alloc } : i
-      );
-      allocChanged = true;
-      const updated = { ...alloc, items: updatedItems, updatedAt: new Date().toISOString() };
-      directSaveAllocation(uid, updated);
-      return updated;
-    });
-    if (allocChanged) setState({ allocations });
+    let allocIdx = allocations.findIndex(a => String(a.allocationNumber || '').trim().toUpperCase() === targetAllocNum.toUpperCase());
+    if (allocIdx !== -1) {
+      const alloc = { ...allocations[allocIdx] };
+      const items = [...(alloc.items || [])];
+      const itemIdx = items.findIndex(i => (i.prcId === prcId || i.prNumber === prNumber) && (i.materialId === materialId || (matCode && i.matCode === matCode)));
+      if (itemIdx !== -1) {
+        items[itemIdx] = { ...items[itemIdx], ...stagePatch.alloc };
+      } else {
+        items.push({
+          id: `alloc-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          allocationId: alloc.id,
+          prcId,
+          materialId,
+          prNumber,
+          matCode,
+          description,
+          quantity,
+          unit,
+          ...stagePatch.alloc
+        });
+      }
+      alloc.items = items;
+      if (patch.allocationDate) alloc.allocationDate = patch.allocationDate;
+      if (patch.buyerName || patch.allocatedBy) {
+        alloc.buyerName = patch.buyerName || patch.allocatedBy;
+        alloc.allocatedBy = patch.allocatedBy || patch.buyerName;
+      }
+      alloc.updatedAt = new Date().toISOString();
+      allocations[allocIdx] = alloc;
+      directSaveAllocation(uid, alloc);
+      setState({ allocations });
+    } else {
+      const newAlloc = {
+        id: `alloc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        allocationNumber: targetAllocNum,
+        allocationDate: patch.allocationDate || new Date().toISOString().split('T')[0],
+        buyerName: patch.buyerName || patch.allocatedBy || '',
+        allocatedBy: patch.allocatedBy || patch.buyerName || '',
+        status: 'Active',
+        createdAt: new Date().toISOString(),
+        createdBy: state.currentUser?.name || 'User',
+        items: [{
+          id: `alloc-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          prcId,
+          materialId,
+          prNumber,
+          matCode,
+          description,
+          quantity,
+          unit,
+          ...stagePatch.alloc
+        }]
+      };
+      allocations = [newAlloc, ...allocations];
+      directSaveAllocation(uid, newAlloc);
+      setState({ allocations });
+    }
   }
 
-  // ── RFQ documents ─────────────────────────────────────────
-  if (hasRFQPatch) {
+  // 2. RFQ
+  const targetRfqNum = (patch.rfqNumber || mat?.rfqNumber || '').trim();
+  if (targetRfqNum) {
     let rfqs = [...state.rfqs];
-    let rfqChanged = false;
-    rfqs = rfqs.map(rfq => {
-      const hasMatch = (rfq.items || []).some(i => i.prcId === prcId && i.materialId === materialId);
-      if (!hasMatch) return rfq;
-      const updatedItems = rfq.items.map(i =>
-        (i.prcId === prcId && i.materialId === materialId) ? { ...i, ...stagePatch.rfq } : i
-      );
-      rfqChanged = true;
-      const updated = { ...rfq, items: updatedItems, updatedAt: new Date().toISOString() };
-      directSaveRFQ(uid, updated);
-      return updated;
-    });
-    if (rfqChanged) setState({ rfqs });
+    let rfqIdx = rfqs.findIndex(r => String(r.rfqNumber || '').trim().toUpperCase() === targetRfqNum.toUpperCase());
+    if (rfqIdx !== -1) {
+      const rfq = { ...rfqs[rfqIdx] };
+      const items = [...(rfq.items || [])];
+      const itemIdx = items.findIndex(i => (i.prcId === prcId || i.prNumber === prNumber) && (i.materialId === materialId || (matCode && i.matCode === matCode)));
+      if (itemIdx !== -1) {
+        items[itemIdx] = { ...items[itemIdx], ...stagePatch.rfq };
+      } else {
+        items.push({
+          id: `rfq-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          rfqId: rfq.id,
+          prcId,
+          materialId,
+          allocationId: mat?.allocationNumber || '',
+          prNumber,
+          matCode,
+          description,
+          quantity,
+          unit,
+          ...stagePatch.rfq
+        });
+      }
+      rfq.items = items;
+      if (patch.rfqDate) rfq.rfqDate = patch.rfqDate;
+      if (patch.offersReceived !== undefined) rfq.offersReceived = patch.offersReceived;
+      rfq.updatedAt = new Date().toISOString();
+      rfqs[rfqIdx] = rfq;
+      directSaveRFQ(uid, rfq);
+      setState({ rfqs });
+    } else {
+      const newRFQ = {
+        id: `rfq-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        rfqNumber: targetRfqNum,
+        rfqDate: patch.rfqDate || new Date().toISOString().split('T')[0],
+        status: 'Active',
+        isClosed: false,
+        offersReceived: patch.offersReceived || false,
+        createdAt: new Date().toISOString(),
+        createdBy: state.currentUser?.name || 'User',
+        items: [{
+          id: `rfq-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          prcId,
+          materialId,
+          allocationId: mat?.allocationNumber || '',
+          prNumber,
+          matCode,
+          description,
+          quantity,
+          unit,
+          ...stagePatch.rfq
+        }]
+      };
+      rfqs = [newRFQ, ...rfqs];
+      directSaveRFQ(uid, newRFQ);
+      setState({ rfqs });
+    }
   }
 
-  // ── TCD documents (vendorAllocations[].items[]) ───────────
-  if (hasTCDPatch) {
+  // 3. TCD
+  const targetTcdNum = (patch.tcdNumber || mat?.tcdNumber || '').trim();
+  if (targetTcdNum) {
     let tcds = [...state.tcds];
-    let tcdChanged = false;
-    tcds = tcds.map(tcd => {
-      const vas = tcd.vendorAllocations || tcd.vendors || [];
-      let tcdModified = false;
-      const updatedVAs = vas.map(va => {
-        const hasMatch = (va.items || []).some(i => i.prcId === prcId && i.materialId === materialId);
-        if (!hasMatch) return va;
-        const updatedItems = va.items.map(i =>
-          (i.prcId === prcId && i.materialId === materialId) ? { ...i, ...stagePatch.tcd } : i
-        );
-        tcdModified = true;
-        return { ...va, items: updatedItems };
-      });
-      if (!tcdModified) return tcd;
-      tcdChanged = true;
-      const vaKey = tcd.vendorAllocations ? 'vendorAllocations' : 'vendors';
-      const updated = { ...tcd, [vaKey]: updatedVAs, updatedAt: new Date().toISOString() };
-      directSaveTCD(uid, updated);
-      return updated;
-    });
-    if (tcdChanged) setState({ tcds });
+    let tcdIdx = tcds.findIndex(t => String(t.tcdNumber || '').trim().toUpperCase() === targetTcdNum.toUpperCase());
+    const vendorName = patch.vendorName || patch.vendor || mat?.vendorName || mat?.vendor || 'Vendor';
+    if (tcdIdx !== -1) {
+      const tcd = { ...tcds[tcdIdx] };
+      const vas = [...(tcd.vendorAllocations || tcd.vendors || [])];
+      let vaIdx = vas.findIndex(v => String(v.vendorName || v.name || '').trim().toUpperCase() === vendorName.toUpperCase());
+      if (vaIdx === -1) {
+        vas.push({ vendorName, items: [] });
+        vaIdx = vas.length - 1;
+      }
+      const va = { ...vas[vaIdx] };
+      const items = [...(va.items || [])];
+      const itemIdx = items.findIndex(i => (i.prcId === prcId || i.prNumber === prNumber) && (i.materialId === materialId || (matCode && i.matCode === matCode)));
+      if (itemIdx !== -1) {
+        items[itemIdx] = { ...items[itemIdx], ...stagePatch.tcd };
+      } else {
+        items.push({
+          id: `tcd-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          tcdId: tcd.id,
+          vendorName,
+          prcId,
+          materialId,
+          rfqId: mat?.rfqNumber || '',
+          prNumber,
+          matCode,
+          description,
+          quantity,
+          unit,
+          ...stagePatch.tcd
+        });
+      }
+      va.items = items;
+      vas[vaIdx] = va;
+      tcd.vendorAllocations = vas;
+      tcd.vendors = vas;
+      if (patch.tcdDate) tcd.tcdDate = patch.tcdDate;
+      if (patch.tcdApproved !== undefined) tcd.approved = patch.tcdApproved;
+      tcd.updatedAt = new Date().toISOString();
+      tcds[tcdIdx] = tcd;
+      directSaveTCD(uid, tcd);
+      setState({ tcds });
+    } else {
+      const newTCD = {
+        id: `tcd-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        tcdNumber: targetTcdNum,
+        tcdDate: patch.tcdDate || new Date().toISOString().split('T')[0],
+        status: patch.tcdApproved ? 'Approved' : 'Pending Approval',
+        approved: patch.tcdApproved || false,
+        approvedDate: patch.tcdApproved ? new Date().toISOString() : null,
+        approvedBy: patch.tcdApproved ? (state.currentUser?.name || 'Admin') : null,
+        createdAt: new Date().toISOString(),
+        createdBy: state.currentUser?.name || 'User',
+        vendorAllocations: [{
+          vendorName,
+          items: [{
+            id: `tcd-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            vendorName,
+            prcId,
+            materialId,
+            rfqId: mat?.rfqNumber || '',
+            prNumber,
+            matCode,
+            description,
+            quantity,
+            unit,
+            ...stagePatch.tcd
+          }]
+        }]
+      };
+      newTCD.vendors = newTCD.vendorAllocations;
+      tcds = [newTCD, ...tcds];
+      directSaveTCD(uid, newTCD);
+      setState({ tcds });
+    }
   }
 
-  // ── POD documents ─────────────────────────────────────────
-  if (hasPODPatch) {
+  // 4. POD
+  const targetPoNum = (patch.poNumber || mat?.poNumber || '').trim();
+  if (targetPoNum) {
     let pods = [...state.pods];
-    let podChanged = false;
-    pods = pods.map(pod => {
-      const hasMatch = (pod.items || []).some(i => i.prcId === prcId && i.materialId === materialId);
-      if (!hasMatch) return pod;
-      const updatedItems = pod.items.map(i =>
-        (i.prcId === prcId && i.materialId === materialId) ? { ...i, ...stagePatch.pod } : i
-      );
-      podChanged = true;
-      const updated = { ...pod, items: updatedItems, updatedAt: new Date().toISOString() };
-      directSavePOD(uid, updated);
-      return updated;
-    });
-    if (podChanged) setState({ pods });
+    let podIdx = pods.findIndex(p => String(p.poNumber || '').trim().toUpperCase() === targetPoNum.toUpperCase());
+    const vendorName = patch.vendorName || patch.vendor || mat?.vendorName || mat?.vendor || '';
+    if (podIdx !== -1) {
+      const pod = { ...pods[podIdx] };
+      const items = [...(pod.items || [])];
+      const itemIdx = items.findIndex(i => (i.prcId === prcId || i.prNumber === prNumber) && (i.materialId === materialId || (matCode && i.matCode === matCode)));
+      if (itemIdx !== -1) {
+        items[itemIdx] = { ...items[itemIdx], ...stagePatch.pod };
+      } else {
+        items.push({
+          id: `pod-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          podId: pod.id,
+          prcId,
+          materialId,
+          rfqId: mat?.rfqNumber || '',
+          prNumber,
+          matCode,
+          description,
+          quantity,
+          unit,
+          ...stagePatch.pod
+        });
+      }
+      pod.items = items;
+      if (patch.poDate) pod.poDate = patch.poDate;
+      if (vendorName) pod.vendorName = vendorName;
+      if (patch.tcdNumber) pod.tcdNumber = patch.tcdNumber;
+      pod.status = 'Issued';
+      pod.updatedAt = new Date().toISOString();
+      pods[podIdx] = pod;
+      directSavePOD(uid, pod);
+      setState({ pods });
+    } else {
+      const newPOD = {
+        id: `pod-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        poNumber: targetPoNum,
+        poDate: patch.poDate || new Date().toISOString().split('T')[0],
+        vendorName,
+        tcdNumber: patch.tcdNumber || mat?.tcdNumber || '',
+        status: 'Issued',
+        createdAt: new Date().toISOString(),
+        createdBy: state.currentUser?.name || 'User',
+        items: [{
+          id: `pod-item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          prcId,
+          materialId,
+          rfqId: mat?.rfqNumber || '',
+          prNumber,
+          matCode,
+          description,
+          quantity,
+          unit,
+          ...stagePatch.pod
+        }]
+      };
+      pods = [newPOD, ...pods];
+      directSavePOD(uid, newPOD);
+      setState({ pods });
+    }
   }
 }
 
@@ -3207,28 +3471,68 @@ export function getAvailableForPOD() {
 }
 
 export function createPOD(data) {
-  const pod = {
-    id: `pod-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-    poNumber: data.poNumber || '',
-    poDate: data.poDate || '',
-    vendorName: data.vendorName || '',
-    tcdId: data.tcdId || '',
-    tcdNumber: data.tcdNumber || '',
-    items: (data.items || []).map(i => ({ ...i })),
-    createdAt: new Date().toISOString(),
-    createdBy: state.currentUser?.name || 'Admin',
-    status: data.poNumber ? 'Issued' : 'Pending PO Number'
-  };
+  const normNum = String(data.poNumber || '').trim();
+  const existingIdx = normNum ? state.pods.findIndex(
+    p => String(p.poNumber || '').trim().toUpperCase() === normNum.toUpperCase()
+  ) : -1;
 
-  const pods = [pod, ...state.pods];
+  let pod;
+  let pods;
+
+  if (existingIdx !== -1) {
+    const existing = state.pods[existingIdx];
+    const existingItems = [...(existing.items || [])];
+    const itemKeySet = new Set(existingItems.map(i => `${i.prcId}::${i.materialId}`));
+
+    (data.items || []).forEach(newItem => {
+      const key = `${newItem.prcId}::${newItem.materialId}`;
+      if (!itemKeySet.has(key)) {
+        existingItems.push(newItem);
+        itemKeySet.add(key);
+      } else {
+        const ex = existingItems.find(i => `${i.prcId}::${i.materialId}` === key);
+        if (ex) ex.quantity = parseFloat(newItem.quantity) || ex.quantity;
+      }
+    });
+
+    pod = {
+      ...existing,
+      poNumber: normNum || existing.poNumber,
+      poDate: data.poDate || existing.poDate,
+      vendorName: data.vendorName || existing.vendorName,
+      tcdId: data.tcdId || existing.tcdId,
+      tcdNumber: data.tcdNumber || existing.tcdNumber,
+      items: existingItems,
+      updatedAt: new Date().toISOString(),
+      updatedBy: state.currentUser?.name || 'Admin',
+      status: normNum ? 'Issued' : existing.status
+    };
+    pods = [...state.pods];
+    pods[existingIdx] = pod;
+  } else {
+    pod = {
+      id: `pod-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      poNumber: normNum,
+      poDate: data.poDate || '',
+      vendorName: data.vendorName || '',
+      tcdId: data.tcdId || '',
+      tcdNumber: data.tcdNumber || '',
+      items: (data.items || []).map(i => ({ ...i })),
+      createdAt: new Date().toISOString(),
+      createdBy: state.currentUser?.name || 'Admin',
+      status: normNum ? 'Issued' : 'Pending PO Number'
+    };
+    pods = [pod, ...state.pods];
+  }
+
   const prcs = [...state.prcs];
 
   if (pod.poNumber || pod.poDate) {
     pod.items.forEach(item => {
-      const prcIdx = prcs.findIndex(p => p.id === item.prcId);
+      const prcIdx = prcs.findIndex(p => p.id === item.prcId || p.prNumber === item.prcId || p.prNumber === item.prNumber || p.id === item.prNumber);
       if (prcIdx === -1) return;
       const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
-      const matIdx = prc.materials.findIndex(m => m.id === item.materialId);
+      const matIdx = prc.materials.findIndex(m => m.id === item.materialId || (item.matCode && m.matCode === item.matCode));
       if (matIdx === -1) return;
       const mat = { ...prc.materials[matIdx] };
       if (pod.poNumber) mat.poNumber = pod.poNumber;
@@ -3260,7 +3564,9 @@ export function createPOD(data) {
   directSavePOD(_getEffectiveUid(), pod);
 
   addAuditLog({
-    action: 'create_pod', collection: 'PODs', docId: pod.id,
+    action: existingIdx !== -1 ? 'update_pod' : 'create_pod',
+    collection: 'PODs',
+    docId: pod.id,
     changes: { poNumber: pod.poNumber, vendorName: pod.vendorName, itemCount: pod.items.length }
   });
 
