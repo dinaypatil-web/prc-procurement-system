@@ -1900,15 +1900,23 @@ export function validatePOReportRows(rawRows) {
     }
 
     const existsPRC = Boolean(matchedPrc);
-    const isSkipped = !existsPRC;
-    const isValid = g.errors.length === 0 && g.cumulatedPOQty > 0 && existsPRC;
+    const existsMaterial = Boolean(matchedMat);
+    const isSkipped = !existsPRC || !existsMaterial;
+    let skipReason = '';
+    if (!existsPRC) {
+      skipReason = `PRC ${g.prcNumber} not found in App PRC Records`;
+    } else if (!existsMaterial) {
+      skipReason = `Material Code ${g.matCode} not found in PRC ${g.prcNumber} in App`;
+    }
+
+    const isValid = g.errors.length === 0 && g.cumulatedPOQty > 0 && existsPRC && existsMaterial;
 
     return {
       ...g,
       existsPRC,
-      existsMaterial: !!matchedMat,
+      existsMaterial,
       isSkipped,
-      skipReason: existsPRC ? '' : `PRC ${g.prcNumber} not found in App PRC Records`,
+      skipReason,
       prc: matchedPrc,
       material: matchedMat,
       matDescription: matchedMat ? matchedMat.description : `Material ${g.matCode}`,
@@ -1920,9 +1928,11 @@ export function validatePOReportRows(rawRows) {
 
   const totalRawRows = normalizedRows.length;
   const validGroupsCount = processedGroups.filter(g => g.isValid).length;
-  const skippedNotInAppCount = processedGroups.filter(g => !g.existsPRC).length;
+  const skippedNotInAppCount = processedGroups.filter(g => !g.existsPRC || !g.existsMaterial).length;
+  const skippedPRCCount = processedGroups.filter(g => !g.existsPRC).length;
+  const skippedMaterialCount = processedGroups.filter(g => g.existsPRC && !g.existsMaterial).length;
   const errorGroupsCount = processedGroups.filter(g => g.errors.length > 0 || g.cumulatedPOQty <= 0).length;
-  const matchedPRCsCount = new Set(processedGroups.filter(g => g.existsPRC).map(g => g.prcNumber.toUpperCase())).size;
+  const matchedPRCsCount = new Set(processedGroups.filter(g => g.existsPRC && g.existsMaterial).map(g => g.prcNumber.toUpperCase())).size;
 
   return {
     valid: errors.length === 0,
@@ -1934,6 +1944,8 @@ export function validatePOReportRows(rawRows) {
       uniqueLineItems: processedGroups.length,
       validItems: validGroupsCount,
       skippedNotInApp: skippedNotInAppCount,
+      skippedPRCCount,
+      skippedMaterialCount,
       errorItems: errorGroupsCount,
       matchedPRCs: matchedPRCsCount
     }
@@ -1953,13 +1965,14 @@ export function renderPOReportPreviewTable(processedGroups) {
     if (!g.existsPRC) {
       rowClass = 'table-row-error';
       statusBadge = `<span class="chip chip-wrong" style="font-weight:600" title="PRC ${g.prcNumber} is not present in App PRC Records. This line item will be SKIPPED.">⚠️ PRC Not in App (Skipped)</span>`;
+    } else if (!g.existsMaterial) {
+      rowClass = 'table-row-error';
+      statusBadge = `<span class="chip chip-wrong" style="font-weight:600" title="Material Code ${g.matCode} is not present under PRC ${g.prcNumber} in App. This line item will be SKIPPED.">⚠️ Mat Code Not in PRC (Skipped)</span>`;
     } else if (g.errors.length > 0 || g.cumulatedPOQty <= 0) {
       rowClass = 'table-row-error';
       statusBadge = `<span class="chip chip-wrong" title="${g.errors.join(', ')}">❌ ${g.errors[0] || 'Invalid'}</span>`;
-    } else if (g.existsPRC && g.existsMaterial) {
-      statusBadge = `<span class="chip chip-completed" title="PRC and Material line item matched in database">✓ Matched Line Item</span>`;
     } else {
-      statusBadge = `<span class="chip chip-awaiting" title="PRC found in App. Material ${g.matCode} will be linked to PRC">➕ Add Line to PRC</span>`;
+      statusBadge = `<span class="chip chip-completed" title="PRC and Material line item matched in database">✓ Matched Line Item</span>`;
     }
 
     const amdDisplay = g.latestAmdNumber && parseFloat(g.latestAmdNumber) > 0
@@ -1987,7 +2000,7 @@ export function renderPOReportPreviewTable(processedGroups) {
         <td style="text-align:center">${amdDisplay}</td>
         <td><span class="font-mono font-bold" style="color:var(--color-success)">${g.latestEffectivePoNumber || '—'}</span></td>
         <td>
-          <span class="chip chip-completed" style="font-weight:700">
+          <span class="chip ${g.isValid ? 'chip-completed' : 'chip-wrong'}" style="font-weight:700">
             ${g.cumulatedPOQty} ${g.unit || ''}
           </span>
           ${multiRowNote}
@@ -2032,14 +2045,14 @@ export function renderPOReportPreviewTable(processedGroups) {
   `;
 }
 
-/** Apply PO Report line-item updates strictly for PRCs that exist in App PRC Records */
+/** Apply PO Report line-item updates strictly for PRCs and Material Codes that exist in App PRC Records */
 export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx') {
-  // STRICT RULE: Only import for PRCs that exist in App PRC Records
-  const validGroups = (processedGroups || []).filter(g => g.existsPRC && g.isValid);
-  const skippedCount = (processedGroups || []).filter(g => !g.existsPRC).length;
+  // STRICT RULE: Only import for PRCs AND Material Codes that exist in App PRC Records
+  const validGroups = (processedGroups || []).filter(g => g.existsPRC && g.existsMaterial && g.isValid);
+  const skippedCount = (processedGroups || []).filter(g => !g.existsPRC || !g.existsMaterial).length;
 
   if (!validGroups.length) {
-    toast('No matching PRCs found in App records. All rows for non-existent PRCs were skipped.', 'warning');
+    toast('No matching PRCs and Material Codes found in App records. All rows for non-existent PRCs or Material Codes were skipped.', 'warning');
     return { success: false, count: 0, skippedCount };
   }
 
@@ -2049,7 +2062,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
   const snapshotId = createImportSnapshot(
     'PO Report Line-Item Import',
     fileName,
-    `PO Report update for ${validGroups.length} line item(s) across existing App PRCs (${skippedCount} non-existent PRCs skipped).`
+    `PO Report update for ${validGroups.length} line item(s) across existing App PRCs & Material Codes (${skippedCount} non-existent PRCs/Material Codes skipped).`
   );
 
   const existingPRCs = [...(state.prcs || [])];
@@ -2077,7 +2090,6 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     }
 
     const prc = { ...existingPRCs[prcIdx], materials: [...(existingPRCs[prcIdx].materials || [])] };
-    modifiedPRCIndices.add(prcIdx);
 
     const matUpper = g.matCode.toUpperCase();
     let matIdx = prc.materials.findIndex(m =>
@@ -2085,23 +2097,13 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
       String(m.id || '').toUpperCase().includes(matUpper)
     );
 
-    let material;
-    if (matIdx !== -1) {
-      material = { ...prc.materials[matIdx] };
-    } else {
-      // Add new material line item under this existing PRC
-      material = {
-        id: `${g.prcNumber}-${g.matCode}-${prc.materials.length + 1}`,
-        serialNumber: String(prc.materials.length + 1),
-        matCode: g.matCode,
-        description: g.matDescription || `Material ${g.matCode}`,
-        unit: g.unit || 'EA',
-        quantity: g.cumulatedPOQty,
-        currencyDesc: prc.currencyDesc || 'KWD'
-      };
-      prc.materials.push(material);
-      matIdx = prc.materials.length - 1;
+    // If Material Code is not found under this existing PRC, skip completely (do NOT create new material)
+    if (matIdx === -1) {
+      return;
     }
+
+    modifiedPRCIndices.add(prcIdx);
+    const material = { ...prc.materials[matIdx] };
 
     // 1. Update Quantities: PO Quantity, RFQ Quantity & TCD Quantity = Cumulated PO Quantity
     const cumQty = g.cumulatedPOQty;
