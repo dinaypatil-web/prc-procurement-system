@@ -5165,25 +5165,66 @@ function getRFQTCDCoverage(rfq, allTCDs) {
   const tcdNumberSet = new Set();
   const coveredSet = new Set();
 
+  if (rfq.tcdNumber) {
+    tcdNumberSet.add(String(rfq.tcdNumber).trim());
+  }
+
+  const rfqNumClean = String(rfq.rfqNumber || '').trim().toUpperCase();
+
   allTCDs.forEach(tcd => {
+    const tcdNum = String(tcd.tcdNumber || '').trim();
+    if (!tcdNum) return;
+
+    const matchesRfq = (tcd.rfqId && tcd.rfqId === rfq.id) ||
+      (tcd.rfqNumber && rfqNumClean && String(tcd.rfqNumber).trim().toUpperCase() === rfqNumClean);
+
     (tcd.vendorAllocations || tcd.vendors || []).forEach(va => {
       (va.items || []).forEach(item => {
-        if (item.rfqId === rfq.id) {
-          tcdNumberSet.add(tcd.tcdNumber);
-          // mark this prcId+materialId as covered
-          coveredSet.add(`${item.prcId}::${item.materialId}`);
+        const isItemInRFQ = matchesRfq || (item.rfqId && item.rfqId === rfq.id) || items.some(ri =>
+          (ri.prcId && item.prcId && ri.prcId === item.prcId && ri.materialId && item.materialId && ri.materialId === item.materialId) ||
+          (ri.prNumber && item.prNumber && ri.prNumber === item.prNumber && ri.matCode && item.matCode && ri.matCode === item.matCode)
+        );
+
+        if (isItemInRFQ) {
+          tcdNumberSet.add(tcdNum);
+          if (item.prcId && item.materialId) coveredSet.add(`${item.prcId}::${item.materialId}`);
+          if (item.prNumber && item.matCode) coveredSet.add(`${item.prNumber}::${item.matCode}`);
         }
       });
     });
   });
 
+  // Also check items directly in RFQ or state.prcs
+  const state = (typeof getState === 'function') ? getState() : { prcs: [] };
+  items.forEach(ri => {
+    if (ri.tcdNumber) {
+      tcdNumberSet.add(String(ri.tcdNumber).trim());
+      if (ri.prcId && ri.materialId) coveredSet.add(`${ri.prcId}::${ri.materialId}`);
+      if (ri.prNumber && ri.matCode) coveredSet.add(`${ri.prNumber}::${ri.matCode}`);
+    } else {
+      const p = (state.prcs || []).find(pr => pr.id === ri.prcId || pr.prNumber === ri.prNumber);
+      if (p) {
+        const m = (p.materials || []).find(mat => mat.id === ri.materialId || mat.matCode === ri.matCode);
+        if (m && m.tcdNumber) {
+          tcdNumberSet.add(String(m.tcdNumber).trim());
+          if (ri.prcId && ri.materialId) coveredSet.add(`${ri.prcId}::${ri.materialId}`);
+          if (ri.prNumber && ri.matCode) coveredSet.add(`${ri.prNumber}::${ri.matCode}`);
+        }
+      }
+    }
+  });
+
   const totalItems = items.length;
-  const coveredItems = items.filter(i => coveredSet.has(`${i.prcId}::${i.materialId}`)).length;
-  const tcdNumbers = [...tcdNumberSet];
+  const coveredItems = items.filter(i =>
+    (i.prcId && i.materialId && coveredSet.has(`${i.prcId}::${i.materialId}`)) ||
+    (i.prNumber && i.matCode && coveredSet.has(`${i.prNumber}::${i.matCode}`))
+  ).length;
+  const tcdNumbers = [...tcdNumberSet].filter(Boolean);
 
   let status = 'none';
-  if (coveredItems > 0 && coveredItems >= totalItems) status = 'full';
+  if (totalItems > 0 && coveredItems >= totalItems) status = 'full';
   else if (coveredItems > 0) status = 'partial';
+  else if (tcdNumbers.length > 0) status = 'full';
 
   return { tcdNumbers, coveredItems, totalItems, status };
 }
@@ -5755,8 +5796,24 @@ window.viewRFQDetail = function(id) {
       </div>
       <div class="modal-body" style="padding:20px">
         <table class="data-table" style="font-size:12px">
-          <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>RFQ Qty</th><th>Unit</th></tr></thead>
-          <tbody>${(rfq.items || []).map(i => `<tr><td><span class="copy-badge" onclick="copyToClipboard('${i.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono">${i.prNumber}</span><span class="copy-icon">📋</span></span></td><td><span class="copy-badge" onclick="copyToClipboard('${i.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${i.matCode}</span><span class="copy-icon">📋</span></span></td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
+          <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>RFQ Qty</th><th>Unit</th><th>TCD Number</th></tr></thead>
+          <tbody>${(rfq.items || []).map(i => {
+            const state = getState();
+            let tcdNum = i.tcdNumber || rfq.tcdNumber || '';
+            if (!tcdNum) {
+              const p = (state.prcs || []).find(pr => pr.id === i.prcId || pr.prNumber === i.prNumber);
+              const m = p ? (p.materials || []).find(mat => mat.id === i.materialId || mat.matCode === i.matCode) : null;
+              if (m && m.tcdNumber) tcdNum = m.tcdNumber;
+            }
+            return `<tr>
+              <td><span class="copy-badge" onclick="copyToClipboard('${i.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono">${i.prNumber}</span><span class="copy-icon">📋</span></span></td>
+              <td><span class="copy-badge" onclick="copyToClipboard('${i.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${i.matCode}</span><span class="copy-icon">📋</span></span></td>
+              <td><strong>${i.description}</strong></td>
+              <td class="font-semibold">${i.quantity}</td>
+              <td>${i.unit||''}</td>
+              <td>${tcdNum ? `<span class="copy-badge" onclick="copyToClipboard('${tcdNum}','TCD Number',event)" title="Click to copy TCD Number"><span class="font-mono font-bold" style="color:var(--color-primary)">${tcdNum}</span><span class="copy-icon">📋</span></span>` : '<span style="color:var(--color-text-tertiary)">—</span>'}</td>
+            </tr>`;
+          }).join('')}</tbody>
         </table>
       </div>
       <div class="modal-footer">
@@ -6249,41 +6306,59 @@ function getTCDPOCoverage(tcd, allPODs = [], allPRCs = []) {
   const poNumberSet = new Set();
   const coveredSet = new Set();
 
+  const tcdNumClean = String(tcd.tcdNumber || '').trim().toUpperCase();
+
+  // If tcd explicitly has a poNumber associated directly
+  if (tcd.poNumber) {
+    poNumberSet.add(String(tcd.poNumber).trim());
+  }
+
+  // 1. Only match PODs that explicitly reference THIS TCD Number or TCD ID
   allPODs.forEach(pod => {
     const poNum = String(pod.poNumber || '').trim();
     if (!poNum) return;
 
     const matchesTcd = (pod.tcdId && pod.tcdId === tcd.id) ||
-      (pod.tcdNumber && tcd.tcdNumber && String(pod.tcdNumber).trim().toLowerCase() === String(tcd.tcdNumber).trim().toLowerCase());
+      (pod.tcdNumber && tcdNumClean && String(pod.tcdNumber).trim().toUpperCase() === tcdNumClean);
 
-    (pod.items || []).forEach(item => {
-      const isItemInTcd = matchesTcd || allTCDItems.some(ti =>
-        (ti.prcId && item.prcId && ti.prcId === item.prcId && ti.materialId && item.materialId && ti.materialId === item.materialId) ||
-        (ti.prNumber && item.prNumber && ti.prNumber === item.prNumber && ti.matCode && item.matCode && ti.matCode === item.matCode)
-      );
-
-      if (isItemInTcd) {
-        poNumberSet.add(poNum);
+    if (matchesTcd) {
+      poNumberSet.add(poNum);
+      (pod.items || []).forEach(item => {
         if (item.prcId && item.materialId) coveredSet.add(`${item.prcId}::${item.materialId}`);
         if (item.prNumber && item.matCode) coveredSet.add(`${item.prNumber}::${item.matCode}`);
+      });
+    }
+  });
+
+  // 2. Also check PRCs and Materials where tcdNumber strictly matches THIS TCD
+  allPRCs.forEach(prc => {
+    (prc.materials || []).forEach(m => {
+      const matTcdNum = String(m.tcdNumber || prc.tcdNumber || '').trim().toUpperCase();
+      const poNum = String(m.poNumber || prc.poNumber || '').trim();
+
+      if (matTcdNum && tcdNumClean && matTcdNum === tcdNumClean && poNum) {
+        const isItemInTcd = allTCDItems.some(ti =>
+          (ti.prcId === prc.id && ti.materialId === m.id) ||
+          (ti.prNumber === prc.prNumber && ti.matCode === m.matCode)
+        );
+
+        if (isItemInTcd) {
+          poNumberSet.add(poNum);
+          if (prc.id && m.id) coveredSet.add(`${prc.id}::${m.id}`);
+          if (prc.prNumber && m.matCode) coveredSet.add(`${prc.prNumber}::${m.matCode}`);
+        }
       }
     });
   });
 
-  allPRCs.forEach(prc => {
-    (prc.materials || []).forEach(m => {
-      const poNum = String(m.poNumber || prc.poNumber || '').trim();
-      if (!poNum) return;
-
-      const isItemInTcd = allTCDItems.some(ti =>
-        (ti.prcId === prc.id && ti.materialId === m.id) ||
-        (ti.prNumber === prc.prNumber && ti.matCode === m.matCode)
-      );
-
-      if (isItemInTcd) {
-        poNumberSet.add(poNum);
-        if (prc.id && m.id) coveredSet.add(`${prc.id}::${m.id}`);
-        if (prc.prNumber && m.matCode) coveredSet.add(`${prc.prNumber}::${m.matCode}`);
+  // 3. Also check items in vendorAllocations
+  vas.forEach(va => {
+    if (va.poNumber) poNumberSet.add(String(va.poNumber).trim());
+    (va.items || []).forEach(item => {
+      if (item.poNumber) {
+        poNumberSet.add(String(item.poNumber).trim());
+        if (item.prcId && item.materialId) coveredSet.add(`${item.prcId}::${item.materialId}`);
+        if (item.prNumber && item.matCode) coveredSet.add(`${item.prNumber}::${item.matCode}`);
       }
     });
   });
@@ -6294,11 +6369,12 @@ function getTCDPOCoverage(tcd, allPODs = [], allPRCs = []) {
     (i.prNumber && i.matCode && coveredSet.has(`${i.prNumber}::${i.matCode}`))
   ).length;
 
-  const poNumbers = [...poNumberSet];
+  const poNumbers = [...poNumberSet].filter(Boolean);
 
   let status = 'none';
   if (totalItems > 0 && coveredItems >= totalItems) status = 'full';
   else if (coveredItems > 0) status = 'partial';
+  else if (poNumbers.length > 0) status = 'full';
 
   return { poNumbers, coveredItems, totalItems, status };
 }
@@ -6937,14 +7013,38 @@ window.viewTCDDetail = function(id) {
         <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
       </div>
       <div class="modal-body" style="padding:20px">
-        ${(tcd.vendorAllocations || tcd.vendors || []).map(v => `
+        ${(tcd.vendorAllocations || tcd.vendors || []).map(v => {
+          const vPoNum = v.poNumber || tcd.poNumber || '';
+          return `
           <div style="margin-bottom:16px;background:var(--color-surface-2);border-radius:8px;padding:12px">
-            <h4 style="margin:0 0 8px 0;font-size:13px;font-weight:700;color:var(--color-primary)">🏢 Vendor: ${v.vendorName || v.name}</h4>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <h4 style="margin:0;font-size:13px;font-weight:700;color:var(--color-primary)">🏢 Vendor: ${v.vendorName || v.name}</h4>
+              ${vPoNum ? `<span class="copy-badge" onclick="copyToClipboard('${vPoNum}','PO Number',event)" title="Click to copy PO Number" style="font-size:11px"><strong>PO: ${vPoNum}</strong><span class="copy-icon">📋</span></span>` : ''}
+            </div>
             <table class="data-table" style="font-size:12px">
-              <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>TCD Qty</th><th>Unit</th></tr></thead>
-              <tbody>${(v.items || []).map(i => `<tr><td><span class="copy-badge" onclick="copyToClipboard('${i.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono">${i.prNumber}</span><span class="copy-icon">📋</span></span></td><td><span class="copy-badge" onclick="copyToClipboard('${i.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${i.matCode}</span><span class="copy-icon">📋</span></span></td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
+              <thead><tr><th>PR Number</th><th>Mat Code</th><th>Description</th><th>TCD Qty</th><th>Unit</th><th>PO Number</th></tr></thead>
+              <tbody>${(v.items || []).map(i => {
+                const state = getState();
+                let itemPo = i.poNumber || vPoNum || '';
+                if (!itemPo) {
+                  const p = (state.prcs || []).find(pr => pr.id === i.prcId || pr.prNumber === i.prNumber);
+                  const m = p ? (p.materials || []).find(mat => mat.id === i.materialId || mat.matCode === i.matCode) : null;
+                  if (m && m.poNumber && (!m.tcdNumber || String(m.tcdNumber).trim().toUpperCase() === String(tcd.tcdNumber||'').trim().toUpperCase())) {
+                    itemPo = m.poNumber;
+                  }
+                }
+                return `<tr>
+                  <td><span class="copy-badge" onclick="copyToClipboard('${i.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono">${i.prNumber}</span><span class="copy-icon">📋</span></span></td>
+                  <td><span class="copy-badge" onclick="copyToClipboard('${i.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${i.matCode}</span><span class="copy-icon">📋</span></span></td>
+                  <td><strong>${i.description}</strong></td>
+                  <td class="font-semibold">${i.quantity}</td>
+                  <td>${i.unit||''}</td>
+                  <td>${itemPo ? `<span class="copy-badge" onclick="copyToClipboard('${itemPo}','PO Number',event)" title="Click to copy PO Number"><span class="font-mono font-bold" style="color:var(--color-success)">${itemPo}</span><span class="copy-icon">📋</span></span>` : '<span style="color:var(--color-text-tertiary)">—</span>'}</td>
+                </tr>`;
+              }).join('')}</tbody>
             </table>
-          </div>`).join('')}
+          </div>`;
+        }).join('')}
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button>

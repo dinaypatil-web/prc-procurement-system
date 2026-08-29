@@ -2178,7 +2178,16 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
       poQuantity: cumQty,
       rfqQuantity: cumQty,
       tcdQuantity: cumQty,
-      unit: material.unit || 'EA'
+      unit: material.unit || 'EA',
+      allocationNumber: g.latestAllocationNumber || '',
+      allocationDate: g.latestAllocationDate || '',
+      buyerName: g.latestBuyerName || prc.buyerName || '',
+      rfqNumber: g.latestRfqNumber || '',
+      tcdNumber: g.latestTcdNumber || '',
+      tcdDate: g.latestTcdDate || '',
+      poNumber: g.latestEffectivePoNumber || '',
+      poDate: g.latestPoDate || '',
+      vendorName: g.latestVendorName || prc.vendorName || ''
     };
 
     if (g.latestAllocationNumber) {
@@ -2201,8 +2210,14 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
         rfqDocsMap[rKey] = {
           rfqNumber: g.latestRfqNumber,
           rfqDate: g.latestTcdDate || g.latestPoDate || new Date().toISOString().split('T')[0],
+          tcdNumber: g.latestTcdNumber || '',
+          tcdDate: g.latestTcdDate || '',
           items: []
         };
+      }
+      if (g.latestTcdNumber && !rfqDocsMap[rKey].tcdNumber) {
+        rfqDocsMap[rKey].tcdNumber = g.latestTcdNumber;
+        rfqDocsMap[rKey].tcdDate = g.latestTcdDate || '';
       }
       rfqDocsMap[rKey].items.push(itemData);
     }
@@ -2214,10 +2229,16 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
           tcdNumber: g.latestTcdNumber,
           tcdDate: g.latestTcdDate || g.latestPoDate || new Date().toISOString().split('T')[0],
           rfqNumber: g.latestRfqNumber || '',
+          poNumber: g.latestEffectivePoNumber || '',
+          poDate: g.latestPoDate || '',
           vendorName: g.latestVendorName || prc.vendorName || 'Assigned Vendor',
           approved: true,
           items: []
         };
+      }
+      if (g.latestEffectivePoNumber && !tcdDocsMap[tKey].poNumber) {
+        tcdDocsMap[tKey].poNumber = g.latestEffectivePoNumber;
+        tcdDocsMap[tKey].poDate = g.latestPoDate || '';
       }
       tcdDocsMap[tKey].items.push(itemData);
     }
@@ -2269,7 +2290,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     }
   });
 
-  // 7. Upsert RFQs
+  // 7. Upsert RFQs (Updating TCD Number & items with TCD Number)
   const updatedRFQs = [...existingRFQs];
   Object.values(rfqDocsMap).forEach(rfq => {
     const exIdx = updatedRFQs.findIndex(r => String(r.rfqNumber || '').trim().toUpperCase() === rfq.rfqNumber.toUpperCase());
@@ -2282,15 +2303,27 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
         if (!keySet.has(k)) { mergedItems.push(it); keySet.add(k); }
         else {
           const match = mergedItems.find(i => `${i.prcId}::${i.materialId}` === k);
-          if (match) match.quantity = it.quantity;
+          if (match) {
+            match.quantity = it.quantity;
+            if (it.tcdNumber) match.tcdNumber = it.tcdNumber;
+            if (it.tcdDate) match.tcdDate = it.tcdDate;
+          }
         }
       });
-      updatedRFQs[exIdx] = { ...ex, items: mergedItems, updatedAt: new Date().toISOString() };
+      updatedRFQs[exIdx] = {
+        ...ex,
+        tcdNumber: rfq.tcdNumber || ex.tcdNumber || '',
+        tcdDate: rfq.tcdDate || ex.tcdDate || '',
+        items: mergedItems,
+        updatedAt: new Date().toISOString()
+      };
     } else {
       updatedRFQs.unshift({
         id: `rfq-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         rfqNumber: rfq.rfqNumber,
         rfqDate: rfq.rfqDate,
+        tcdNumber: rfq.tcdNumber || '',
+        tcdDate: rfq.tcdDate || '',
         items: rfq.items,
         status: 'Closed',
         isClosed: true,
@@ -2300,7 +2333,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     }
   });
 
-  // 8. Upsert TCDs
+  // 8. Upsert TCDs (Updating PO Number specifically for this TCD)
   const updatedTCDs = [...existingTCDs];
   Object.values(tcdDocsMap).forEach(tcd => {
     const exIdx = updatedTCDs.findIndex(t => String(t.tcdNumber || '').trim().toUpperCase() === tcd.tcdNumber.toUpperCase());
@@ -2315,23 +2348,52 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
         if (!keySet.has(k)) { mergedItems.push(it); keySet.add(k); }
         else {
           const match = mergedItems.find(i => `${i.prcId}::${i.materialId}` === k);
-          if (match) match.quantity = it.quantity;
+          if (match) {
+            match.quantity = it.quantity;
+            if (it.poNumber) match.poNumber = it.poNumber;
+            if (it.poDate) match.poDate = it.poDate;
+          }
         }
       });
       primaryVA.items = mergedItems;
       primaryVA.vendorName = tcd.vendorName || primaryVA.vendorName;
+      primaryVA.poNumber = tcd.poNumber || primaryVA.poNumber || '';
+      primaryVA.poDate = tcd.poDate || primaryVA.poDate || '';
       vendorAllocations[0] = primaryVA;
-      updatedTCDs[exIdx] = { ...ex, approved: true, status: 'Approved', vendorAllocations, vendors: vendorAllocations, updatedAt: new Date().toISOString() };
+
+      updatedTCDs[exIdx] = {
+        ...ex,
+        rfqNumber: tcd.rfqNumber || ex.rfqNumber || '',
+        poNumber: tcd.poNumber || ex.poNumber || '',
+        poDate: tcd.poDate || ex.poDate || '',
+        approved: true,
+        status: 'Approved',
+        vendorAllocations,
+        vendors: vendorAllocations,
+        updatedAt: new Date().toISOString()
+      };
     } else {
       updatedTCDs.unshift({
         id: `tcd-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         tcdNumber: tcd.tcdNumber,
         tcdDate: tcd.tcdDate,
         rfqNumber: tcd.rfqNumber,
+        poNumber: tcd.poNumber || '',
+        poDate: tcd.poDate || '',
         approved: true,
         status: 'Approved',
-        vendorAllocations: [{ vendorName: tcd.vendorName || 'Assigned Vendor', items: tcd.items }],
-        vendors: [{ vendorName: tcd.vendorName || 'Assigned Vendor', items: tcd.items }],
+        vendorAllocations: [{
+          vendorName: tcd.vendorName || 'Assigned Vendor',
+          poNumber: tcd.poNumber || '',
+          poDate: tcd.poDate || '',
+          items: tcd.items
+        }],
+        vendors: [{
+          vendorName: tcd.vendorName || 'Assigned Vendor',
+          poNumber: tcd.poNumber || '',
+          poDate: tcd.poDate || '',
+          items: tcd.items
+        }],
         createdAt: new Date().toISOString(),
         createdBy: 'PO Report Import'
       });
@@ -2354,7 +2416,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
           if (match) match.quantity = it.quantity;
         }
       });
-      updatedPODs[exIdx] = { ...ex, poDate: pod.poDate, vendorName: pod.vendorName || ex.vendorName, status: 'Issued', items: mergedItems, updatedAt: new Date().toISOString() };
+      updatedPODs[exIdx] = { ...ex, tcdNumber: pod.tcdNumber || ex.tcdNumber, poDate: pod.poDate, vendorName: pod.vendorName || ex.vendorName, status: 'Issued', items: mergedItems, updatedAt: new Date().toISOString() };
     } else {
       updatedPODs.unshift({
         id: `pod-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
