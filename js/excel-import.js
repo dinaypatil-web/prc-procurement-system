@@ -1554,33 +1554,42 @@ export function applyBulkAllocationImport(processedRows, fileName = 'Bulk_Alloca
 }
 
 // ═══════════════════════════════════════════════════════════
-// DEDICATED PO REPORT LINE-ITEM EXCEL ENGINE (9 Columns)
-// PRC Number, Material Code, RFQ Number, TCD Number, TCD Date,
-// PO Number, PO Amendment Number, PO Quantity, PO Date
+// DEDICATED PO REPORT LINE-ITEM EXCEL ENGINE (13 Columns)
+// PRC Number, Material Code, Allocation Number, Allocation Date,
+// Buyer Name, RFQ Number, TCD Number, TCD Date, PO Number,
+// PO Amendment Number, PO Quantity, PO Date, Vendor Name
 // ═══════════════════════════════════════════════════════════
 
 export const PO_REPORT_COLUMNS = [
   'PRC NUMBER',
   'MATERIAL CODE',
+  'ALLOCATION NUMBER',
+  'ALLOCATION DATE',
+  'BUYER NAME',
   'RFQ NUMBER',
   'TCD NUMBER',
   'TCD DATE',
   'PO NUMBER',
   'PO AMENDMENT NUMBER',
   'PO QUANTITY',
-  'PO DATE'
+  'PO DATE',
+  'VENDOR NAME'
 ];
 
 const PO_REPORT_ALIAS_MAP = {
   'PRC NUMBER': ['PRC NUMBER', 'PRC NO', 'PR NUMBER', 'PR NO', 'PR_NUMBER', 'PRNUMBER', 'REQUISITION NUMBER', 'PR', 'PRC', 'PRC_NUMBER'],
   'MATERIAL CODE': ['MATERIAL CODE', 'MAT CODE', 'ITEM CODE', 'MATERIAL_CODE', 'MAT_CODE', 'ITEM NO', 'MATERIAL'],
+  'ALLOCATION NUMBER': ['ALLOCATION NUMBER', 'ALLOCATION NO', 'ALLOCATION NO.', 'ALLOC NO', 'ALLOC NO.', 'ALLOCATION', 'ALLOCATION_NUMBER', 'ALLOC_NUMBER', 'ALLOCATION NUM'],
+  'ALLOCATION DATE': ['ALLOCATION DATE', 'ALLOC DATE', 'ALLOCATION_DATE', 'ALLOC_DATE', 'ALLOCATION ON', 'ALLOC DATE.'],
+  'BUYER NAME': ['BUYER NAME', 'BUYER', 'BUYER_NAME', 'PURCHASER', 'BUYER PERSON', 'ALLOCATED TO', 'BUYER_PERSON'],
   'RFQ NUMBER': ['RFQ NUMBER', 'RFQ NO', 'RFQ_NUMBER', 'RFQ NO.', 'RFQ', 'RFQ CODE', 'RFQ_NO'],
   'TCD NUMBER': ['TCD NUMBER', 'TCD NO', 'TCD_NUMBER', 'TCD NO.', 'TCD', 'TCD CODE', 'TCD_NO'],
   'TCD DATE': ['TCD DATE', 'TCD_DATE', 'TCD DATE.', 'TCD ON', 'TCD CREATION DATE'],
   'PO NUMBER': ['PO NUMBER', 'PO NO', 'PO_NUMBER', 'PO NO.', 'PO', 'PURCHASE ORDER NUMBER', 'PURCHASE ORDER', 'ORDER NO', 'PO_NO'],
   'PO AMENDMENT NUMBER': ['PO AMENDMENT NUMBER', 'PO AMENDMENT NO', 'PO AMD NO', 'AMENDMENT NUMBER', 'AMENDMENT NO', 'PO AMD', 'PO_AMENDMENT_NUMBER', 'AMD NO', 'AMD NUMBER', 'PO AMENDMENT', 'AMD'],
   'PO QUANTITY': ['PO QUANTITY', 'PO QTY', 'PO_QUANTITY', 'PO_QTY', 'ORDERED QTY', 'ORDER QUANTITY', 'PURCHASE ORDER QTY', 'QUANTITY', 'QTY'],
-  'PO DATE': ['PO DATE', 'PO_DATE', 'PO DATE.', 'ORDER DATE', 'PURCHASE ORDER DATE', 'PO ISSUED DATE']
+  'PO DATE': ['PO DATE', 'PO_DATE', 'PO DATE.', 'ORDER DATE', 'PURCHASE ORDER DATE', 'PO ISSUED DATE'],
+  'VENDOR NAME': ['VENDOR NAME', 'VENDOR', 'SUPPLIER', 'SUPPLIER NAME', 'VENDOR_NAME', 'PARTY NAME', 'SUPPLIER_NAME', 'VENDOR DESC']
 };
 
 /** Format PO Number with Amendment Number if greater than 0 */
@@ -1620,7 +1629,7 @@ export function normalizePOReportRow(rawRow) {
   });
 
   // Clean date strings
-  ['TCD DATE', 'PO DATE'].forEach(dateField => {
+  ['ALLOCATION DATE', 'TCD DATE', 'PO DATE'].forEach(dateField => {
     if (norm[dateField]) {
       let dateStr = String(norm[dateField]).trim();
       if (dateStr.includes('T')) dateStr = dateStr.split('T')[0];
@@ -1664,13 +1673,17 @@ export function downloadPOReportTemplate() {
       sampleData.push({
         'PRC NUMBER': prc.prNumber,
         'MATERIAL CODE': m.matCode,
+        'ALLOCATION NUMBER': m.allocationNumber || prc.allocationNumber || `AL-${prc.prNumber.replace(/\D/g, '') || '2026'}-01`,
+        'ALLOCATION DATE': m.allocationDate || prc.allocationDate || todayStr,
+        'BUYER NAME': m.buyerName || prc.buyerName || 'Patil Dinay Dilip',
         'RFQ NUMBER': m.rfqNumber || prc.rfqNumber || `RFQ-${prc.prNumber.replace(/\D/g, '') || '2026'}-01`,
         'TCD NUMBER': m.tcdNumber || prc.tcdNumber || `TCD-${prc.prNumber.replace(/\D/g, '') || '2026'}-01`,
         'TCD DATE': m.tcdDate || prc.tcdDate || todayStr,
         'PO NUMBER': `PO-2026-${String(count + 1).padStart(3, '0')}`,
         'PO AMENDMENT NUMBER': count % 2 === 1 ? '1' : '0',
         'PO QUANTITY': parseFloat(m.quantity) || 10,
-        'PO DATE': todayStr
+        'PO DATE': todayStr,
+        'VENDOR NAME': prc.vendorName || prc.vendor || 'Al-Bahar & Sons Trading Co.'
       });
       count++;
     }
@@ -1683,46 +1696,62 @@ export function downloadPOReportTemplate() {
       {
         'PRC NUMBER': 'PR-2026-1001',
         'MATERIAL CODE': 'MAT-50281',
+        'ALLOCATION NUMBER': 'AL-2026-001',
+        'ALLOCATION DATE': todayStr,
+        'BUYER NAME': 'Patil Dinay Dilip',
         'RFQ NUMBER': 'RFQ-2026-001',
         'TCD NUMBER': 'TCD-2026-001',
         'TCD DATE': todayStr,
         'PO NUMBER': 'PO-2026-101',
         'PO AMENDMENT NUMBER': '0',
         'PO QUANTITY': 15,
-        'PO DATE': todayStr
+        'PO DATE': todayStr,
+        'VENDOR NAME': 'Al-Bahar & Sons Trading Co.'
       },
       {
         'PRC NUMBER': 'PR-2026-1001',
         'MATERIAL CODE': 'MAT-50281',
+        'ALLOCATION NUMBER': 'AL-2026-001',
+        'ALLOCATION DATE': todayStr,
+        'BUYER NAME': 'Patil Dinay Dilip',
         'RFQ NUMBER': 'RFQ-2026-001',
         'TCD NUMBER': 'TCD-2026-001',
         'TCD DATE': todayStr,
         'PO NUMBER': 'PO-2026-101',
         'PO AMENDMENT NUMBER': '1',
         'PO QUANTITY': 10,
-        'PO DATE': todayStr
+        'PO DATE': todayStr,
+        'VENDOR NAME': 'Al-Bahar & Sons Trading Co.'
       },
       {
         'PRC NUMBER': 'PR-2026-1001',
         'MATERIAL CODE': 'MAT-70342',
+        'ALLOCATION NUMBER': 'AL-2026-001',
+        'ALLOCATION DATE': todayStr,
+        'BUYER NAME': 'Patil Dinay Dilip',
         'RFQ NUMBER': 'RFQ-2026-001',
         'TCD NUMBER': 'TCD-2026-001',
         'TCD DATE': todayStr,
         'PO NUMBER': 'PO-2026-102',
         'PO AMENDMENT NUMBER': '0',
         'PO QUANTITY': 10,
-        'PO DATE': todayStr
+        'PO DATE': todayStr,
+        'VENDOR NAME': 'Kuwait National Materials Co.'
       },
       {
         'PRC NUMBER': 'PR-2026-1002',
         'MATERIAL CODE': 'MAT-88190',
+        'ALLOCATION NUMBER': 'AL-2026-002',
+        'ALLOCATION DATE': todayStr,
+        'BUYER NAME': 'Ahmed Al-Sabah',
         'RFQ NUMBER': 'RFQ-2026-002',
         'TCD NUMBER': 'TCD-2026-002',
         'TCD DATE': todayStr,
         'PO NUMBER': 'PO-2026-103',
         'PO AMENDMENT NUMBER': '2',
         'PO QUANTITY': 15,
-        'PO DATE': todayStr
+        'PO DATE': todayStr,
+        'VENDOR NAME': 'Gulf Engineering Solutions'
       }
     ];
   }
@@ -1734,13 +1763,17 @@ export function downloadPOReportTemplate() {
   ws['!cols'] = [
     { wch: 18 }, // PRC NUMBER
     { wch: 18 }, // MATERIAL CODE
+    { wch: 20 }, // ALLOCATION NUMBER
+    { wch: 16 }, // ALLOCATION DATE
+    { wch: 20 }, // BUYER NAME
     { wch: 18 }, // RFQ NUMBER
     { wch: 18 }, // TCD NUMBER
     { wch: 16 }, // TCD DATE
     { wch: 18 }, // PO NUMBER
     { wch: 22 }, // PO AMENDMENT NUMBER
     { wch: 16 }, // PO QUANTITY
-    { wch: 16 }  // PO DATE
+    { wch: 16 }, // PO DATE
+    { wch: 28 }  // VENDOR NAME
   ];
 
   XLSX.writeFile(wb, 'PO_Report_Import_Template.xlsx');
@@ -1804,10 +1837,14 @@ export function validatePOReportRows(rawRows) {
           latestEffectivePoNumber: '',
           latestRawPoNumber: '',
           latestAmdNumber: '',
+          latestAllocationNumber: '',
+          latestAllocationDate: '',
+          latestBuyerName: '',
           latestRfqNumber: '',
           latestTcdNumber: '',
           latestTcdDate: '',
           latestPoDate: '',
+          latestVendorName: '',
           errors: []
         };
       }
@@ -1827,10 +1864,14 @@ export function validatePOReportRows(rawRows) {
       }
       if (norm['PO NUMBER']) g.latestRawPoNumber = norm['PO NUMBER'];
       if (norm['PO AMENDMENT NUMBER']) g.latestAmdNumber = String(norm['PO AMENDMENT NUMBER']).trim();
+      if (norm['ALLOCATION NUMBER']) g.latestAllocationNumber = String(norm['ALLOCATION NUMBER']).trim();
+      if (norm['ALLOCATION DATE']) g.latestAllocationDate = String(norm['ALLOCATION DATE']).trim();
+      if (norm['BUYER NAME']) g.latestBuyerName = String(norm['BUYER NAME']).trim();
       if (norm['RFQ NUMBER']) g.latestRfqNumber = String(norm['RFQ NUMBER']).trim();
       if (norm['TCD NUMBER']) g.latestTcdNumber = String(norm['TCD NUMBER']).trim();
       if (norm['TCD DATE']) g.latestTcdDate = String(norm['TCD DATE']).trim();
       if (norm['PO DATE']) g.latestPoDate = String(norm['PO DATE']).trim();
+      if (norm['VENDOR NAME']) g.latestVendorName = String(norm['VENDOR NAME']).trim();
     }
   });
 
@@ -1917,7 +1958,10 @@ export function renderPOReportPreviewTable(processedGroups) {
         <td><strong>${idx + 1}</strong></td>
         <td><span class="font-mono font-semibold" style="color:var(--color-primary)">${g.prcNumber}</span></td>
         <td><span class="font-mono font-bold">${g.matCode}</span></td>
-        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${g.matDescription}"><strong>${g.matDescription}</strong></td>
+        <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis" title="${g.matDescription}"><strong>${g.matDescription}</strong></td>
+        <td><span class="font-mono">${g.latestAllocationNumber || '—'}</span></td>
+        <td>${g.latestAllocationDate || '—'}</td>
+        <td><strong>${g.latestBuyerName || '—'}</strong></td>
         <td><span class="font-mono">${g.latestRfqNumber || '—'}</span></td>
         <td><span class="font-mono">${g.latestTcdNumber || '—'}</span></td>
         <td>${g.latestTcdDate || '—'}</td>
@@ -1931,6 +1975,7 @@ export function renderPOReportPreviewTable(processedGroups) {
           ${multiRowNote}
         </td>
         <td>${g.latestPoDate || '—'}</td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${g.latestVendorName || '—'}">${g.latestVendorName || '—'}</td>
         <td>${statusBadge}</td>
       </tr>
     `;
@@ -1945,6 +1990,9 @@ export function renderPOReportPreviewTable(processedGroups) {
             <th>PRC Number</th>
             <th>Material Code</th>
             <th>Description</th>
+            <th>Allocation No</th>
+            <th>Allocation Date</th>
+            <th>Buyer Name</th>
             <th>RFQ Number</th>
             <th>TCD Number</th>
             <th>TCD Date</th>
@@ -1953,6 +2001,7 @@ export function renderPOReportPreviewTable(processedGroups) {
             <th>Final PO Number</th>
             <th>Cumulated PO Qty</th>
             <th>PO Date</th>
+            <th>Vendor Name</th>
             <th>Validation Status</th>
           </tr>
         </thead>
@@ -1964,7 +2013,7 @@ export function renderPOReportPreviewTable(processedGroups) {
   `;
 }
 
-/** Apply PO Report line-item updates across PRCs, materials, RFQs, TCDs, and PODs */
+/** Apply PO Report line-item updates across PRCs, materials, allocations, RFQs, TCDs, and PODs */
 export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx') {
   const validGroups = (processedGroups || []).filter(g => g.isValid);
   if (!validGroups.length) {
@@ -1976,11 +2025,13 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
 
   // Create pre-import snapshot for Call Back / Rollback
   const snapshotId = createImportSnapshot(
-    'PO Report Line-Item Import',
+    'PO Report Line-Item Import (13 Columns)',
     fileName,
     `PO Report update for ${validGroups.length} line item(s).`
   );
+
   const existingPRCs = [...(state.prcs || [])];
+  const existingAllocs = [...(state.allocations || [])];
   const existingRFQs = [...(state.rfqs || [])];
   const existingTCDs = [...(state.tcds || [])];
   const existingPODs = [...(state.pods || [])];
@@ -1990,6 +2041,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
   let createdPRCCount = 0;
 
   // Track downstream collections to upsert
+  const allocDocsMap = {};
   const rfqDocsMap = {};
   const tcdDocsMap = {};
   const podDocsMap = {};
@@ -2007,7 +2059,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
       prc = {
         id: g.prcNumber,
         prNumber: g.prcNumber,
-        createdAt: g.latestPoDate || new Date().toISOString().split('T')[0],
+        createdAt: g.latestAllocationDate || g.latestPoDate || new Date().toISOString().split('T')[0],
         importedBy: state.currentUser?.name || 'PO Report Import',
         priority: 'Medium',
         department: 'Procurement',
@@ -2057,7 +2109,15 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     const clsQty = parseFloat(material.closedQty) || 0;
     material.pendingQty = Math.max(0, (material.quantity || cumQty) - cumQty - clsQty);
 
-    // 2. Update Workflow identifiers
+    // 2. Update Allocation fields
+    if (g.latestAllocationNumber) {
+      material.allocationNumber = g.latestAllocationNumber;
+      material.allocationDate = g.latestAllocationDate;
+      material.buyerName = g.latestBuyerName;
+      material.allocatedBy = g.latestBuyerName;
+    }
+
+    // 3. Update Workflow identifiers
     if (g.latestRfqNumber) material.rfqNumber = g.latestRfqNumber;
     if (g.latestTcdNumber) material.tcdNumber = g.latestTcdNumber;
     if (g.latestTcdDate) material.tcdDate = g.latestTcdDate;
@@ -2065,13 +2125,20 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     if (g.latestEffectivePoNumber) material.poNumber = g.latestEffectivePoNumber;
     if (g.latestAmdNumber) material.poAmendmentNumber = g.latestAmdNumber;
     if (g.latestPoDate) material.poDate = g.latestPoDate;
+    if (g.latestVendorName) material.vendorName = g.latestVendorName;
 
     // Recalculate Material Status
     material.status = calculateMaterialStatus ? calculateMaterialStatus(material) : 'Process Completed';
     prc.materials[matIdx] = material;
     updatedMaterialsCount++;
 
-    // 3. Update PRC Header
+    // 4. Update PRC Header
+    if (g.latestAllocationNumber) {
+      prc.allocationNumber = g.latestAllocationNumber;
+      prc.allocationDate = g.latestAllocationDate;
+      prc.buyerName = g.latestBuyerName;
+      prc.allocatedBy = g.latestBuyerName;
+    }
     if (g.latestRfqNumber && !prc.rfqNumber) prc.rfqNumber = g.latestRfqNumber;
     if (g.latestTcdNumber && !prc.tcdNumber) prc.tcdNumber = g.latestTcdNumber;
     if (g.latestTcdDate && !prc.tcdDate) prc.tcdDate = g.latestTcdDate;
@@ -2079,12 +2146,16 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     prc.offersReceived = true;
     if (g.latestEffectivePoNumber) prc.poNumber = g.latestEffectivePoNumber;
     if (g.latestPoDate) prc.poDate = g.latestPoDate;
+    if (g.latestVendorName) {
+      prc.vendorName = g.latestVendorName;
+      prc.vendor = g.latestVendorName;
+    }
     prc.updatedAt = new Date().toISOString();
     prc.status = calculateStatus ? calculateStatus(prc, prc.materials) : 'Process Completed';
 
     existingPRCs[prcIdx] = prc;
 
-    // 4. Collect for downstream RFQs, TCDs, and PODs
+    // 5. Collect for downstream Allocations, RFQs, TCDs, and PODs
     const itemData = {
       prcId: prc.id,
       materialId: material.id,
@@ -2097,6 +2168,20 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
       tcdQuantity: cumQty,
       unit: material.unit || 'EA'
     };
+
+    if (g.latestAllocationNumber) {
+      const aKey = g.latestAllocationNumber.toUpperCase();
+      if (!allocDocsMap[aKey]) {
+        allocDocsMap[aKey] = {
+          allocationNumber: g.latestAllocationNumber,
+          allocationDate: g.latestAllocationDate || new Date().toISOString().split('T')[0],
+          buyerName: g.latestBuyerName || 'Assigned Buyer',
+          allocatedBy: g.latestBuyerName || 'Assigned Buyer',
+          items: []
+        };
+      }
+      allocDocsMap[aKey].items.push(itemData);
+    }
 
     if (g.latestRfqNumber) {
       const rKey = g.latestRfqNumber.toUpperCase();
@@ -2117,6 +2202,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
           tcdNumber: g.latestTcdNumber,
           tcdDate: g.latestTcdDate || g.latestPoDate || new Date().toISOString().split('T')[0],
           rfqNumber: g.latestRfqNumber || '',
+          vendorName: g.latestVendorName || prc.vendorName || 'Assigned Vendor',
           approved: true,
           items: []
         };
@@ -2131,7 +2217,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
           poNumber: g.latestEffectivePoNumber,
           poDate: g.latestPoDate || new Date().toISOString().split('T')[0],
           tcdNumber: g.latestTcdNumber || '',
-          vendorName: prc.vendorName || prc.vendor || 'Assigned Vendor',
+          vendorName: g.latestVendorName || prc.vendorName || 'Assigned Vendor',
           items: []
         };
       }
@@ -2139,7 +2225,39 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     }
   });
 
-  // 5. Upsert RFQs
+  // 6. Upsert Allocations
+  const updatedAllocs = [...existingAllocs];
+  Object.values(allocDocsMap).forEach(alloc => {
+    const exIdx = updatedAllocs.findIndex(a => String(a.allocationNumber || '').trim().toUpperCase() === alloc.allocationNumber.toUpperCase());
+    if (exIdx !== -1) {
+      const ex = updatedAllocs[exIdx];
+      const mergedItems = [...(ex.items || [])];
+      const keySet = new Set(mergedItems.map(i => `${i.prcId}::${i.materialId}`));
+      alloc.items.forEach(it => {
+        const k = `${it.prcId}::${it.materialId}`;
+        if (!keySet.has(k)) { mergedItems.push(it); keySet.add(k); }
+        else {
+          const match = mergedItems.find(i => `${i.prcId}::${i.materialId}` === k);
+          if (match) match.quantity = it.quantity;
+        }
+      });
+      updatedAllocs[exIdx] = { ...ex, buyerName: alloc.buyerName, allocationDate: alloc.allocationDate, items: mergedItems, updatedAt: new Date().toISOString() };
+    } else {
+      updatedAllocs.unshift({
+        id: `alloc-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        allocationNumber: alloc.allocationNumber,
+        allocationDate: alloc.allocationDate,
+        buyerName: alloc.buyerName,
+        allocatedBy: alloc.allocatedBy,
+        items: alloc.items,
+        status: 'Active',
+        createdAt: new Date().toISOString(),
+        createdBy: 'PO Report Import'
+      });
+    }
+  });
+
+  // 7. Upsert RFQs
   const updatedRFQs = [...existingRFQs];
   Object.values(rfqDocsMap).forEach(rfq => {
     const exIdx = updatedRFQs.findIndex(r => String(r.rfqNumber || '').trim().toUpperCase() === rfq.rfqNumber.toUpperCase());
@@ -2170,14 +2288,14 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     }
   });
 
-  // 6. Upsert TCDs
+  // 8. Upsert TCDs
   const updatedTCDs = [...existingTCDs];
   Object.values(tcdDocsMap).forEach(tcd => {
     const exIdx = updatedTCDs.findIndex(t => String(t.tcdNumber || '').trim().toUpperCase() === tcd.tcdNumber.toUpperCase());
     if (exIdx !== -1) {
       const ex = updatedTCDs[exIdx];
-      const vendorAllocations = ex.vendorAllocations || ex.vendors || [{ vendorName: 'Assigned Vendor', items: [] }];
-      const primaryVA = vendorAllocations[0] || { vendorName: 'Assigned Vendor', items: [] };
+      const vendorAllocations = ex.vendorAllocations || ex.vendors || [{ vendorName: tcd.vendorName || 'Assigned Vendor', items: [] }];
+      const primaryVA = vendorAllocations[0] || { vendorName: tcd.vendorName || 'Assigned Vendor', items: [] };
       const mergedItems = [...(primaryVA.items || [])];
       const keySet = new Set(mergedItems.map(i => `${i.prcId}::${i.materialId}`));
       tcd.items.forEach(it => {
@@ -2189,6 +2307,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
         }
       });
       primaryVA.items = mergedItems;
+      primaryVA.vendorName = tcd.vendorName || primaryVA.vendorName;
       vendorAllocations[0] = primaryVA;
       updatedTCDs[exIdx] = { ...ex, approved: true, status: 'Approved', vendorAllocations, vendors: vendorAllocations, updatedAt: new Date().toISOString() };
     } else {
@@ -2199,15 +2318,15 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
         rfqNumber: tcd.rfqNumber,
         approved: true,
         status: 'Approved',
-        vendorAllocations: [{ vendorName: 'Assigned Vendor', items: tcd.items }],
-        vendors: [{ vendorName: 'Assigned Vendor', items: tcd.items }],
+        vendorAllocations: [{ vendorName: tcd.vendorName || 'Assigned Vendor', items: tcd.items }],
+        vendors: [{ vendorName: tcd.vendorName || 'Assigned Vendor', items: tcd.items }],
         createdAt: new Date().toISOString(),
         createdBy: 'PO Report Import'
       });
     }
   });
 
-  // 7. Upsert PODs
+  // 9. Upsert PODs
   const updatedPODs = [...existingPODs];
   Object.values(podDocsMap).forEach(pod => {
     const exIdx = updatedPODs.findIndex(p => String(p.poNumber || '').trim().toUpperCase() === pod.poNumber.toUpperCase());
@@ -2223,7 +2342,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
           if (match) match.quantity = it.quantity;
         }
       });
-      updatedPODs[exIdx] = { ...ex, poDate: pod.poDate, status: 'Issued', items: mergedItems, updatedAt: new Date().toISOString() };
+      updatedPODs[exIdx] = { ...ex, poDate: pod.poDate, vendorName: pod.vendorName || ex.vendorName, status: 'Issued', items: mergedItems, updatedAt: new Date().toISOString() };
     } else {
       updatedPODs.unshift({
         id: `pod-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -2244,6 +2363,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
   // Commit updated state
   setState({
     prcs: existingPRCs,
+    allocations: updatedAllocs,
     rfqs: updatedRFQs,
     tcds: updatedTCDs,
     pods: updatedPODs,
@@ -2256,7 +2376,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     collection: 'PODs',
     docId: 'bulk_import',
     changes: {
-      summary: `PO Report Import via Excel: ${validGroups.length} line items updated across ${validGroups.length} items (${updatedPRCCount} existing PRCs, ${createdPRCCount} new PRCs), with cumulated PO/RFQ/TCD quantities.`
+      summary: `PO Report Import via Excel: ${validGroups.length} line items updated across ${validGroups.length} items (${updatedPRCCount} existing PRCs, ${createdPRCCount} new PRCs), with cumulated PO/RFQ/TCD quantities and vendor allocations.`
     }
   });
 
@@ -2274,7 +2394,9 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     createdPRCCount,
     materialsUpdated: updatedMaterialsCount,
     posCreatedOrUpdated: Object.keys(podDocsMap).length,
+    allocationsCreatedOrUpdated: Object.keys(allocDocsMap).length,
     snapshotId
   };
 }
+
 

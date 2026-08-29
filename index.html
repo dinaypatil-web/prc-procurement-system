@@ -7654,12 +7654,12 @@ window.openPOReportImportModal = function() {
         <!-- Info Banner with Template Download -->
         <div style="display:flex;align-items:center;justify-content:space-between;background:var(--color-surface-1);padding:12px 16px;border-radius:8px;border:1px solid var(--color-border);flex-wrap:wrap;gap:10px">
           <div>
-            <strong style="font-size:13px;color:var(--color-primary)">Supported PO Report Columns (9 Columns):</strong>
+            <strong style="font-size:13px;color:var(--color-primary)">Supported PO Report Columns (13 Enterprise Columns):</strong>
             <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;font-family:var(--font-mono)">
-              PRC NUMBER · MATERIAL CODE · RFQ NUMBER · TCD NUMBER · TCD DATE · PO NUMBER · PO AMENDMENT NUMBER · PO QUANTITY · PO DATE
+              PRC NUMBER · MATERIAL CODE · ALLOCATION NUMBER · ALLOCATION DATE · BUYER NAME · RFQ NUMBER · TCD NUMBER · TCD DATE · PO NUMBER · PO AMENDMENT NUMBER · PO QUANTITY · PO DATE · VENDOR NAME
             </div>
             <div style="font-size:11px;color:var(--color-text-secondary);margin-top:4px">
-              ℹ️ <strong>Rules Applied:</strong> Line items matched by (PRC Number + Material Code). PO Number formatted as <code>PO Number - Amendment</code> (if AMD &gt; 0). PO, RFQ & TCD quantities equal cumulative PO Quantity.
+              ℹ️ <strong>Rules Applied:</strong> Line items matched by (PRC Number + Material Code). PO Number formatted as <code>PO Number - Amendment</code> (if AMD &gt; 0). PO, RFQ & TCD quantities equal cumulative PO Quantity. Allocation and Vendor details auto-linked.
             </div>
           </div>
           <button class="btn btn-secondary btn-sm" onclick="downloadPOReportTemplate()">
