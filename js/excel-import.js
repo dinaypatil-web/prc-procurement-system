@@ -1345,3 +1345,720 @@ export function applyBulkAllocationImport(processedRows) {
   };
 }
 
+// ═══════════════════════════════════════════════════════════
+// DEDICATED PO REPORT LINE-ITEM EXCEL ENGINE (9 Columns)
+// PRC Number, Material Code, RFQ Number, TCD Number, TCD Date,
+// PO Number, PO Amendment Number, PO Quantity, PO Date
+// ═══════════════════════════════════════════════════════════
+
+export const PO_REPORT_COLUMNS = [
+  'PRC NUMBER',
+  'MATERIAL CODE',
+  'RFQ NUMBER',
+  'TCD NUMBER',
+  'TCD DATE',
+  'PO NUMBER',
+  'PO AMENDMENT NUMBER',
+  'PO QUANTITY',
+  'PO DATE'
+];
+
+const PO_REPORT_ALIAS_MAP = {
+  'PRC NUMBER': ['PRC NUMBER', 'PRC NO', 'PR NUMBER', 'PR NO', 'PR_NUMBER', 'PRNUMBER', 'REQUISITION NUMBER', 'PR', 'PRC', 'PRC_NUMBER'],
+  'MATERIAL CODE': ['MATERIAL CODE', 'MAT CODE', 'ITEM CODE', 'MATERIAL_CODE', 'MAT_CODE', 'ITEM NO', 'MATERIAL'],
+  'RFQ NUMBER': ['RFQ NUMBER', 'RFQ NO', 'RFQ_NUMBER', 'RFQ NO.', 'RFQ', 'RFQ CODE', 'RFQ_NO'],
+  'TCD NUMBER': ['TCD NUMBER', 'TCD NO', 'TCD_NUMBER', 'TCD NO.', 'TCD', 'TCD CODE', 'TCD_NO'],
+  'TCD DATE': ['TCD DATE', 'TCD_DATE', 'TCD DATE.', 'TCD ON', 'TCD CREATION DATE'],
+  'PO NUMBER': ['PO NUMBER', 'PO NO', 'PO_NUMBER', 'PO NO.', 'PO', 'PURCHASE ORDER NUMBER', 'PURCHASE ORDER', 'ORDER NO', 'PO_NO'],
+  'PO AMENDMENT NUMBER': ['PO AMENDMENT NUMBER', 'PO AMENDMENT NO', 'PO AMD NO', 'AMENDMENT NUMBER', 'AMENDMENT NO', 'PO AMD', 'PO_AMENDMENT_NUMBER', 'AMD NO', 'AMD NUMBER', 'PO AMENDMENT', 'AMD'],
+  'PO QUANTITY': ['PO QUANTITY', 'PO QTY', 'PO_QUANTITY', 'PO_QTY', 'ORDERED QTY', 'ORDER QUANTITY', 'PURCHASE ORDER QTY', 'QUANTITY', 'QTY'],
+  'PO DATE': ['PO DATE', 'PO_DATE', 'PO DATE.', 'ORDER DATE', 'PURCHASE ORDER DATE', 'PO ISSUED DATE']
+};
+
+/** Format PO Number with Amendment Number if greater than 0 */
+export function formatPONumberWithAmendment(rawPoNum, rawAmdNum) {
+  const poNum = String(rawPoNum || '').trim();
+  if (!poNum) return '';
+  const amdStr = String(rawAmdNum || '').trim();
+  const amdNum = parseFloat(amdStr);
+  if (!isNaN(amdNum) && amdNum > 0) {
+    return `${poNum}-${amdStr}`;
+  }
+  return poNum;
+}
+
+/** Normalize single raw row from PO Report */
+export function normalizePOReportRow(rawRow) {
+  const norm = {};
+  const rawKeys = Object.keys(rawRow || {});
+
+  rawKeys.forEach(k => {
+    norm[k] = rawRow[k];
+  });
+
+  PO_REPORT_COLUMNS.forEach(col => {
+    if (norm[col] === undefined) norm[col] = '';
+    const aliases = PO_REPORT_ALIAS_MAP[col] || [col];
+    const strippedCol = stripKey(col);
+    const strippedAliases = aliases.map(stripKey);
+
+    for (const key of rawKeys) {
+      const strippedKey = stripKey(key);
+      if (strippedKey === strippedCol || strippedAliases.includes(strippedKey)) {
+        norm[col] = rawRow[key];
+        break;
+      }
+    }
+  });
+
+  // Clean date strings
+  ['TCD DATE', 'PO DATE'].forEach(dateField => {
+    if (norm[dateField]) {
+      let dateStr = String(norm[dateField]).trim();
+      if (dateStr.includes('T')) dateStr = dateStr.split('T')[0];
+      if (/^\d{5}$/.test(dateStr)) {
+        const excelDate = new Date((parseInt(dateStr, 10) - (25567 + 2)) * 86400 * 1000);
+        if (!isNaN(excelDate.getTime())) {
+          dateStr = excelDate.toISOString().split('T')[0];
+        }
+      }
+      norm[dateField] = dateStr;
+    }
+  });
+
+  // Clean numeric PO quantity
+  const rawQty = norm['PO QUANTITY'];
+  norm['PO QUANTITY'] = (rawQty !== undefined && rawQty !== '' && !isNaN(parseFloat(rawQty))) ? parseFloat(rawQty) : 0;
+
+  // Format effective PO Number
+  norm['_EFFECTIVE_PO_NUMBER'] = formatPONumberWithAmendment(norm['PO NUMBER'], norm['PO AMENDMENT NUMBER']);
+
+  return norm;
+}
+
+/** Generate sample Excel template for PO Report import */
+export function downloadPOReportTemplate() {
+  if (!window.XLSX) {
+    toast('SheetJS library is not available. Please refresh.', 'error');
+    return;
+  }
+
+  const state = getState();
+  const existingPRCs = state.prcs || [];
+  let sampleData = [];
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Try using existing PRCs and line items if available
+  let count = 0;
+  for (const prc of existingPRCs) {
+    for (const m of (prc.materials || [])) {
+      if (count >= 5) break;
+      sampleData.push({
+        'PRC NUMBER': prc.prNumber,
+        'MATERIAL CODE': m.matCode,
+        'RFQ NUMBER': m.rfqNumber || prc.rfqNumber || `RFQ-${prc.prNumber.replace(/\D/g, '') || '2026'}-01`,
+        'TCD NUMBER': m.tcdNumber || prc.tcdNumber || `TCD-${prc.prNumber.replace(/\D/g, '') || '2026'}-01`,
+        'TCD DATE': m.tcdDate || prc.tcdDate || todayStr,
+        'PO NUMBER': `PO-2026-${String(count + 1).padStart(3, '0')}`,
+        'PO AMENDMENT NUMBER': count % 2 === 1 ? '1' : '0',
+        'PO QUANTITY': parseFloat(m.quantity) || 10,
+        'PO DATE': todayStr
+      });
+      count++;
+    }
+    if (count >= 5) break;
+  }
+
+  // Fallback demo rows if no PRCs exist
+  if (!sampleData.length) {
+    sampleData = [
+      {
+        'PRC NUMBER': 'PR-2026-1001',
+        'MATERIAL CODE': 'MAT-50281',
+        'RFQ NUMBER': 'RFQ-2026-001',
+        'TCD NUMBER': 'TCD-2026-001',
+        'TCD DATE': todayStr,
+        'PO NUMBER': 'PO-2026-101',
+        'PO AMENDMENT NUMBER': '0',
+        'PO QUANTITY': 15,
+        'PO DATE': todayStr
+      },
+      {
+        'PRC NUMBER': 'PR-2026-1001',
+        'MATERIAL CODE': 'MAT-50281',
+        'RFQ NUMBER': 'RFQ-2026-001',
+        'TCD NUMBER': 'TCD-2026-001',
+        'TCD DATE': todayStr,
+        'PO NUMBER': 'PO-2026-101',
+        'PO AMENDMENT NUMBER': '1',
+        'PO QUANTITY': 10,
+        'PO DATE': todayStr
+      },
+      {
+        'PRC NUMBER': 'PR-2026-1001',
+        'MATERIAL CODE': 'MAT-70342',
+        'RFQ NUMBER': 'RFQ-2026-001',
+        'TCD NUMBER': 'TCD-2026-001',
+        'TCD DATE': todayStr,
+        'PO NUMBER': 'PO-2026-102',
+        'PO AMENDMENT NUMBER': '0',
+        'PO QUANTITY': 10,
+        'PO DATE': todayStr
+      },
+      {
+        'PRC NUMBER': 'PR-2026-1002',
+        'MATERIAL CODE': 'MAT-88190',
+        'RFQ NUMBER': 'RFQ-2026-002',
+        'TCD NUMBER': 'TCD-2026-002',
+        'TCD DATE': todayStr,
+        'PO NUMBER': 'PO-2026-103',
+        'PO AMENDMENT NUMBER': '2',
+        'PO QUANTITY': 15,
+        'PO DATE': todayStr
+      }
+    ];
+  }
+
+  const ws = XLSX.utils.json_to_sheet(sampleData, { header: PO_REPORT_COLUMNS });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'PO Line Items Report');
+
+  ws['!cols'] = [
+    { wch: 18 }, // PRC NUMBER
+    { wch: 18 }, // MATERIAL CODE
+    { wch: 18 }, // RFQ NUMBER
+    { wch: 18 }, // TCD NUMBER
+    { wch: 16 }, // TCD DATE
+    { wch: 18 }, // PO NUMBER
+    { wch: 22 }, // PO AMENDMENT NUMBER
+    { wch: 16 }, // PO QUANTITY
+    { wch: 16 }  // PO DATE
+  ];
+
+  XLSX.writeFile(wb, 'PO_Report_Import_Template.xlsx');
+  toast('PO Report Excel Template downloaded!', 'success');
+}
+
+/** Validate and group PO Report rows by (PRC Number + Material Code) */
+export function validatePOReportRows(rawRows) {
+  const state = getState();
+  const existingPRCs = state.prcs || [];
+  const prcMap = new Map();
+
+  existingPRCs.forEach(p => {
+    const key = String(p.prNumber || p.id || '').trim().toUpperCase();
+    if (key) prcMap.set(key, p);
+  });
+
+  const errors = [];
+  const normalizedRows = [];
+  const groups = {};
+
+  rawRows.forEach((raw, idx) => {
+    const rowNum = idx + 2;
+    const norm = normalizePOReportRow(raw);
+    const rowErrors = [];
+
+    const prcNumber = String(norm['PRC NUMBER'] || '').trim();
+    const matCode = String(norm['MATERIAL CODE'] || '').trim();
+    const poNum = String(norm['PO NUMBER'] || '').trim();
+    const poQty = parseFloat(norm['PO QUANTITY']) || 0;
+    const poDate = String(norm['PO DATE'] || '').trim();
+
+    if (!prcNumber) rowErrors.push('PRC NUMBER is required');
+    if (!matCode) rowErrors.push('MATERIAL CODE is required');
+    if (!poNum) rowErrors.push('PO NUMBER is required');
+    if (poQty <= 0) rowErrors.push('PO QUANTITY must be greater than 0');
+    if (!poDate) rowErrors.push('PO DATE is required');
+
+    norm._rowNum = rowNum;
+    norm._errors = rowErrors;
+    norm._isValid = rowErrors.length === 0;
+
+    if (rowErrors.length > 0) {
+      errors.push({ row: rowNum, errors: rowErrors, data: norm });
+    }
+
+    normalizedRows.push(norm);
+
+    if (prcNumber && matCode) {
+      const groupKey = `${prcNumber.toUpperCase()}::${matCode.toUpperCase()}`;
+      if (!groups[groupKey]) {
+        groups[groupKey] = {
+          groupKey,
+          prcNumber,
+          matCode,
+          rows: [],
+          cumulatedPOQty: 0,
+          rawPoNumbers: new Set(),
+          poAmendments: new Set(),
+          effectivePoNumbers: new Set(),
+          latestEffectivePoNumber: '',
+          latestRawPoNumber: '',
+          latestAmdNumber: '',
+          latestRfqNumber: '',
+          latestTcdNumber: '',
+          latestTcdDate: '',
+          latestPoDate: '',
+          errors: []
+        };
+      }
+      const g = groups[groupKey];
+      g.rows.push(norm);
+      if (norm._isValid) {
+        g.cumulatedPOQty += poQty;
+      } else {
+        g.errors.push(...rowErrors);
+      }
+
+      if (poNum) g.rawPoNumbers.add(poNum);
+      if (norm['PO AMENDMENT NUMBER']) g.poAmendments.add(String(norm['PO AMENDMENT NUMBER']).trim());
+      if (norm['_EFFECTIVE_PO_NUMBER']) {
+        g.effectivePoNumbers.add(norm['_EFFECTIVE_PO_NUMBER']);
+        g.latestEffectivePoNumber = norm['_EFFECTIVE_PO_NUMBER'];
+      }
+      if (norm['PO NUMBER']) g.latestRawPoNumber = norm['PO NUMBER'];
+      if (norm['PO AMENDMENT NUMBER']) g.latestAmdNumber = String(norm['PO AMENDMENT NUMBER']).trim();
+      if (norm['RFQ NUMBER']) g.latestRfqNumber = String(norm['RFQ NUMBER']).trim();
+      if (norm['TCD NUMBER']) g.latestTcdNumber = String(norm['TCD NUMBER']).trim();
+      if (norm['TCD DATE']) g.latestTcdDate = String(norm['TCD DATE']).trim();
+      if (norm['PO DATE']) g.latestPoDate = String(norm['PO DATE']).trim();
+    }
+  });
+
+  // Evaluate each matched group against database
+  const processedGroups = Object.values(groups).map(g => {
+    const prcUpper = g.prcNumber.toUpperCase();
+    const matchedPrc = prcMap.get(prcUpper);
+    let matchedMat = null;
+
+    if (matchedPrc) {
+      const matUpper = g.matCode.toUpperCase();
+      matchedMat = (matchedPrc.materials || []).find(m =>
+        String(m.matCode || '').trim().toUpperCase() === matUpper ||
+        String(m.id || '').toUpperCase().includes(matUpper)
+      );
+    }
+
+    const isValid = g.errors.length === 0 && g.cumulatedPOQty > 0;
+
+    return {
+      ...g,
+      existsPRC: !!matchedPrc,
+      existsMaterial: !!matchedMat,
+      prc: matchedPrc,
+      material: matchedMat,
+      matDescription: matchedMat ? matchedMat.description : `Material ${g.matCode}`,
+      unit: matchedMat ? matchedMat.unit : 'EA',
+      originalReqQty: matchedMat ? (parseFloat(matchedMat.quantity) || g.cumulatedPOQty) : g.cumulatedPOQty,
+      isValid
+    };
+  });
+
+  const totalRawRows = normalizedRows.length;
+  const validGroupsCount = processedGroups.filter(g => g.isValid).length;
+  const errorGroupsCount = processedGroups.filter(g => !g.isValid).length;
+  const matchedPRCsCount = new Set(processedGroups.filter(g => g.existsPRC).map(g => g.prcNumber.toUpperCase())).size;
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    rawRows: normalizedRows,
+    groups: processedGroups,
+    summary: {
+      totalRows: totalRawRows,
+      uniqueLineItems: processedGroups.length,
+      validItems: validGroupsCount,
+      errorItems: errorGroupsCount,
+      matchedPRCs: matchedPRCsCount
+    }
+  };
+}
+
+/** Render preview table for PO Report Line Items */
+export function renderPOReportPreviewTable(processedGroups) {
+  if (!processedGroups || !processedGroups.length) {
+    return `<div class="empty-state" style="padding:24px"><div class="empty-state-title">No line items to display</div></div>`;
+  }
+
+  const rowsHtml = processedGroups.map((g, idx) => {
+    let statusBadge = '';
+    let rowClass = '';
+
+    if (!g.isValid) {
+      rowClass = 'table-row-error';
+      statusBadge = `<span class="chip chip-wrong" title="${g.errors.join(', ')}">❌ ${g.errors[0] || 'Invalid'}</span>`;
+    } else if (g.existsPRC && g.existsMaterial) {
+      statusBadge = `<span class="chip chip-completed" title="PRC and Material line item matched in database">✓ Matched Line Item</span>`;
+    } else if (g.existsPRC && !g.existsMaterial) {
+      statusBadge = `<span class="chip chip-awaiting" title="PRC found. Material ${g.matCode} will be linked/added to PRC">➕ Link to PRC</span>`;
+    } else {
+      statusBadge = `<span class="chip chip-awaiting" title="PRC not found in database. PRC & line item will be created">➕ New PRC & Item</span>`;
+    }
+
+    const amdDisplay = g.latestAmdNumber && parseFloat(g.latestAmdNumber) > 0
+      ? `<span class="badge badge-primary" style="font-size:10px">Amd: ${g.latestAmdNumber}</span>`
+      : `<span style="color:var(--color-text-tertiary)">0</span>`;
+
+    const multiRowNote = g.rows.length > 1
+      ? `<span class="badge badge-secondary" title="Cumulated from ${g.rows.length} rows in Excel" style="font-size:10px;margin-left:4px">Σ ${g.rows.length} rows</span>`
+      : '';
+
+    return `
+      <tr class="${rowClass}">
+        <td><strong>${idx + 1}</strong></td>
+        <td><span class="font-mono font-semibold" style="color:var(--color-primary)">${g.prcNumber}</span></td>
+        <td><span class="font-mono font-bold">${g.matCode}</span></td>
+        <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${g.matDescription}"><strong>${g.matDescription}</strong></td>
+        <td><span class="font-mono">${g.latestRfqNumber || '—'}</span></td>
+        <td><span class="font-mono">${g.latestTcdNumber || '—'}</span></td>
+        <td>${g.latestTcdDate || '—'}</td>
+        <td><span class="font-mono">${g.latestRawPoNumber || '—'}</span></td>
+        <td style="text-align:center">${amdDisplay}</td>
+        <td><span class="font-mono font-bold" style="color:var(--color-success)">${g.latestEffectivePoNumber || '—'}</span></td>
+        <td>
+          <span class="chip chip-completed" style="font-weight:700">
+            ${g.cumulatedPOQty} ${g.unit || ''}
+          </span>
+          ${multiRowNote}
+        </td>
+        <td>${g.latestPoDate || '—'}</td>
+        <td>${statusBadge}</td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <div class="table-wrapper" style="max-height:360px;overflow:auto;border:1px solid var(--color-border);border-radius:8px">
+      <table class="data-table" style="font-size:12px;white-space:nowrap">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>PRC Number</th>
+            <th>Material Code</th>
+            <th>Description</th>
+            <th>RFQ Number</th>
+            <th>TCD Number</th>
+            <th>TCD Date</th>
+            <th>Base PO #</th>
+            <th>AMD #</th>
+            <th>Final PO Number</th>
+            <th>Cumulated PO Qty</th>
+            <th>PO Date</th>
+            <th>Validation Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+/** Apply PO Report line-item updates across PRCs, materials, RFQs, TCDs, and PODs */
+export function applyPOReportImport(processedGroups) {
+  const validGroups = (processedGroups || []).filter(g => g.isValid);
+  if (!validGroups.length) {
+    toast('No valid line items to import', 'warning');
+    return { success: false, count: 0 };
+  }
+
+  const state = getState();
+  const existingPRCs = [...(state.prcs || [])];
+  const existingRFQs = [...(state.rfqs || [])];
+  const existingTCDs = [...(state.tcds || [])];
+  const existingPODs = [...(state.pods || [])];
+
+  let updatedMaterialsCount = 0;
+  let updatedPRCCount = 0;
+  let createdPRCCount = 0;
+
+  // Track downstream collections to upsert
+  const rfqDocsMap = {};
+  const tcdDocsMap = {};
+  const podDocsMap = {};
+
+  validGroups.forEach(g => {
+    const prcUpper = g.prcNumber.toUpperCase();
+    let prcIdx = existingPRCs.findIndex(p => String(p.prNumber || p.id || '').trim().toUpperCase() === prcUpper);
+
+    let prc;
+    if (prcIdx !== -1) {
+      prc = { ...existingPRCs[prcIdx], materials: [...(existingPRCs[prcIdx].materials || [])] };
+      updatedPRCCount++;
+    } else {
+      createdPRCCount++;
+      prc = {
+        id: g.prcNumber,
+        prNumber: g.prcNumber,
+        createdAt: g.latestPoDate || new Date().toISOString().split('T')[0],
+        importedBy: state.currentUser?.name || 'PO Report Import',
+        priority: 'Medium',
+        department: 'Procurement',
+        job: 'General Project',
+        jobCode: '',
+        materials: []
+      };
+      existingPRCs.push(prc);
+      prcIdx = existingPRCs.length - 1;
+    }
+
+    const matUpper = g.matCode.toUpperCase();
+    let matIdx = prc.materials.findIndex(m =>
+      String(m.matCode || '').trim().toUpperCase() === matUpper ||
+      String(m.id || '').toUpperCase().includes(matUpper)
+    );
+
+    let material;
+    if (matIdx !== -1) {
+      material = { ...prc.materials[matIdx] };
+    } else {
+      // Create new line item under this PRC
+      material = {
+        id: `${g.prcNumber}-${g.matCode}-${prc.materials.length + 1}`,
+        serialNumber: String(prc.materials.length + 1),
+        matCode: g.matCode,
+        description: g.matDescription || `Material ${g.matCode}`,
+        unit: g.unit || 'EA',
+        quantity: g.cumulatedPOQty,
+        currencyDesc: 'KWD'
+      };
+      prc.materials.push(material);
+      matIdx = prc.materials.length - 1;
+    }
+
+    // 1. Update Quantities: PO Quantity, RFQ Quantity & TCD Quantity = Cumulated PO Quantity
+    const cumQty = g.cumulatedPOQty;
+    material.poQuantity = cumQty;
+    material.rfqQuantity = cumQty;
+    material.tcdQuantity = cumQty;
+    material.processedQty = cumQty;
+
+    const baseReqQty = parseFloat(material.quantity) || 0;
+    if (baseReqQty < cumQty) {
+      material.quantity = cumQty; // Adjust requisition quantity if PO qty exceeds initial
+    }
+    const clsQty = parseFloat(material.closedQty) || 0;
+    material.pendingQty = Math.max(0, (material.quantity || cumQty) - cumQty - clsQty);
+
+    // 2. Update Workflow identifiers
+    if (g.latestRfqNumber) material.rfqNumber = g.latestRfqNumber;
+    if (g.latestTcdNumber) material.tcdNumber = g.latestTcdNumber;
+    if (g.latestTcdDate) material.tcdDate = g.latestTcdDate;
+    material.tcdApproved = true;
+    if (g.latestEffectivePoNumber) material.poNumber = g.latestEffectivePoNumber;
+    if (g.latestAmdNumber) material.poAmendmentNumber = g.latestAmdNumber;
+    if (g.latestPoDate) material.poDate = g.latestPoDate;
+
+    // Recalculate Material Status
+    material.status = calculateMaterialStatus ? calculateMaterialStatus(material) : 'Process Completed';
+    prc.materials[matIdx] = material;
+    updatedMaterialsCount++;
+
+    // 3. Update PRC Header
+    if (g.latestRfqNumber && !prc.rfqNumber) prc.rfqNumber = g.latestRfqNumber;
+    if (g.latestTcdNumber && !prc.tcdNumber) prc.tcdNumber = g.latestTcdNumber;
+    if (g.latestTcdDate && !prc.tcdDate) prc.tcdDate = g.latestTcdDate;
+    prc.tcdApproved = true;
+    prc.offersReceived = true;
+    if (g.latestEffectivePoNumber) prc.poNumber = g.latestEffectivePoNumber;
+    if (g.latestPoDate) prc.poDate = g.latestPoDate;
+    prc.updatedAt = new Date().toISOString();
+    prc.status = calculateStatus ? calculateStatus(prc, prc.materials) : 'Process Completed';
+
+    existingPRCs[prcIdx] = prc;
+
+    // 4. Collect for downstream RFQs, TCDs, and PODs
+    const itemData = {
+      prcId: prc.id,
+      materialId: material.id,
+      prNumber: prc.prNumber,
+      matCode: material.matCode,
+      description: material.description,
+      quantity: cumQty,
+      poQuantity: cumQty,
+      rfqQuantity: cumQty,
+      tcdQuantity: cumQty,
+      unit: material.unit || 'EA'
+    };
+
+    if (g.latestRfqNumber) {
+      const rKey = g.latestRfqNumber.toUpperCase();
+      if (!rfqDocsMap[rKey]) {
+        rfqDocsMap[rKey] = {
+          rfqNumber: g.latestRfqNumber,
+          rfqDate: g.latestTcdDate || g.latestPoDate || new Date().toISOString().split('T')[0],
+          items: []
+        };
+      }
+      rfqDocsMap[rKey].items.push(itemData);
+    }
+
+    if (g.latestTcdNumber) {
+      const tKey = g.latestTcdNumber.toUpperCase();
+      if (!tcdDocsMap[tKey]) {
+        tcdDocsMap[tKey] = {
+          tcdNumber: g.latestTcdNumber,
+          tcdDate: g.latestTcdDate || g.latestPoDate || new Date().toISOString().split('T')[0],
+          rfqNumber: g.latestRfqNumber || '',
+          approved: true,
+          items: []
+        };
+      }
+      tcdDocsMap[tKey].items.push(itemData);
+    }
+
+    if (g.latestEffectivePoNumber) {
+      const pKey = g.latestEffectivePoNumber.toUpperCase();
+      if (!podDocsMap[pKey]) {
+        podDocsMap[pKey] = {
+          poNumber: g.latestEffectivePoNumber,
+          poDate: g.latestPoDate || new Date().toISOString().split('T')[0],
+          tcdNumber: g.latestTcdNumber || '',
+          vendorName: prc.vendorName || prc.vendor || 'Assigned Vendor',
+          items: []
+        };
+      }
+      podDocsMap[pKey].items.push(itemData);
+    }
+  });
+
+  // 5. Upsert RFQs
+  const updatedRFQs = [...existingRFQs];
+  Object.values(rfqDocsMap).forEach(rfq => {
+    const exIdx = updatedRFQs.findIndex(r => String(r.rfqNumber || '').trim().toUpperCase() === rfq.rfqNumber.toUpperCase());
+    if (exIdx !== -1) {
+      const ex = updatedRFQs[exIdx];
+      const mergedItems = [...(ex.items || [])];
+      const keySet = new Set(mergedItems.map(i => `${i.prcId}::${i.materialId}`));
+      rfq.items.forEach(it => {
+        const k = `${it.prcId}::${it.materialId}`;
+        if (!keySet.has(k)) { mergedItems.push(it); keySet.add(k); }
+        else {
+          const match = mergedItems.find(i => `${i.prcId}::${i.materialId}` === k);
+          if (match) match.quantity = it.quantity;
+        }
+      });
+      updatedRFQs[exIdx] = { ...ex, items: mergedItems, updatedAt: new Date().toISOString() };
+    } else {
+      updatedRFQs.unshift({
+        id: `rfq-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        rfqNumber: rfq.rfqNumber,
+        rfqDate: rfq.rfqDate,
+        items: rfq.items,
+        status: 'Closed',
+        isClosed: true,
+        createdAt: new Date().toISOString(),
+        createdBy: 'PO Report Import'
+      });
+    }
+  });
+
+  // 6. Upsert TCDs
+  const updatedTCDs = [...existingTCDs];
+  Object.values(tcdDocsMap).forEach(tcd => {
+    const exIdx = updatedTCDs.findIndex(t => String(t.tcdNumber || '').trim().toUpperCase() === tcd.tcdNumber.toUpperCase());
+    if (exIdx !== -1) {
+      const ex = updatedTCDs[exIdx];
+      const vendorAllocations = ex.vendorAllocations || ex.vendors || [{ vendorName: 'Assigned Vendor', items: [] }];
+      const primaryVA = vendorAllocations[0] || { vendorName: 'Assigned Vendor', items: [] };
+      const mergedItems = [...(primaryVA.items || [])];
+      const keySet = new Set(mergedItems.map(i => `${i.prcId}::${i.materialId}`));
+      tcd.items.forEach(it => {
+        const k = `${it.prcId}::${it.materialId}`;
+        if (!keySet.has(k)) { mergedItems.push(it); keySet.add(k); }
+        else {
+          const match = mergedItems.find(i => `${i.prcId}::${i.materialId}` === k);
+          if (match) match.quantity = it.quantity;
+        }
+      });
+      primaryVA.items = mergedItems;
+      vendorAllocations[0] = primaryVA;
+      updatedTCDs[exIdx] = { ...ex, approved: true, status: 'Approved', vendorAllocations, vendors: vendorAllocations, updatedAt: new Date().toISOString() };
+    } else {
+      updatedTCDs.unshift({
+        id: `tcd-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        tcdNumber: tcd.tcdNumber,
+        tcdDate: tcd.tcdDate,
+        rfqNumber: tcd.rfqNumber,
+        approved: true,
+        status: 'Approved',
+        vendorAllocations: [{ vendorName: 'Assigned Vendor', items: tcd.items }],
+        vendors: [{ vendorName: 'Assigned Vendor', items: tcd.items }],
+        createdAt: new Date().toISOString(),
+        createdBy: 'PO Report Import'
+      });
+    }
+  });
+
+  // 7. Upsert PODs
+  const updatedPODs = [...existingPODs];
+  Object.values(podDocsMap).forEach(pod => {
+    const exIdx = updatedPODs.findIndex(p => String(p.poNumber || '').trim().toUpperCase() === pod.poNumber.toUpperCase());
+    if (exIdx !== -1) {
+      const ex = updatedPODs[exIdx];
+      const mergedItems = [...(ex.items || [])];
+      const keySet = new Set(mergedItems.map(i => `${i.prcId}::${i.materialId}`));
+      pod.items.forEach(it => {
+        const k = `${it.prcId}::${it.materialId}`;
+        if (!keySet.has(k)) { mergedItems.push(it); keySet.add(k); }
+        else {
+          const match = mergedItems.find(i => `${i.prcId}::${i.materialId}` === k);
+          if (match) match.quantity = it.quantity;
+        }
+      });
+      updatedPODs[exIdx] = { ...ex, poDate: pod.poDate, status: 'Issued', items: mergedItems, updatedAt: new Date().toISOString() };
+    } else {
+      updatedPODs.unshift({
+        id: `pod-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        poNumber: pod.poNumber,
+        poDate: pod.poDate,
+        tcdNumber: pod.tcdNumber,
+        vendorName: pod.vendorName,
+        status: 'Issued',
+        items: pod.items,
+        createdAt: new Date().toISOString(),
+        createdBy: 'PO Report Import'
+      });
+    }
+  });
+
+  const summary = buildStatusSummary ? buildStatusSummary(existingPRCs) : state.statusSummary;
+
+  // Commit updated state
+  setState({
+    prcs: existingPRCs,
+    rfqs: updatedRFQs,
+    tcds: updatedTCDs,
+    pods: updatedPODs,
+    statusSummary: summary
+  });
+
+  // Audit log
+  addAuditLog({
+    action: 'po_report_import_excel',
+    collection: 'PODs',
+    docId: 'bulk_import',
+    changes: {
+      summary: `PO Report Import via Excel: ${validGroups.length} line items updated across ${validGroups.length} items (${updatedPRCCount} existing PRCs, ${createdPRCCount} new PRCs), with cumulated PO/RFQ/TCD quantities.`
+    }
+  });
+
+  // Push to Cloud / Firestore
+  try {
+    pushLocalDataToFirestore();
+  } catch (syncErr) {
+    console.warn('Firestore sync note for PO Report Import:', syncErr);
+  }
+
+  return {
+    success: true,
+    lineItemsUpdated: validGroups.length,
+    updatedPRCCount,
+    createdPRCCount,
+    materialsUpdated: updatedMaterialsCount,
+    posCreatedOrUpdated: Object.keys(podDocsMap).length
+  };
+}
+

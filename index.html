@@ -339,7 +339,7 @@
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getPODItems } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
-import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport } from './js/excel-import.js';
+import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
 import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } from './js/turso-db.js';
 import { getActiveDbProvider, setActiveDbProvider } from './js/db-adapter.js';
@@ -2670,9 +2670,10 @@ function renderImport(container) {
 <div class="page-header">
   <div>
     <h1 class="page-title">Excel Import</h1>
-    <p class="page-subtitle">Import PRC data from Excel using official 45 Enterprise Columns</p>
+    <p class="page-subtitle">Import PRC requisitions, bulk allocations, or PO reports from Excel</p>
   </div>
-  <div class="flex gap-3">
+  <div class="flex gap-3 flex-wrap">
+    <button class="btn btn-secondary" onclick="openPOReportImportModal()" style="border-color:var(--color-primary);color:var(--color-primary)">🛒 Import PO Report (Line Items)</button>
     <button class="btn btn-secondary" onclick="loadSampleRequisitionData()">⚡ Load Demo Requisition Data</button>
     <button class="btn btn-secondary" onclick="downloadSampleTemplate()">📥 Download 45-Column Template</button>
   </div>
@@ -3816,6 +3817,7 @@ window.exportExcel  = (t,l) => exportExcel(t,l);
 window.exportPDF    = (t) => exportPDF(t);
 window.downloadSampleTemplate = downloadSampleTemplate;
 window.downloadBulkAllocationTemplate = downloadBulkAllocationTemplate;
+window.downloadPOReportTemplate = downloadPOReportTemplate;
 window.exportDatabaseBackup   = () => exportDatabaseBackup();
 window.exportCreatorDatabase  = () => exportDatabaseBackup();
 window.restoreDatabaseBackup  = (jsonData) => restoreDatabaseBackup(jsonData);
@@ -6964,9 +6966,15 @@ function renderPODsPage(container) {
 <div class="page-header">
   <div>
     <h1 class="page-title">Purchase Order Documents (POD)</h1>
-    <p class="page-subtitle">${pods.length} PO document(s) generated from approved TCDs</p>
+    <p class="page-subtitle">${pods.length} PO document(s) generated from approved TCDs · Line items tracked</p>
   </div>
-  <div class="flex gap-2">
+  <div class="flex gap-2 flex-wrap">
+    <button class="btn btn-secondary" onclick="downloadPOReportTemplate()" title="Download Excel template for PO Report Import">
+      <span style="font-size:14px">📥</span> Download PO Template
+    </button>
+    <button class="btn btn-secondary" onclick="openPOReportImportModal()" style="border-color:var(--color-primary);color:var(--color-primary)" title="Upload PO Report Excel">
+      <span style="font-size:14px">📤</span> Import PO Report (Excel)
+    </button>
     <button class="btn btn-primary" onclick="navigate('create-pod')">
       <span style="font-size:15px">➕</span> Create Purchase Order Document
     </button>
@@ -7550,6 +7558,196 @@ window.filterPODDocs = function(query) {
     tr.style.display = text.includes(q) ? '' : 'none';
   });
 };
+
+// ═══════════════════════════════════════════════════════════
+// PO REPORT LINE-ITEM EXCEL IMPORT MODAL & HANDLERS
+// ═══════════════════════════════════════════════════════════
+let _currentPOReportParsedGroups = null;
+
+window.openPOReportImportModal = function() {
+  const modalId = 'po-report-modal';
+  let el = document.getElementById(modalId);
+  if (el) el.remove();
+
+  _currentPOReportParsedGroups = null;
+
+  el = document.createElement('div');
+  el.id = modalId;
+  el.className = 'modal-overlay open';
+
+  el.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:980px;display:flex;flex-direction:column;max-height:90vh">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" style="display:flex;align-items:center;gap:8px">
+            <span>🛒 Import PO Report (Line-Item Excel)</span>
+          </h3>
+          <p style="font-size:12px;color:var(--color-text-secondary);margin:2px 0 0 0">
+            Upload a PO Report to update line-items matching <strong>(PRC Number + Material Code)</strong>.
+          </p>
+        </div>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+      </div>
+
+      <div class="modal-body" style="padding:20px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:16px">
+        <!-- Info Banner with Template Download -->
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--color-surface-1);padding:12px 16px;border-radius:8px;border:1px solid var(--color-border);flex-wrap:wrap;gap:10px">
+          <div>
+            <strong style="font-size:13px;color:var(--color-primary)">Supported PO Report Columns (9 Columns):</strong>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;font-family:var(--font-mono)">
+              PRC NUMBER · MATERIAL CODE · RFQ NUMBER · TCD NUMBER · TCD DATE · PO NUMBER · PO AMENDMENT NUMBER · PO QUANTITY · PO DATE
+            </div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:4px">
+              ℹ️ <strong>Rules Applied:</strong> Line items matched by (PRC Number + Material Code). PO Number formatted as <code>PO Number - Amendment</code> (if AMD &gt; 0). PO, RFQ & TCD quantities equal cumulative PO Quantity.
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="downloadPOReportTemplate()">
+            <span>📥</span> Download Excel Template
+          </button>
+        </div>
+
+        <!-- Upload Drop Zone -->
+        <div class="upload-zone" id="po-report-drop-zone" onclick="document.getElementById('po-report-file-input').click()" style="padding:24px 16px;border:2px dashed var(--color-border);text-align:center;cursor:pointer;border-radius:8px;background:var(--color-surface-2)">
+          <input type="file" id="po-report-file-input" accept=".xlsx,.xls,.csv" style="display:none" onchange="handlePOReportFile(this)"/>
+          <div style="font-size:32px;margin-bottom:6px">📊</div>
+          <div style="font-weight:700;font-size:14px;color:var(--color-text-primary)">Click to select or drag & drop PO Report Excel file here</div>
+          <div style="font-size:12px;color:var(--color-text-secondary);margin-top:4px">Supports .xlsx and .xls formats</div>
+        </div>
+
+        <!-- Preview Area Container -->
+        <div id="po-report-preview-container" style="display:none;flex-direction:column;gap:12px">
+          <div id="po-report-summary-bar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <!-- Dynamic summary badges -->
+          </div>
+          <div id="po-report-table-target">
+            <!-- Table will be rendered here -->
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display:flex;align-items:center;justify-content:space-between">
+        <div id="po-report-footer-hint" style="font-size:12px;color:var(--color-text-secondary)">
+          Select an Excel file to preview data before applying.
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+          <button class="btn btn-primary" id="btn-apply-po-report" onclick="executePOReportCommit()" disabled>
+            💾 Apply PO Report Updates
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(el);
+
+  // Setup drag and drop
+  const dropZone = document.getElementById('po-report-drop-zone');
+  if (dropZone) {
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.style.borderColor = 'var(--color-primary)';
+      dropZone.style.background = 'var(--color-surface-1)';
+    });
+    dropZone.addEventListener('dragleave', e => {
+      e.preventDefault();
+      dropZone.style.borderColor = 'var(--color-border)';
+      dropZone.style.background = 'var(--color-surface-2)';
+    });
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.style.borderColor = 'var(--color-border)';
+      dropZone.style.background = 'var(--color-surface-2)';
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
+        handlePOReportFile({ files: e.dataTransfer.files });
+      }
+    });
+  }
+};
+
+window.handlePOReportFile = async function(input) {
+  const file = input.files ? input.files[0] : null;
+  if (!file) return;
+
+  try {
+    const rawRows = await parseExcelFile(file);
+    if (!rawRows || !rawRows.length) {
+      toast('The uploaded Excel file contains no data rows.', 'warning');
+      return;
+    }
+
+    const validation = validatePOReportRows(rawRows);
+    _currentPOReportParsedGroups = validation.groups;
+
+    const previewContainer = document.getElementById('po-report-preview-container');
+    const tableTarget = document.getElementById('po-report-table-target');
+    const summaryBar = document.getElementById('po-report-summary-bar');
+    const applyBtn = document.getElementById('btn-apply-po-report');
+    const footerHint = document.getElementById('po-report-footer-hint');
+
+    if (previewContainer) previewContainer.style.display = 'flex';
+
+    if (summaryBar) {
+      summaryBar.innerHTML = `
+        <div class="flex gap-2 flex-wrap align-center">
+          <span class="badge badge-primary">Rows: ${validation.summary.totalRows}</span>
+          <span class="badge badge-secondary">Unique Line Items: ${validation.summary.uniqueLineItems}</span>
+          <span class="badge" style="background:rgba(16,185,129,0.15);color:var(--color-success)">✓ ${validation.summary.validItems} Valid</span>
+          ${validation.summary.errorItems > 0 ? `<span class="badge badge-danger">❌ ${validation.summary.errorItems} Error(s)</span>` : ''}
+          <span class="badge badge-primary">Matched PRCs: ${validation.summary.matchedPRCs}</span>
+        </div>
+        <div style="font-size:12px;color:var(--color-text-secondary)">
+          File: <strong>${file.name}</strong>
+        </div>
+      `;
+    }
+
+    if (tableTarget) {
+      tableTarget.innerHTML = renderPOReportPreviewTable(validation.groups);
+    }
+
+    if (applyBtn) {
+      applyBtn.disabled = validation.summary.validItems === 0;
+      applyBtn.textContent = `💾 Apply Updates (${validation.summary.validItems} Line Items)`;
+    }
+
+    if (footerHint) {
+      if (validation.summary.errorItems > 0) {
+        footerHint.innerHTML = `<span style="color:var(--color-danger)">⚠️ ${validation.summary.errorItems} item(s) have errors and will be skipped. ${validation.summary.validItems} valid line item(s) ready.</span>`;
+      } else {
+        footerHint.innerHTML = `<span style="color:var(--color-success)">✅ All ${validation.summary.validItems} line item(s) are valid and ready to update.</span>`;
+      }
+    }
+
+    toast(`Parsed ${rawRows.length} rows (${validation.groups.length} line items) from ${file.name}`, 'info');
+  } catch (err) {
+    console.error('Error reading PO Report file:', err);
+    toast(`Failed to parse file: ${err.message}`, 'error');
+  }
+};
+
+window.executePOReportCommit = function() {
+  if (!_currentPOReportParsedGroups || !_currentPOReportParsedGroups.length) {
+    toast('No line items to update', 'warning');
+    return;
+  }
+
+  const result = applyPOReportImport(_currentPOReportParsedGroups);
+  if (result && result.success) {
+    document.getElementById('po-report-modal')?.remove();
+    toast(`✅ PO Report Import complete: ${result.lineItemsUpdated} line items updated across ${result.updatedPRCCount} PRC(s) with cumulated quantities!`, 'success', 6000);
+    
+    const container = document.getElementById('page-content');
+    const cur = getState().currentPage;
+    if (container && (cur === 'pods' || cur === 'prcs' || cur === 'tcds' || cur === 'rfqs')) {
+      preserveScroll(() => PAGES[cur].render(container));
+    }
+    updateSidebarBadges();
+  } else {
+    toast('PO Report import failed or had no valid line items', 'error');
+  }
+};
+
 
 // ═══════════════════════════════════════════════════════════
 // SIDEBAR BADGE UPDATES
