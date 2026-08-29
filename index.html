@@ -339,7 +339,7 @@
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getPODItems } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
-import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
+import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
 import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } from './js/turso-db.js';
 import { getActiveDbProvider, setActiveDbProvider } from './js/db-adapter.js';
@@ -3815,6 +3815,10 @@ window.exportCSV    = () => exportCSV();
 window.exportExcel  = (t,l) => exportExcel(t,l);
 window.exportPDF    = (t) => exportPDF(t);
 window.downloadSampleTemplate = downloadSampleTemplate;
+window.downloadBulkAllocationTemplate = downloadBulkAllocationTemplate;
+window.openBulkAllocationModal = openBulkAllocationModal;
+window.handleBulkAllocFile = handleBulkAllocFile;
+window.executeBulkAllocCommit = executeBulkAllocCommit;
 window.exportDatabaseBackup   = () => exportDatabaseBackup();
 window.exportCreatorDatabase  = () => exportDatabaseBackup();
 window.restoreDatabaseBackup  = (jsonData) => restoreDatabaseBackup(jsonData);
@@ -4027,7 +4031,13 @@ function renderAllocationsPage(container) {
     <h1 class="page-title">Allocation Management</h1>
     <p class="page-subtitle">${allocs.length} Allocation Document(s) created • ${availablePrcs.length} Authorised PRC(s) pending allocation</p>
   </div>
-  <div class="flex gap-2">
+  <div class="flex gap-2 flex-wrap">
+    <button class="btn btn-secondary" onclick="downloadBulkAllocationTemplate()" title="Download Excel template for Bulk Allocation">
+      <span style="font-size:14px">📥</span> Download Bulk Template
+    </button>
+    <button class="btn btn-secondary" onclick="openBulkAllocationModal()" style="border-color:var(--color-primary);color:var(--color-primary)" title="Upload Excel for Bulk Allocation">
+      <span style="font-size:14px">📤</span> Bulk Allocation (Excel)
+    </button>
     <button class="btn btn-primary" onclick="navigate('create-allocation')">
       <span style="font-size:15px">➕</span> Create Allocation Document
     </button>
@@ -4878,6 +4888,192 @@ window.handleDeleteAllocation = async function(id) {
     toast(result.reason || 'Failed to delete Allocation.', 'error');
   }
 };
+
+// ═══════════════════════════════════════════════════════════
+// BULK ALLOCATION EXCEL MODAL & EVENT HANDLERS
+// ═══════════════════════════════════════════════════════════
+let _currentBulkAllocParsedRows = null;
+
+window.openBulkAllocationModal = function() {
+  const modalId = 'bulk-alloc-modal';
+  let el = document.getElementById(modalId);
+  if (el) el.remove();
+
+  _currentBulkAllocParsedRows = null;
+
+  el = document.createElement('div');
+  el.id = modalId;
+  el.className = 'modal-overlay open';
+
+  el.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:920px;display:flex;flex-direction:column;max-height:90vh">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" style="display:flex;align-items:center;gap:8px">
+            <span>📤 Bulk Allocation via Excel</span>
+          </h3>
+          <p style="font-size:12px;color:var(--color-text-secondary);margin:2px 0 0 0">
+            Upload an Excel sheet to bulk-assign Allocation Numbers, Dates, and Buyers to PRCs.
+          </p>
+        </div>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">×</button>
+      </div>
+
+      <div class="modal-body" style="padding:20px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:16px">
+        <!-- Action bar with Template Download -->
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--color-surface-1);padding:12px 16px;border-radius:8px;border:1px solid var(--color-border);flex-wrap:wrap;gap:10px">
+          <div>
+            <strong style="font-size:13px;color:var(--color-primary)">Supported Excel Columns (7 Key Columns):</strong>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;font-family:var(--font-mono)">
+              PR NUMBER · STATUS · DEPARTMENT · JOB · ALLOCATION NO · ALLOCATION DATE · BUYER NAME
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="downloadBulkAllocationTemplate()">
+            <span>📥</span> Download Excel Template
+          </button>
+        </div>
+
+        <!-- Upload Drop Zone -->
+        <div class="upload-zone" id="bulk-alloc-drop-zone" onclick="document.getElementById('bulk-alloc-file-input').click()" style="padding:24px 16px;border:2px dashed var(--color-border);text-align:center;cursor:pointer;border-radius:8px;background:var(--color-surface-2)">
+          <input type="file" id="bulk-alloc-file-input" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleBulkAllocFile(this)"/>
+          <div style="font-size:32px;margin-bottom:6px">📊</div>
+          <div style="font-weight:700;font-size:14px;color:var(--color-text-primary)">Click to select or drag & drop Excel file here</div>
+          <div style="font-size:12px;color:var(--color-text-secondary);margin-top:4px">Supports .xlsx and .xls formats</div>
+        </div>
+
+        <!-- Preview Area Container (hidden initially, shown once parsed) -->
+        <div id="bulk-alloc-preview-container" style="display:none;flex-direction:column;gap:12px">
+          <div id="bulk-alloc-summary-bar" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <!-- Dynamic summary badges -->
+          </div>
+          <div id="bulk-alloc-table-target">
+            <!-- Table will be rendered here -->
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display:flex;align-items:center;justify-content:space-between">
+        <div id="bulk-alloc-footer-hint" style="font-size:12px;color:var(--color-text-secondary)">
+          Select an Excel file to preview data before applying.
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+          <button class="btn btn-primary" id="btn-apply-bulk-alloc" onclick="executeBulkAllocCommit()" disabled>
+            💾 Apply Bulk Allocation
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(el);
+
+  // Setup drag and drop
+  const dropZone = document.getElementById('bulk-alloc-drop-zone');
+  if (dropZone) {
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.style.borderColor = 'var(--color-primary)';
+      dropZone.style.background = 'var(--color-surface-1)';
+    });
+    dropZone.addEventListener('dragleave', e => {
+      e.preventDefault();
+      dropZone.style.borderColor = 'var(--color-border)';
+      dropZone.style.background = 'var(--color-surface-2)';
+    });
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.style.borderColor = 'var(--color-border)';
+      dropZone.style.background = 'var(--color-surface-2)';
+      if (e.dataTransfer.files && e.dataTransfer.files.length) {
+        handleBulkAllocFile({ files: e.dataTransfer.files });
+      }
+    });
+  }
+};
+
+window.handleBulkAllocFile = async function(input) {
+  const file = input.files ? input.files[0] : null;
+  if (!file) return;
+
+  try {
+    const rawRows = await parseExcelFile(file);
+    if (!rawRows || !rawRows.length) {
+      toast('The uploaded Excel file contains no data rows.', 'warning');
+      return;
+    }
+
+    const validation = validateBulkAllocationRows(rawRows);
+    _currentBulkAllocParsedRows = validation.rows;
+
+    const previewContainer = document.getElementById('bulk-alloc-preview-container');
+    const tableTarget = document.getElementById('bulk-alloc-table-target');
+    const summaryBar = document.getElementById('bulk-alloc-summary-bar');
+    const applyBtn = document.getElementById('btn-apply-bulk-alloc');
+    const footerHint = document.getElementById('bulk-alloc-footer-hint');
+
+    if (previewContainer) previewContainer.style.display = 'flex';
+
+    if (summaryBar) {
+      summaryBar.innerHTML = `
+        <div class="flex gap-2 flex-wrap align-center">
+          <span class="badge badge-primary">Total: ${validation.summary.total} row(s)</span>
+          <span class="badge" style="background:rgba(16,185,129,0.15);color:var(--color-success)">✓ ${validation.summary.valid} Valid</span>
+          ${validation.summary.errors > 0 ? `<span class="badge badge-danger">❌ ${validation.summary.errors} Error(s)</span>` : ''}
+          <span class="badge badge-secondary">Matching DB PRCs: ${validation.summary.matchedPRs}</span>
+          ${validation.summary.newPRs > 0 ? `<span class="badge badge-warning">New PRCs: ${validation.summary.newPRs}</span>` : ''}
+        </div>
+        <div style="font-size:12px;color:var(--color-text-secondary)">
+          File: <strong>${file.name}</strong>
+        </div>
+      `;
+    }
+
+    if (tableTarget) {
+      tableTarget.innerHTML = renderBulkAllocationPreviewTable(validation.rows);
+    }
+
+    if (applyBtn) {
+      applyBtn.disabled = validation.summary.valid === 0;
+      applyBtn.textContent = `💾 Apply Allocation (${validation.summary.valid} PRs)`;
+    }
+
+    if (footerHint) {
+      if (validation.summary.errors > 0) {
+        footerHint.innerHTML = `<span style="color:var(--color-danger)">⚠️ ${validation.summary.errors} row(s) have errors and will be skipped. ${validation.summary.valid} valid row(s) ready.</span>`;
+      } else {
+        footerHint.innerHTML = `<span style="color:var(--color-success)">✅ All ${validation.summary.valid} row(s) are valid and ready to apply.</span>`;
+      }
+    }
+
+    toast(`Parsed ${rawRows.length} rows from ${file.name}`, 'info');
+  } catch (err) {
+    console.error('Error reading Bulk Allocation file:', err);
+    toast(`Failed to parse file: ${err.message}`, 'error');
+  }
+};
+
+window.executeBulkAllocCommit = function() {
+  if (!_currentBulkAllocParsedRows || !_currentBulkAllocParsedRows.length) {
+    toast('No data to allocate', 'warning');
+    return;
+  }
+
+  const result = applyBulkAllocationImport(_currentBulkAllocParsedRows);
+  if (result && result.success) {
+    document.getElementById('bulk-alloc-modal')?.remove();
+    toast(`✅ Bulk Allocation complete: ${result.prsAllocated} PRCs allocated across ${result.allocationsCreated} Allocation document(s) with ${result.materialsAllocated} item(s)!`, 'success', 6000);
+    
+    const container = document.getElementById('page-content');
+    if (container && getState().currentPage === 'allocations') {
+      preserveScroll(() => renderAllocationsPage(container));
+    }
+    updateSidebarBadges();
+  } else {
+    toast('Bulk allocation failed or had no valid rows', 'error');
+  }
+};
+
 
 // ═══════════════════════════════════════════════════════════
 // PAGE: RFQs (LIST VIEW)

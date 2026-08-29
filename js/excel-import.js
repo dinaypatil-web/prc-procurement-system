@@ -822,3 +822,526 @@ export function renderPreviewTable(rows, errors) {
   `;
 }
 
+// ═══════════════════════════════════════════════════════════
+// DEDICATED BULK ALLOCATION EXCEL ENGINE (7 Columns)
+// PR Number, Status, Department, Job, Allocation No., Allocation date, Buyer Name
+// ═══════════════════════════════════════════════════════════
+
+export const BULK_ALLOCATION_COLUMNS = [
+  'PR NUMBER',
+  'STATUS',
+  'DEPARTMENT',
+  'JOB',
+  'ALLOCATION NO',
+  'ALLOCATION DATE',
+  'BUYER NAME'
+];
+
+const BULK_ALLOCATION_ALIAS_MAP = {
+  'PR NUMBER': ['PR NUMBER', 'PR NO', 'PR_NUMBER', 'PRNUMBER', 'REQUISITION NUMBER', 'PR', 'PRC NUMBER', 'PRC NO'],
+  'STATUS': ['STATUS', 'PR STATUS', 'PR_STATUS', 'REQUISITION STATUS', 'STATE'],
+  'DEPARTMENT': ['DEPARTMENT', 'DEPT', 'BU', 'SBU', 'IC DESC', 'UNIT', 'SECTION'],
+  'JOB': ['JOB', 'JOB CODE', 'PROJECT', 'PROJECT CODE', 'JOB DESC', 'JOB_CODE'],
+  'ALLOCATION NO': ['ALLOCATION NO', 'ALLOCATION NUMBER', 'ALLOCATION NO.', 'ALLOCATION CODE', 'ALLOC NO', 'ALLOCATION_NO', 'ALLOCATION_NUMBER', 'ALLOCATION', 'ALLOC #'],
+  'ALLOCATION DATE': ['ALLOCATION DATE', 'ALLOCATED ON', 'ALLOCATED DATE', 'ALLOC_DATE', 'DATE', 'ALLOC DATE'],
+  'BUYER NAME': ['BUYER NAME', 'BUYER', 'PURCHASER', 'ALLOCATED TO', 'BUYER_NAME', 'ASSIGNED BUYER', 'ALLOCATED BY']
+};
+
+/** Normalize bulk allocation row keys */
+export function normalizeBulkAllocationRow(rawRow) {
+  const norm = {};
+  const rawKeys = Object.keys(rawRow || {});
+
+  rawKeys.forEach(k => {
+    norm[k] = rawRow[k];
+  });
+
+  BULK_ALLOCATION_COLUMNS.forEach(col => {
+    if (norm[col] === undefined) norm[col] = '';
+    const aliases = BULK_ALLOCATION_ALIAS_MAP[col] || [col];
+    const strippedCol = stripKey(col);
+    const strippedAliases = aliases.map(stripKey);
+
+    for (const key of rawKeys) {
+      const strippedKey = stripKey(key);
+      if (strippedKey === strippedCol || strippedAliases.includes(strippedKey)) {
+        norm[col] = rawRow[key];
+        break;
+      }
+    }
+  });
+
+  // Clean date strings if needed
+  if (norm['ALLOCATION DATE']) {
+    let dateStr = String(norm['ALLOCATION DATE']).trim();
+    if (dateStr.includes('T')) dateStr = dateStr.split('T')[0];
+    // Check if Excel parsed as serial number
+    if (/^\d{5}$/.test(dateStr)) {
+      const excelDate = new Date((parseInt(dateStr, 10) - (25567 + 2)) * 86400 * 1000);
+      if (!isNaN(excelDate.getTime())) {
+        dateStr = excelDate.toISOString().split('T')[0];
+      }
+    }
+    norm['ALLOCATION DATE'] = dateStr;
+  }
+
+  return norm;
+}
+
+/** Generate sample Excel template specifically for Bulk Allocation */
+export function downloadBulkAllocationTemplate() {
+  if (!window.XLSX) {
+    toast('SheetJS library is not available. Please refresh.', 'error');
+    return;
+  }
+
+  const state = getState();
+  const existingPRCs = state.prcs || [];
+  const pendingPRCs = existingPRCs.filter(p => !p.allocationNumber || p.prStatus === 'Authorised' || p.status === 'Authorised' || p.status === 'Pending Allocation');
+
+  let sampleData = [];
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (pendingPRCs.length > 0) {
+    // Populate with real pending PRs from the system for convenience
+    sampleData = pendingPRCs.slice(0, 5).map((p, idx) => ({
+      'PR NUMBER': p.prNumber,
+      'STATUS': 'Allocated',
+      'DEPARTMENT': p.department || p.bu || p.sbu || 'Procurement',
+      'JOB': p.job || p.jobCode || 'Main Project',
+      'ALLOCATION NO': `ALLOC-${new Date().getFullYear()}-${String(idx + 1).padStart(3, '0')}`,
+      'ALLOCATION DATE': todayStr,
+      'BUYER NAME': state.currentUser?.name || 'Assigned Buyer'
+    }));
+  } else {
+    // Fallback demo rows
+    sampleData = [
+      {
+        'PR NUMBER': 'PR-2026-1001',
+        'STATUS': 'Allocated',
+        'DEPARTMENT': 'Mechanical Dept',
+        'JOB': 'JOB-2026-01 - Substation Construction',
+        'ALLOCATION NO': 'ALLOC-2026-001',
+        'ALLOCATION DATE': todayStr,
+        'BUYER NAME': 'John Doe'
+      },
+      {
+        'PR NUMBER': 'PR-2026-1002',
+        'STATUS': 'Allocated',
+        'DEPARTMENT': 'Electrical Dept',
+        'JOB': 'JOB-2026-04 - Solar Substation',
+        'ALLOCATION NO': 'ALLOC-2026-002',
+        'ALLOCATION DATE': todayStr,
+        'BUYER NAME': 'Sarah Smith'
+      },
+      {
+        'PR NUMBER': 'PR-2026-1003',
+        'STATUS': 'Allocated',
+        'DEPARTMENT': 'Civil Infrastructure',
+        'JOB': 'JOB-2026-08 - Water Treatment',
+        'ALLOCATION NO': 'ALLOC-2026-003',
+        'ALLOCATION DATE': todayStr,
+        'BUYER NAME': 'Alex Johnson'
+      }
+    ];
+  }
+
+  const ws = XLSX.utils.json_to_sheet(sampleData, { header: BULK_ALLOCATION_COLUMNS });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Bulk Allocation');
+
+  // Set column widths
+  ws['!cols'] = [
+    { wch: 18 }, // PR NUMBER
+    { wch: 15 }, // STATUS
+    { wch: 22 }, // DEPARTMENT
+    { wch: 32 }, // JOB
+    { wch: 20 }, // ALLOCATION NO
+    { wch: 18 }, // ALLOCATION DATE
+    { wch: 22 }  // BUYER NAME
+  ];
+
+  XLSX.writeFile(wb, 'Bulk_Allocation_Template.xlsx');
+  toast('Bulk Allocation Excel Template downloaded!', 'success');
+}
+
+/** Validate Bulk Allocation rows against database */
+export function validateBulkAllocationRows(rawRows) {
+  const state = getState();
+  const existingPRCs = state.prcs || [];
+  const prcMap = new Map();
+  existingPRCs.forEach(p => {
+    const key = String(p.prNumber || '').trim().toUpperCase();
+    if (key) prcMap.set(key, p);
+  });
+
+  const errors = [];
+  const processedRows = [];
+  const seenPRCsInFile = new Set();
+
+  rawRows.forEach((raw, idx) => {
+    const rowNum = idx + 2; // Header is row 1
+    const norm = normalizeBulkAllocationRow(raw);
+    const rowErrors = [];
+
+    const prNumber = String(norm['PR NUMBER'] || '').trim();
+    const allocNo = String(norm['ALLOCATION NO'] || '').trim();
+    const allocDate = String(norm['ALLOCATION DATE'] || '').trim();
+    const buyerName = String(norm['BUYER NAME'] || '').trim();
+    const status = String(norm['STATUS'] || 'Allocated').trim();
+    const dept = String(norm['DEPARTMENT'] || '').trim();
+    const job = String(norm['JOB'] || '').trim();
+
+    if (!prNumber) {
+      rowErrors.push('PR NUMBER is required');
+    }
+    if (!allocNo) {
+      rowErrors.push('ALLOCATION NO is required');
+    }
+    if (!allocDate) {
+      rowErrors.push('ALLOCATION DATE is required');
+    }
+    if (!buyerName) {
+      rowErrors.push('BUYER NAME is required');
+    }
+
+    const prUpper = prNumber.toUpperCase();
+    const matchedPrc = prcMap.get(prUpper);
+    const isDuplicateInFile = seenPRCsInFile.has(prUpper);
+    if (prNumber) seenPRCsInFile.add(prUpper);
+
+    if (isDuplicateInFile) {
+      rowErrors.push(`Duplicate PR ${prNumber} in uploaded file`);
+    }
+
+    const matCount = matchedPrc ? (matchedPrc.materials || []).length : 0;
+
+    const rowObj = {
+      rowNum,
+      prNumber,
+      allocNo,
+      allocDate,
+      buyerName,
+      status: status || 'Allocated',
+      department: dept,
+      job,
+      exists: !!matchedPrc,
+      prc: matchedPrc,
+      materialCount: matCount,
+      errors: rowErrors,
+      isValid: rowErrors.length === 0
+    };
+
+    if (rowErrors.length > 0) {
+      errors.push({ row: rowNum, errors: rowErrors, data: norm });
+    }
+
+    processedRows.push(rowObj);
+  });
+
+  const validCount = processedRows.filter(r => r.isValid).length;
+  const errorCount = processedRows.filter(r => !r.isValid).length;
+  const newPRCount = processedRows.filter(r => r.isValid && !r.exists).length;
+  const matchedPRCount = processedRows.filter(r => r.isValid && r.exists).length;
+
+  return {
+    valid: errorCount === 0,
+    errors,
+    rows: processedRows,
+    summary: {
+      total: processedRows.length,
+      valid: validCount,
+      errors: errorCount,
+      matchedPRs: matchedPRCount,
+      newPRs: newPRCount
+    }
+  };
+}
+
+/** Render preview table for Bulk Allocation Modal */
+export function renderBulkAllocationPreviewTable(processedRows) {
+  if (!processedRows || !processedRows.length) {
+    return `<div class="empty-state" style="padding:24px"><div class="empty-state-title">No rows to display</div></div>`;
+  }
+
+  const rowsHtml = processedRows.map(r => {
+    let statusBadge = '';
+    let rowClass = '';
+
+    if (!r.isValid) {
+      rowClass = 'table-row-error';
+      statusBadge = `<span class="chip chip-wrong" title="${r.errors.join(', ')}">❌ ${r.errors[0]}</span>`;
+    } else if (r.exists) {
+      statusBadge = `<span class="chip chip-completed" title="PR found. ${r.materialCount} material(s) will be allocated.">✓ Ready (${r.materialCount} items)</span>`;
+    } else {
+      statusBadge = `<span class="chip chip-awaiting" title="PR not found in database. Will create PR and allocate.">➕ New PR (Will Create)</span>`;
+    }
+
+    return `
+      <tr class="${rowClass}">
+        <td><strong>${r.rowNum}</strong></td>
+        <td><span class="font-mono font-semibold" style="color:var(--color-primary)">${r.prNumber}</span></td>
+        <td><span class="font-mono font-bold">${r.allocNo}</span></td>
+        <td>${r.allocDate || '—'}</td>
+        <td><strong>${r.buyerName || '—'}</strong></td>
+        <td>${r.department || (r.prc ? (r.prc.department || r.prc.bu || '—') : '—')}</td>
+        <td>${r.job || (r.prc ? (r.prc.job || r.prc.jobCode || '—') : '—')}</td>
+        <td><span class="chip chip-pending">${r.status || 'Allocated'}</span></td>
+        <td>${statusBadge}</td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <div class="table-wrapper" style="max-height:340px;overflow:auto;border:1px solid var(--color-border);border-radius:8px">
+      <table class="data-table" style="font-size:12px;white-space:nowrap">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>PR Number</th>
+            <th>Allocation No</th>
+            <th>Allocation Date</th>
+            <th>Buyer Name</th>
+            <th>Department</th>
+            <th>Job</th>
+            <th>Target Status</th>
+            <th>Validation Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+/** Apply Bulk Allocation updates to state, PRCs, allocations, and database */
+export function applyBulkAllocationImport(processedRows) {
+  const validRows = processedRows.filter(r => r.isValid);
+  if (!validRows.length) {
+    toast('No valid rows to allocate', 'warning');
+    return { success: false, count: 0 };
+  }
+
+  const state = getState();
+  const existingPRCs = [...(state.prcs || [])];
+  const existingAllocs = [...(state.allocations || [])];
+
+  let updatedPRCount = 0;
+  let createdPRCount = 0;
+  let totalMaterialsAllocated = 0;
+
+  // Group valid rows by Allocation Number
+  const allocGroups = {};
+
+  validRows.forEach(r => {
+    const prUpper = r.prNumber.toUpperCase();
+    let prcIdx = existingPRCs.findIndex(p => String(p.prNumber || '').trim().toUpperCase() === prUpper);
+
+    let prc;
+    if (prcIdx !== -1) {
+      // Existing PRC
+      prc = { ...existingPRCs[prcIdx], materials: [...(existingPRCs[prcIdx].materials || [])] };
+      updatedPRCount++;
+    } else {
+      // Create new PRC
+      createdPRCount++;
+      const newPrcId = r.prNumber;
+      prc = {
+        id: newPrcId,
+        prNumber: r.prNumber,
+        createdAt: r.allocDate || new Date().toISOString().split('T')[0],
+        importedBy: state.currentUser?.name || 'Bulk Allocation',
+        priority: 'Medium',
+        department: r.department || 'Procurement',
+        job: r.job || 'General Project',
+        jobCode: r.job || '',
+        materials: [
+          {
+            id: `${r.prNumber}-MAT-01-1`,
+            serialNumber: '1',
+            matCode: `MAT-${r.prNumber}-01`,
+            description: `Items for Requisition ${r.prNumber}`,
+            unit: 'EA',
+            quantity: 1,
+            processedQty: 0,
+            pendingQty: 1,
+            closedQty: 0,
+            currencyDesc: 'KWD',
+            allocationNumber: r.allocNo,
+            allocationDate: r.allocDate,
+            buyerName: r.buyerName,
+            allocatedBy: r.buyerName,
+            status: 'Allocated'
+          }
+        ]
+      };
+      existingPRCs.push(prc);
+      prcIdx = existingPRCs.length - 1;
+    }
+
+    // Update PR Header fields
+    prc.allocationNumber = r.allocNo;
+    prc.allocationDate   = r.allocDate;
+    prc.buyerName        = r.buyerName;
+    prc.allocatedBy      = r.buyerName;
+    if (r.department) {
+      prc.department = r.department;
+      prc.bu = r.department;
+    }
+    if (r.job) {
+      prc.job = r.job;
+      prc.jobCode = r.job;
+    }
+    if (r.status) {
+      prc.prStatus = r.status;
+    }
+
+    // If PRC had no materials, add a placeholder material
+    if (!prc.materials || prc.materials.length === 0) {
+      prc.materials = [
+        {
+          id: `${r.prNumber}-MAT-01-1`,
+          serialNumber: '1',
+          matCode: `MAT-${r.prNumber}-01`,
+          description: `Items for Requisition ${r.prNumber}`,
+          unit: 'EA',
+          quantity: 1,
+          processedQty: 0,
+          pendingQty: 1,
+          closedQty: 0,
+          currencyDesc: 'KWD',
+          allocationNumber: r.allocNo,
+          allocationDate: r.allocDate,
+          buyerName: r.buyerName,
+          allocatedBy: r.buyerName,
+          status: 'Allocated'
+        }
+      ];
+    }
+
+    // Update all materials in this PR with allocation info
+    prc.materials = prc.materials.map(m => {
+      totalMaterialsAllocated++;
+      const updatedMat = {
+        ...m,
+        allocationNumber: r.allocNo,
+        allocationDate: r.allocDate,
+        buyerName: r.buyerName,
+        allocatedBy: r.buyerName
+      };
+      updatedMat.status = calculateMaterialStatus ? calculateMaterialStatus(updatedMat) : 'Allocated';
+      return updatedMat;
+    });
+
+    prc.status = calculateStatus ? calculateStatus(prc, prc.materials) : 'Allocated';
+    prc.updatedAt = new Date().toISOString();
+    existingPRCs[prcIdx] = prc;
+
+    // Collect for Allocation documents
+    if (!allocGroups[r.allocNo]) {
+      allocGroups[r.allocNo] = {
+        allocationNumber: r.allocNo,
+        allocationDate: r.allocDate,
+        buyerName: r.buyerName,
+        items: []
+      };
+    }
+
+    prc.materials.forEach(m => {
+      allocGroups[r.allocNo].items.push({
+        prcId: prc.id,
+        materialId: m.id,
+        quantity: parseFloat(m.quantity) || 1,
+        matCode: m.matCode || 'MAT',
+        description: m.description || '',
+        unit: m.unit || 'EA',
+        prNumber: prc.prNumber
+      });
+    });
+  });
+
+  // Save/merge Allocation documents into state
+  const updatedAllocs = [...existingAllocs];
+
+  Object.values(allocGroups).forEach(group => {
+    const existingIdx = updatedAllocs.findIndex(
+      a => String(a.allocationNumber || '').trim().toUpperCase() === group.allocationNumber.toUpperCase()
+    );
+
+    if (existingIdx !== -1) {
+      // Merge items
+      const existing = updatedAllocs[existingIdx];
+      const existingItems = [...(existing.items || [])];
+      const itemKeySet = new Set(existingItems.map(i => `${i.prcId}::${i.materialId}`));
+
+      group.items.forEach(newItem => {
+        const key = `${newItem.prcId}::${newItem.materialId}`;
+        if (!itemKeySet.has(key)) {
+          existingItems.push(newItem);
+          itemKeySet.add(key);
+        }
+      });
+
+      updatedAllocs[existingIdx] = {
+        ...existing,
+        allocationDate: group.allocationDate || existing.allocationDate,
+        buyerName: group.buyerName || existing.buyerName,
+        allocatedBy: group.buyerName || existing.allocatedBy,
+        items: existingItems,
+        updatedAt: new Date().toISOString(),
+        updatedBy: state.currentUser?.name || 'Bulk Allocation'
+      };
+    } else {
+      // New allocation document
+      updatedAllocs.unshift({
+        id: `alloc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        allocationNumber: group.allocationNumber,
+        allocationDate: group.allocationDate,
+        buyerName: group.buyerName,
+        allocatedBy: group.buyerName,
+        items: group.items,
+        createdAt: new Date().toISOString(),
+        createdBy: state.currentUser?.name || 'Bulk Allocation',
+        status: 'Active'
+      });
+    }
+  });
+
+  const summary = buildStatusSummary ? buildStatusSummary(existingPRCs) : state.statusSummary;
+
+  // Commit updated state
+  setState({
+    prcs: existingPRCs,
+    allocations: updatedAllocs,
+    statusSummary: summary
+  });
+
+  // Audit log
+  addAuditLog({
+    action: 'bulk_allocation_excel',
+    collection: 'Allocations',
+    docId: 'bulk_import',
+    changes: {
+      summary: `Bulk Allocation via Excel: ${validRows.length} PRs processed (${updatedPRCount} existing updated, ${createdPRCount} new created), ${Object.keys(allocGroups).length} Allocation Document(s) created/merged.`
+    }
+  });
+
+  // Push to Cloud / Firestore
+  try {
+    pushLocalDataToFirestore();
+  } catch (syncErr) {
+    console.warn('Firestore sync note for bulk allocation:', syncErr);
+  }
+
+  return {
+    success: true,
+    prsAllocated: validRows.length,
+    updatedPRCount,
+    createdPRCount,
+    allocationsCreated: Object.keys(allocGroups).length,
+    materialsAllocated: totalMaterialsAllocated
+  };
+}
+
