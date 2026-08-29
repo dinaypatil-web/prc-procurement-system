@@ -339,7 +339,7 @@
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getPODItems } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
-import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment } from './js/excel-import.js';
+import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment, rollbackImportSnapshot, getImportHistory, renderImportHistoryTable, getLastImportSnapshotId, clearImportHistory } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
 import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } from './js/turso-db.js';
 import { getActiveDbProvider, setActiveDbProvider } from './js/db-adapter.js';
@@ -2718,6 +2718,24 @@ function renderImport(container) {
       </div>
     </div>
   </div>
+
+  <!-- Import History & Call Back (Undo) Card -->
+  <div class="card" style="max-width:850px;margin-top:24px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+      <div>
+        <h3 style="margin:0;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px">
+          <span>📋 Excel Upload History & Call Back (Undo)</span>
+        </h3>
+        <p style="font-size:12px;color:var(--color-text-secondary);margin:2px 0 0 0">
+          Restore points are automatically saved before every import. You can call back any upload to revert changes.
+        </p>
+      </div>
+      <button class="btn btn-secondary btn-xs" onclick="refreshImportHistoryView()">🔄 Refresh</button>
+    </div>
+    <div id="import-history-table-container">
+      ${renderImportHistoryTable()}
+    </div>
+  </div>
 </div>
 
 <div id="import-step-2" style="display:none;height:calc(100vh - 180px);min-height:400px">
@@ -2741,8 +2759,11 @@ function renderImport(container) {
     <div style="font-size:72px;margin-bottom:16px">🎉</div>
     <h3 style="font-size:24px;font-weight:800;margin-bottom:8px">Import Successful!</h3>
     <p id="import-result-text" style="color:var(--color-text-secondary);margin-bottom:24px"></p>
-    <div class="flex gap-3 justify-center">
+    <div class="flex gap-3 justify-center flex-wrap">
       <button class="btn btn-secondary" onclick="resetImport()">Import Another File</button>
+      <button class="btn btn-danger" onclick="handleRollbackLastImport()" style="display:inline-flex;align-items:center;gap:6px">
+        <span>⏪</span> Call Back / Undo This Upload
+      </button>
       <button class="btn btn-primary" onclick="navigate('prc-list')">View PRC Records →</button>
     </div>
   </div>
@@ -2871,6 +2892,46 @@ window.confirmImport = function() {
 window.resetImport = function() {
   importStep = 1; parsedRows = []; validationResult = null;
   renderImport(document.getElementById('page-content'));
+};
+
+window.handleRollbackImport = async function(snapshotId) {
+  const confirmed = await confirmDialog(
+    'Are you sure you want to call back (revert) this Excel upload? This will undo all changes made during this import batch and restore the exact database state.',
+    'Call Back Excel Upload'
+  );
+  if (!confirmed) return;
+
+  const result = rollbackImportSnapshot(snapshotId);
+  if (result.success) {
+    toast(`✅ Upload called back successfully! Restored state prior to "${result.snapshot?.type}".`, 'success', 5000);
+    const container = document.getElementById('page-content');
+    const cur = getState().currentPage || 'import';
+    if (container && PAGES[cur]) {
+      preserveScroll(() => PAGES[cur].render(container));
+    } else if (container && cur === 'import') {
+      renderImport(container);
+    }
+    updateSidebarBadges();
+  } else {
+    toast(result.reason || 'Failed to call back import snapshot', 'error');
+  }
+};
+
+window.handleRollbackLastImport = async function() {
+  const lastId = getLastImportSnapshotId();
+  if (!lastId) {
+    toast('No recent import batch found to call back.', 'warning');
+    return;
+  }
+  await handleRollbackImport(lastId);
+};
+
+window.refreshImportHistoryView = function() {
+  const target = document.getElementById('import-history-table-container');
+  if (target) {
+    target.innerHTML = renderImportHistoryTable();
+    toast('Import history refreshed', 'info', 1500);
+  }
 };
 
 // ═══════════════════════════════════════════════════════════

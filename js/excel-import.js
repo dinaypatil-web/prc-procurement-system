@@ -1,9 +1,200 @@
 // =========================================================
 // EXCEL IMPORT ENGINE (SheetJS-based)
 // =========================================================
-import { toast } from './utils.js';
+import { toast, clone, fmtDateTime } from './utils.js';
 import { updatePRC, getState, setState, addAuditLog, createAllocation, pushLocalDataToFirestore } from './state.js';
 import { calculateStatus, calculateMaterialStatus, buildStatusSummary } from './status-engine.js';
+
+// ═══════════════════════════════════════════════════════════
+// IMPORT SNAPSHOT & CALL BACK (ROLLBACK) ENGINE
+// ═══════════════════════════════════════════════════════════
+const IMPORT_HISTORY_STORAGE_KEY = 'PRC_EXCEL_IMPORT_HISTORY';
+const MAX_SNAPSHOTS = 20;
+let _lastImportSnapshotId = null;
+
+/** Retrieve last created import snapshot ID */
+export function getLastImportSnapshotId() {
+  return _lastImportSnapshotId;
+}
+
+/** Retrieve import history list from localStorage and state */
+export function getImportHistory() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(IMPORT_HISTORY_STORAGE_KEY);
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) return list;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load import history:', e);
+  }
+  return getState().importHistory || [];
+}
+
+/** Save pre-import snapshot before applying any Excel upload modifications */
+export function createImportSnapshot(type, fileName, summary) {
+  const state = getState();
+  const snapshotId = `batch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+  const snapshot = {
+    id: snapshotId,
+    timestamp: new Date().toISOString(),
+    type: type || 'Excel Import',
+    fileName: fileName || 'Uploaded Spreadsheet',
+    summary: summary || 'Import batch',
+    user: state.currentUser?.name || 'User',
+    stateSnapshot: {
+      prcs: clone(state.prcs || []),
+      allocations: clone(state.allocations || []),
+      rfqs: clone(state.rfqs || []),
+      tcds: clone(state.tcds || []),
+      pods: clone(state.pods || []),
+      statusSummary: clone(state.statusSummary || {})
+    }
+  };
+
+  try {
+    const history = getImportHistory();
+    const updatedHistory = [snapshot, ...history].slice(0, MAX_SNAPSHOTS);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(IMPORT_HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
+    }
+    setState({ importHistory: updatedHistory });
+  } catch (e) {
+    console.warn('Failed to save import snapshot:', e);
+  }
+
+  _lastImportSnapshotId = snapshotId;
+  return snapshotId;
+}
+
+/** Rollback / Call Back a specific import snapshot */
+export function rollbackImportSnapshot(snapshotId) {
+  const history = getImportHistory();
+  const snapshot = history.find(s => s.id === snapshotId);
+
+  if (!snapshot || !snapshot.stateSnapshot) {
+    return { success: false, reason: 'Import snapshot not found or corrupted.' };
+  }
+
+  const { prcs, allocations, rfqs, tcds, pods, statusSummary } = snapshot.stateSnapshot;
+
+  // Commit restored state
+  setState({
+    prcs: clone(prcs || []),
+    allocations: clone(allocations || []),
+    rfqs: clone(rfqs || []),
+    tcds: clone(tcds || []),
+    pods: clone(pods || []),
+    statusSummary: statusSummary || (buildStatusSummary ? buildStatusSummary(prcs || []) : {})
+  });
+
+  // Remove reverted snapshot from history
+  const updatedHistory = history.filter(s => s.id !== snapshotId);
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(IMPORT_HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
+    }
+    setState({ importHistory: updatedHistory });
+  } catch (e) {}
+
+  if (_lastImportSnapshotId === snapshotId) {
+    _lastImportSnapshotId = updatedHistory[0]?.id || null;
+  }
+
+  addAuditLog({
+    action: 'rollback_excel_import',
+    collection: 'PRCs',
+    docId: snapshotId,
+    changes: {
+      summary: `Called back / Reverted Excel upload: ${snapshot.type} (${snapshot.fileName}) from ${snapshot.timestamp}. Database state restored.`
+    }
+  });
+
+  // Direct sync to Cloud / Firestore
+  try {
+    pushLocalDataToFirestore();
+  } catch (syncErr) {
+    console.warn('Firestore push note after rollback:', syncErr);
+  }
+
+  return {
+    success: true,
+    snapshot,
+    prcCount: (prcs || []).length
+  };
+}
+
+/** Clear all import history */
+export function clearImportHistory() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(IMPORT_HISTORY_STORAGE_KEY);
+    }
+    setState({ importHistory: [] });
+    _lastImportSnapshotId = null;
+  } catch (e) {}
+}
+
+/** Render HTML table of recent Excel import batches with Call Back (Revert) actions */
+export function renderImportHistoryTable() {
+  const history = getImportHistory();
+
+  if (!history || !history.length) {
+    return `
+      <div style="padding:24px;text-align:center;color:var(--color-text-secondary);font-size:13px">
+        <span>ℹ️ No Excel upload restore points found. Restore points are automatically created whenever an Excel file is imported.</span>
+      </div>
+    `;
+  }
+
+  const rows = history.map((item, idx) => {
+    let typeBadgeClass = 'badge-secondary';
+    if (item.type.includes('Requisition')) typeBadgeClass = 'badge-primary';
+    else if (item.type.includes('Allocation')) typeBadgeClass = 'badge-warning';
+    else if (item.type.includes('PO Report')) typeBadgeClass = 'badge-success';
+
+    return `
+      <tr>
+        <td><strong>${idx + 1}</strong></td>
+        <td><span class="font-mono" style="font-size:11px">${fmtDateTime(item.timestamp)}</span></td>
+        <td><span class="badge ${typeBadgeClass}">${item.type}</span></td>
+        <td><span class="font-bold font-mono" style="color:var(--color-primary)">${item.fileName || 'Spreadsheet.xlsx'}</span></td>
+        <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis" title="${item.summary}">${item.summary}</td>
+        <td>${item.user || 'User'}</td>
+        <td style="text-align:right">
+          <button class="btn btn-secondary btn-xs" onclick="handleRollbackImport('${item.id}')" style="color:var(--color-danger);border-color:rgba(239,68,68,0.3);font-weight:600" title="Call back / Revert this Excel upload">
+            <span>⏪</span> Call Back (Revert)
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <div class="table-wrapper" style="max-height:300px;overflow:auto;border:1px solid var(--color-border);border-radius:8px">
+      <table class="data-table" style="font-size:12px;white-space:nowrap">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Uploaded At</th>
+            <th>Import Type</th>
+            <th>File Name</th>
+            <th>Summary / Records</th>
+            <th>User</th>
+            <th style="text-align:right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 
 // Expected columns in the import Excel file (45 Enterprise Columns)
 export const ALL_IMPORT_COLUMNS = [
@@ -222,10 +413,18 @@ export function validateRows(rows) {
 }
 
 /** Merge import rows into state — skips existing PRCs to prevent duplicates and overwrites */
-export function mergeImport(rows) {
+export function mergeImport(rows, fileName = 'Requisitions_Import.xlsx') {
   const state     = getState();
   const existing  = state.prcs || [];
-  const results   = { new: 0, skipped: 0, skippedPRCs: [], duplicateRows: 0 };
+  const results   = { new: 0, skipped: 0, skippedPRCs: [], duplicateRows: 0, snapshotId: null };
+
+  // Create pre-import snapshot for Call Back / Rollback
+  const snapshotId = createImportSnapshot(
+    'Enterprise Requisitions (45 Columns)',
+    fileName,
+    `Import batch with ${rows.length} rows processed.`
+  );
+  results.snapshotId = snapshotId;
 
   const existingPRCSet = new Set(existing.map(p => String(p.prNumber || '').trim().toUpperCase()));
 
@@ -1117,7 +1316,7 @@ export function renderBulkAllocationPreviewTable(processedRows) {
 }
 
 /** Apply Bulk Allocation updates to state, PRCs, allocations, and database */
-export function applyBulkAllocationImport(processedRows) {
+export function applyBulkAllocationImport(processedRows, fileName = 'Bulk_Allocation.xlsx') {
   const validRows = processedRows.filter(r => r.isValid);
   if (!validRows.length) {
     toast('No valid rows to allocate', 'warning');
@@ -1125,6 +1324,14 @@ export function applyBulkAllocationImport(processedRows) {
   }
 
   const state = getState();
+
+  // Create pre-import snapshot for Call Back / Rollback
+  const snapshotId = createImportSnapshot(
+    'Bulk Allocation Excel',
+    fileName,
+    `Bulk allocation for ${validRows.length} PR(s).`
+  );
+
   const existingPRCs = [...(state.prcs || [])];
   const existingAllocs = [...(state.allocations || [])];
 
@@ -1341,7 +1548,8 @@ export function applyBulkAllocationImport(processedRows) {
     updatedPRCount,
     createdPRCount,
     allocationsCreated: Object.keys(allocGroups).length,
-    materialsAllocated: totalMaterialsAllocated
+    materialsAllocated: totalMaterialsAllocated,
+    snapshotId
   };
 }
 
@@ -1757,7 +1965,7 @@ export function renderPOReportPreviewTable(processedGroups) {
 }
 
 /** Apply PO Report line-item updates across PRCs, materials, RFQs, TCDs, and PODs */
-export function applyPOReportImport(processedGroups) {
+export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx') {
   const validGroups = (processedGroups || []).filter(g => g.isValid);
   if (!validGroups.length) {
     toast('No valid line items to import', 'warning');
@@ -1765,6 +1973,13 @@ export function applyPOReportImport(processedGroups) {
   }
 
   const state = getState();
+
+  // Create pre-import snapshot for Call Back / Rollback
+  const snapshotId = createImportSnapshot(
+    'PO Report Line-Item Import',
+    fileName,
+    `PO Report update for ${validGroups.length} line item(s).`
+  );
   const existingPRCs = [...(state.prcs || [])];
   const existingRFQs = [...(state.rfqs || [])];
   const existingTCDs = [...(state.tcds || [])];
@@ -2058,7 +2273,8 @@ export function applyPOReportImport(processedGroups) {
     updatedPRCCount,
     createdPRCCount,
     materialsUpdated: updatedMaterialsCount,
-    posCreatedOrUpdated: Object.keys(podDocsMap).length
+    posCreatedOrUpdated: Object.keys(podDocsMap).length,
+    snapshotId
   };
 }
 
