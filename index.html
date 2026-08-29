@@ -7672,7 +7672,7 @@ window.openPOReportImportModal = function() {
               PRC NUMBER · PRC DATE · MATERIAL CODE · ALLOCATION NUMBER · ALLOCATION DATE · BUYER NAME · RFQ NUMBER · TCD NUMBER · TCD DATE · PO NUMBER · PO AMENDMENT NUMBER · PO QUANTITY · PO DATE · VENDOR NAME
             </div>
             <div style="font-size:11px;color:var(--color-text-secondary);margin-top:4px">
-              ℹ️ <strong>Rules Applied:</strong> Line items matched by (PRC Number + Material Code). PO Number formatted as <code>PO Number - Amendment</code> (if AMD &gt; 0). PO, RFQ & TCD quantities equal cumulative PO Quantity. Allocation and Vendor details auto-linked.
+              ℹ️ <strong>Rules Applied:</strong> PO Data is ONLY imported for PRCs that exist in App PRC Records (unmatched PRCs are skipped). Line items matched by (PRC Number + Material Code). PO Number formatted as <code>PO Number - Amendment</code> (if AMD &gt; 0). PO, RFQ & TCD quantities equal cumulative PO Quantity. Allocation and Vendor details auto-linked.
             </div>
           </div>
           <button class="btn btn-secondary btn-sm" onclick="downloadPOReportTemplate()">
@@ -7765,8 +7765,9 @@ window.handlePOReportFile = async function(input) {
       summaryBar.innerHTML = `
         <div class="flex gap-2 flex-wrap align-center">
           <span class="badge badge-primary">Rows: ${validation.summary.totalRows}</span>
-          <span class="badge badge-secondary">Unique Line Items: ${validation.summary.uniqueLineItems}</span>
-          <span class="badge" style="background:rgba(16,185,129,0.15);color:var(--color-success)">✓ ${validation.summary.validItems} Valid</span>
+          <span class="badge badge-secondary">Unique Items: ${validation.summary.uniqueLineItems}</span>
+          <span class="badge" style="background:rgba(16,185,129,0.15);color:var(--color-success)">✓ ${validation.summary.validItems} Matched in App</span>
+          ${validation.summary.skippedNotInApp > 0 ? `<span class="badge" style="background:rgba(239,68,68,0.12);color:var(--color-danger)">⚠️ ${validation.summary.skippedNotInApp} Skipped (PRC Not in App)</span>` : ''}
           ${validation.summary.errorItems > 0 ? `<span class="badge badge-danger">❌ ${validation.summary.errorItems} Error(s)</span>` : ''}
           <span class="badge badge-primary">Matched PRCs: ${validation.summary.matchedPRCs}</span>
         </div>
@@ -7786,10 +7787,10 @@ window.handlePOReportFile = async function(input) {
     }
 
     if (footerHint) {
-      if (validation.summary.errorItems > 0) {
-        footerHint.innerHTML = `<span style="color:var(--color-danger)">⚠️ ${validation.summary.errorItems} item(s) have errors and will be skipped. ${validation.summary.validItems} valid line item(s) ready.</span>`;
+      if (validation.summary.skippedNotInApp > 0) {
+        footerHint.innerHTML = `<span style="color:var(--color-warning)">ℹ️ ${validation.summary.validItems} line item(s) matched existing PRCs and will be updated. ${validation.summary.skippedNotInApp} item(s) for PRCs not present in App records will be skipped.</span>`;
       } else {
-        footerHint.innerHTML = `<span style="color:var(--color-success)">✅ All ${validation.summary.validItems} line item(s) are valid and ready to update.</span>`;
+        footerHint.innerHTML = `<span style="color:var(--color-success)">✅ All ${validation.summary.validItems} line item(s) matched existing PRCs and are ready to update.</span>`;
       }
     }
 

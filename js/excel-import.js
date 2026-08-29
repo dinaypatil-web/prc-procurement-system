@@ -1899,12 +1899,16 @@ export function validatePOReportRows(rawRows) {
       );
     }
 
-    const isValid = g.errors.length === 0 && g.cumulatedPOQty > 0;
+    const existsPRC = Boolean(matchedPrc);
+    const isSkipped = !existsPRC;
+    const isValid = g.errors.length === 0 && g.cumulatedPOQty > 0 && existsPRC;
 
     return {
       ...g,
-      existsPRC: !!matchedPrc,
+      existsPRC,
       existsMaterial: !!matchedMat,
+      isSkipped,
+      skipReason: existsPRC ? '' : `PRC ${g.prcNumber} not found in App PRC Records`,
       prc: matchedPrc,
       material: matchedMat,
       matDescription: matchedMat ? matchedMat.description : `Material ${g.matCode}`,
@@ -1916,7 +1920,8 @@ export function validatePOReportRows(rawRows) {
 
   const totalRawRows = normalizedRows.length;
   const validGroupsCount = processedGroups.filter(g => g.isValid).length;
-  const errorGroupsCount = processedGroups.filter(g => !g.isValid).length;
+  const skippedNotInAppCount = processedGroups.filter(g => !g.existsPRC).length;
+  const errorGroupsCount = processedGroups.filter(g => g.errors.length > 0 || g.cumulatedPOQty <= 0).length;
   const matchedPRCsCount = new Set(processedGroups.filter(g => g.existsPRC).map(g => g.prcNumber.toUpperCase())).size;
 
   return {
@@ -1928,6 +1933,7 @@ export function validatePOReportRows(rawRows) {
       totalRows: totalRawRows,
       uniqueLineItems: processedGroups.length,
       validItems: validGroupsCount,
+      skippedNotInApp: skippedNotInAppCount,
       errorItems: errorGroupsCount,
       matchedPRCs: matchedPRCsCount
     }
@@ -1944,15 +1950,16 @@ export function renderPOReportPreviewTable(processedGroups) {
     let statusBadge = '';
     let rowClass = '';
 
-    if (!g.isValid) {
+    if (!g.existsPRC) {
+      rowClass = 'table-row-error';
+      statusBadge = `<span class="chip chip-wrong" style="font-weight:600" title="PRC ${g.prcNumber} is not present in App PRC Records. This line item will be SKIPPED.">⚠️ PRC Not in App (Skipped)</span>`;
+    } else if (g.errors.length > 0 || g.cumulatedPOQty <= 0) {
       rowClass = 'table-row-error';
       statusBadge = `<span class="chip chip-wrong" title="${g.errors.join(', ')}">❌ ${g.errors[0] || 'Invalid'}</span>`;
     } else if (g.existsPRC && g.existsMaterial) {
       statusBadge = `<span class="chip chip-completed" title="PRC and Material line item matched in database">✓ Matched Line Item</span>`;
-    } else if (g.existsPRC && !g.existsMaterial) {
-      statusBadge = `<span class="chip chip-awaiting" title="PRC found. Material ${g.matCode} will be linked/added to PRC">➕ Link to PRC</span>`;
     } else {
-      statusBadge = `<span class="chip chip-awaiting" title="PRC not found in database. PRC & line item will be created">➕ New PRC & Item</span>`;
+      statusBadge = `<span class="chip chip-awaiting" title="PRC found in App. Material ${g.matCode} will be linked to PRC">➕ Add Line to PRC</span>`;
     }
 
     const amdDisplay = g.latestAmdNumber && parseFloat(g.latestAmdNumber) > 0
@@ -2025,21 +2032,24 @@ export function renderPOReportPreviewTable(processedGroups) {
   `;
 }
 
-/** Apply PO Report line-item updates across PRCs, materials, allocations, RFQs, TCDs, and PODs */
+/** Apply PO Report line-item updates strictly for PRCs that exist in App PRC Records */
 export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx') {
-  const validGroups = (processedGroups || []).filter(g => g.isValid);
+  // STRICT RULE: Only import for PRCs that exist in App PRC Records
+  const validGroups = (processedGroups || []).filter(g => g.existsPRC && g.isValid);
+  const skippedCount = (processedGroups || []).filter(g => !g.existsPRC).length;
+
   if (!validGroups.length) {
-    toast('No valid line items to import', 'warning');
-    return { success: false, count: 0 };
+    toast('No matching PRCs found in App records. All rows for non-existent PRCs were skipped.', 'warning');
+    return { success: false, count: 0, skippedCount };
   }
 
   const state = getState();
 
   // Create pre-import snapshot for Call Back / Rollback
   const snapshotId = createImportSnapshot(
-    'PO Report Line-Item Import (14 Columns)',
+    'PO Report Line-Item Import',
     fileName,
-    `PO Report update for ${validGroups.length} line item(s).`
+    `PO Report update for ${validGroups.length} line item(s) across existing App PRCs (${skippedCount} non-existent PRCs skipped).`
   );
 
   const existingPRCs = [...(state.prcs || [])];
@@ -2049,8 +2059,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
   const existingPODs = [...(state.pods || [])];
 
   let updatedMaterialsCount = 0;
-  let updatedPRCCount = 0;
-  let createdPRCCount = 0;
+  const modifiedPRCIndices = new Set();
 
   // Track downstream collections to upsert
   const allocDocsMap = {};
@@ -2062,27 +2071,13 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     const prcUpper = g.prcNumber.toUpperCase();
     let prcIdx = existingPRCs.findIndex(p => String(p.prNumber || p.id || '').trim().toUpperCase() === prcUpper);
 
-    let prc;
-    if (prcIdx !== -1) {
-      prc = { ...existingPRCs[prcIdx], materials: [...(existingPRCs[prcIdx].materials || [])] };
-      updatedPRCCount++;
-    } else {
-      createdPRCCount++;
-      prc = {
-        id: g.prcNumber,
-        prNumber: g.prcNumber,
-        prDate: g.latestPrcDate || g.latestAllocationDate || g.latestPoDate || new Date().toISOString().split('T')[0],
-        createdAt: g.latestPrcDate || g.latestAllocationDate || g.latestPoDate || new Date().toISOString().split('T')[0],
-        importedBy: state.currentUser?.name || 'PO Report Import',
-        priority: 'Medium',
-        department: 'Procurement',
-        job: 'General Project',
-        jobCode: '',
-        materials: []
-      };
-      existingPRCs.push(prc);
-      prcIdx = existingPRCs.length - 1;
+    // If PRC is not found in existing records, skip completely (do NOT create new PRC)
+    if (prcIdx === -1) {
+      return;
     }
+
+    const prc = { ...existingPRCs[prcIdx], materials: [...(existingPRCs[prcIdx].materials || [])] };
+    modifiedPRCIndices.add(prcIdx);
 
     const matUpper = g.matCode.toUpperCase();
     let matIdx = prc.materials.findIndex(m =>
@@ -2094,7 +2089,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     if (matIdx !== -1) {
       material = { ...prc.materials[matIdx] };
     } else {
-      // Create new line item under this PRC
+      // Add new material line item under this existing PRC
       material = {
         id: `${g.prcNumber}-${g.matCode}-${prc.materials.length + 1}`,
         serialNumber: String(prc.materials.length + 1),
@@ -2102,7 +2097,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
         description: g.matDescription || `Material ${g.matCode}`,
         unit: g.unit || 'EA',
         quantity: g.cumulatedPOQty,
-        currencyDesc: 'KWD'
+        currencyDesc: prc.currencyDesc || 'KWD'
       };
       prc.materials.push(material);
       matIdx = prc.materials.length - 1;
@@ -2387,13 +2382,16 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     statusSummary: summary
   });
 
+  const updatedPRCCount = modifiedPRCIndices.size;
+  const createdPRCCount = 0;
+
   // Audit log
   addAuditLog({
     action: 'po_report_import_excel',
     collection: 'PODs',
     docId: 'bulk_import',
     changes: {
-      summary: `PO Report Import via Excel: ${validGroups.length} line items updated across ${validGroups.length} items (${updatedPRCCount} existing PRCs, ${createdPRCCount} new PRCs), with cumulated PO/RFQ/TCD quantities, allocation, and vendor records.`
+      summary: `PO Report Import via Excel: ${validGroups.length} line items updated across ${updatedPRCCount} existing App PRCs (${skippedCount} non-existent PRCs skipped), with cumulated PO/RFQ/TCD quantities, allocation, and vendor records.`
     }
   });
 
@@ -2408,12 +2406,14 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     success: true,
     lineItemsUpdated: validGroups.length,
     updatedPRCCount,
-    createdPRCCount,
+    createdPRCCount: 0,
+    skippedCount,
     materialsUpdated: updatedMaterialsCount,
     posCreatedOrUpdated: Object.keys(podDocsMap).length,
     allocationsCreatedOrUpdated: Object.keys(allocDocsMap).length,
     snapshotId
   };
 }
+
 
 
