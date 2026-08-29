@@ -6866,7 +6866,8 @@ function renderPODsPage(container) {
               <button class="btn btn-primary btn-sm" onclick="openEditPODModal('${p.id}')">${p.poNumber ? '✏️ Edit' : '📝 Set PO #'}</button>
               <button class="btn btn-ghost btn-sm" style="color:var(--color-danger)" onclick="handleDeletePOD('${p.id}')" title="Delete PO">🗑️</button>
             </td>
-          </tr>`).join('')}
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>
   </div>` : `
