@@ -1584,7 +1584,7 @@ const PO_REPORT_ALIAS_MAP = {
   'ALLOCATION NUMBER': ['ALLOCATION NUMBER', 'ALLOCATION NO', 'ALLOCATION NO.', 'ALLOC NO', 'ALLOC NO.', 'ALLOCATION', 'ALLOCATION_NUMBER', 'ALLOC_NUMBER', 'ALLOCATION NUM'],
   'ALLOCATION DATE': ['ALLOCATION DATE', 'ALLOC DATE', 'ALLOCATION_DATE', 'ALLOC_DATE', 'ALLOCATION ON', 'ALLOC DATE.'],
   'BUYER NAME': ['BUYER NAME', 'BUYER', 'BUYER_NAME', 'PURCHASER', 'BUYER PERSON', 'ALLOCATED TO', 'BUYER_PERSON'],
-  'RFQ NUMBER': ['RFQ NUMBER', 'RFQ NO', 'RFQ_NUMBER', 'RFQ NO.', 'RFQ', 'RFQ CODE', 'RFQ_NO'],
+  'RFQ NUMBER': ['RFQ NUMBER', 'RFQ NO', 'RFQ_NUMBER', 'RFQ NO.', 'RFQ', 'RFQ CODE', 'RFQ_NO', 'RFQ NUM', 'RFQ #', 'RFQ#', 'ENQUIRY NUMBER', 'ENQUIRY NO', 'ENQUIRY NO.', 'ENQ NO', 'ENQ NO.', 'ENQUIRY_NO', 'ENQUIRY', 'TENDER NUMBER', 'TENDER NO', 'TENDER NO.', 'TENDER', 'BID NUMBER', 'BID NO', 'BID NO.', 'REQUEST FOR QUOTATION', 'QUOTATION REQUEST NUMBER', 'QUOTATION REQUEST NO', 'RFQ_ID', 'RFQID'],
   'TCD NUMBER': ['TCD NUMBER', 'TCD NO', 'TCD_NUMBER', 'TCD NO.', 'TCD', 'TCD CODE', 'TCD_NO'],
   'TCD DATE': ['TCD DATE', 'TCD_DATE', 'TCD DATE.', 'TCD ON', 'TCD CREATION DATE'],
   'PO NUMBER': ['PO NUMBER', 'PO NO', 'PO_NUMBER', 'PO NO.', 'PO', 'PURCHASE ORDER NUMBER', 'PURCHASE ORDER', 'ORDER NO', 'PO_NO'],
@@ -1871,17 +1871,17 @@ export function validatePOReportRows(rawRows) {
         g.effectivePoNumbers.add(norm['_EFFECTIVE_PO_NUMBER']);
         g.latestEffectivePoNumber = norm['_EFFECTIVE_PO_NUMBER'];
       }
-      if (norm['PO NUMBER']) g.latestRawPoNumber = norm['PO NUMBER'];
-      if (norm['PO AMENDMENT NUMBER']) g.latestAmdNumber = String(norm['PO AMENDMENT NUMBER']).trim();
-      if (norm['PRC DATE']) g.latestPrcDate = String(norm['PRC DATE']).trim();
-      if (norm['ALLOCATION NUMBER']) g.latestAllocationNumber = String(norm['ALLOCATION NUMBER']).trim();
-      if (norm['ALLOCATION DATE']) g.latestAllocationDate = String(norm['ALLOCATION DATE']).trim();
-      if (norm['BUYER NAME']) g.latestBuyerName = String(norm['BUYER NAME']).trim();
-      if (norm['RFQ NUMBER']) g.latestRfqNumber = String(norm['RFQ NUMBER']).trim();
-      if (norm['TCD NUMBER']) g.latestTcdNumber = String(norm['TCD NUMBER']).trim();
-      if (norm['TCD DATE']) g.latestTcdDate = String(norm['TCD DATE']).trim();
-      if (norm['PO DATE']) g.latestPoDate = String(norm['PO DATE']).trim();
-      if (norm['VENDOR NAME']) g.latestVendorName = String(norm['VENDOR NAME']).trim();
+      if (norm['PO NUMBER'] && String(norm['PO NUMBER']).trim()) g.latestRawPoNumber = String(norm['PO NUMBER']).trim();
+      if (norm['PO AMENDMENT NUMBER'] && String(norm['PO AMENDMENT NUMBER']).trim()) g.latestAmdNumber = String(norm['PO AMENDMENT NUMBER']).trim();
+      if (norm['PRC DATE'] && String(norm['PRC DATE']).trim()) g.latestPrcDate = String(norm['PRC DATE']).trim();
+      if (norm['ALLOCATION NUMBER'] && String(norm['ALLOCATION NUMBER']).trim()) g.latestAllocationNumber = String(norm['ALLOCATION NUMBER']).trim();
+      if (norm['ALLOCATION DATE'] && String(norm['ALLOCATION DATE']).trim()) g.latestAllocationDate = String(norm['ALLOCATION DATE']).trim();
+      if (norm['BUYER NAME'] && String(norm['BUYER NAME']).trim()) g.latestBuyerName = String(norm['BUYER NAME']).trim();
+      if (norm['RFQ NUMBER'] && String(norm['RFQ NUMBER']).trim()) g.latestRfqNumber = String(norm['RFQ NUMBER']).trim();
+      if (norm['TCD NUMBER'] && String(norm['TCD NUMBER']).trim()) g.latestTcdNumber = String(norm['TCD NUMBER']).trim();
+      if (norm['TCD DATE'] && String(norm['TCD DATE']).trim()) g.latestTcdDate = String(norm['TCD DATE']).trim();
+      if (norm['PO DATE'] && String(norm['PO DATE']).trim()) g.latestPoDate = String(norm['PO DATE']).trim();
+      if (norm['VENDOR NAME'] && String(norm['VENDOR NAME']).trim()) g.latestVendorName = String(norm['VENDOR NAME']).trim();
     }
   });
 
@@ -2126,7 +2126,12 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     }
 
     // 3. Update Workflow identifiers
-    if (g.latestRfqNumber) material.rfqNumber = g.latestRfqNumber;
+    if (g.latestRfqNumber) {
+      material.rfqNumber = g.latestRfqNumber;
+      if (!material.rfqDate && (g.latestTcdDate || g.latestPoDate || g.latestAllocationDate)) {
+        material.rfqDate = g.latestTcdDate || g.latestPoDate || g.latestAllocationDate;
+      }
+    }
     if (g.latestTcdNumber) material.tcdNumber = g.latestTcdNumber;
     if (g.latestTcdDate) material.tcdDate = g.latestTcdDate;
     material.tcdApproved = true;
@@ -2151,9 +2156,14 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
       prc.buyerName = g.latestBuyerName;
       prc.allocatedBy = g.latestBuyerName;
     }
-    if (g.latestRfqNumber && !prc.rfqNumber) prc.rfqNumber = g.latestRfqNumber;
-    if (g.latestTcdNumber && !prc.tcdNumber) prc.tcdNumber = g.latestTcdNumber;
-    if (g.latestTcdDate && !prc.tcdDate) prc.tcdDate = g.latestTcdDate;
+    if (g.latestRfqNumber) {
+      prc.rfqNumber = g.latestRfqNumber;
+      if (!prc.rfqDate && (g.latestTcdDate || g.latestPoDate || g.latestAllocationDate)) {
+        prc.rfqDate = g.latestTcdDate || g.latestPoDate || g.latestAllocationDate;
+      }
+    }
+    if (g.latestTcdNumber) prc.tcdNumber = g.latestTcdNumber;
+    if (g.latestTcdDate) prc.tcdDate = g.latestTcdDate;
     prc.tcdApproved = true;
     prc.offersReceived = true;
     if (g.latestEffectivePoNumber) prc.poNumber = g.latestEffectivePoNumber;
