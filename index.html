@@ -2669,10 +2669,12 @@ function renderImport(container) {
   container.innerHTML = `
 <div class="page-header">
   <div>
-    <h1 class="page-title">Excel Import</h1>
-    <p class="page-subtitle">Import PRC requisitions, bulk allocations, or PO reports from Excel</p>
+    <h1 class="page-title">Excel Import & Data Restore</h1>
+    <p class="page-subtitle">Import PRC requisitions, PO reports, bulk allocations, or restore database from JSON backup</p>
   </div>
   <div class="flex gap-3 flex-wrap">
+    <button class="btn btn-secondary" onclick="triggerRestoreJSONBackup()" style="border-color:var(--color-success);color:var(--color-success)">📥 Restore JSON Backup</button>
+    <button class="btn btn-secondary" onclick="exportDatabaseBackup()">💾 Download JSON Backup</button>
     <button class="btn btn-secondary" onclick="openPOReportImportModal()" style="border-color:var(--color-primary);color:var(--color-primary)">🛒 Import PO Report (Line Items)</button>
     <button class="btn btn-secondary" onclick="loadSampleRequisitionData()">⚡ Load Demo Requisition Data</button>
     <button class="btn btn-secondary" onclick="downloadSampleTemplate()">📥 Download 45-Column Template</button>
@@ -3883,25 +3885,36 @@ window.exportDatabaseBackup   = () => exportDatabaseBackup();
 window.exportCreatorDatabase  = () => exportDatabaseBackup();
 window.restoreDatabaseBackup  = (jsonData) => restoreDatabaseBackup(jsonData);
 window.triggerRestoreJSONBackup = function() {
-  const input = document.getElementById('json-backup-input');
-  if (input) {
-    input.value = '';
-    input.click();
+  let input = document.getElementById('json-backup-input');
+  if (!input) {
+    input = document.createElement('input');
+    input.type = 'file';
+    input.id = 'json-backup-input';
+    input.accept = '.json';
+    input.style.display = 'none';
+    input.onchange = (e) => window.handleRestoreJSONBackupFile(e);
+    document.body.appendChild(input);
   }
+  input.value = '';
+  input.click();
 };
 window.handleRestoreJSONBackupFile = async function(e) {
   const file = e.target.files && e.target.files[0];
   if (!file) return;
 
-  const confirmed = await confirmDialog(`Are you sure you want to restore database from backup file "${file.name}"? This will update your database with the backup data.`, "Restore Database Backup");
+  const confirmed = await confirmDialog(
+    `Are you sure you want to restore database from backup file "${file.name}"? This will populate your workspace and Turso Cloud Database with all PRCs, Materials, Allocations, RFQs, TCDs, and Purchase Orders from this backup.`,
+    "Restore Database Backup (.json)"
+  );
   if (!confirmed) return;
 
   const reader = new FileReader();
   reader.onload = async (evt) => {
     try {
+      toast('Restoring database from JSON backup…', 'info', 3000);
       const parsedData = JSON.parse(evt.target.result);
       const res = await restoreDatabaseBackup(parsedData);
-      toast(`Database restored successfully! (${res.prcCount} PRCs loaded)`, "success");
+      toast(`✅ Database restored successfully! (${res.prcCount} PRCs, ${res.materialsCount || 0} Materials, ${res.allocationsCount || 0} Allocations, ${res.podCount || 0} POs)`, "success", 5000);
       navigate("dashboard");
       updateSidebarBadges();
     } catch (err) {

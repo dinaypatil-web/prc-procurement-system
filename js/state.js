@@ -265,9 +265,13 @@ export async function restoreDatabaseBackup(jsonData) {
 
   state.prcs = prcs;
   if (allocations.length) state.allocations = consolidateAllocations(allocations);
+  else state.allocations = [];
   if (rfqs.length) state.rfqs = consolidateRFQs(rfqs);
+  else state.rfqs = [];
   if (tcds.length) state.tcds = consolidateTCDs(tcds);
+  else state.tcds = [];
   if (pods.length) state.pods = pods;
+  else state.pods = [];
   if (vendors.length) state.vendors = vendors;
   if (users.length) state.users = users;
   if (notifications.length) state.notifications = notifications;
@@ -285,8 +289,19 @@ export async function restoreDatabaseBackup(jsonData) {
 
   saveToLocalCache();
 
-  // Sync restored data to Cloud Firestore
+  // Sync restored data to Database (Turso & Firestore)
   const uid = _getEffectiveUid();
+  const provider = getActiveDbProvider();
+
+  try {
+    const { saveAllUserData } = await import('./db-adapter.js');
+    await saveAllUserData(uid, state);
+    console.info(`⚡ Restored database successfully saved to ${provider.toUpperCase()}`);
+  } catch (err) {
+    console.warn(`Failed to push restored data to ${provider}:`, err);
+  }
+
+  // Also sync to Cloud Firestore collections
   const collectionsToSave = ['prcs', 'allocations', 'rfqs', 'tcds', 'pods', 'vendors', 'notifications', 'activityLogs'];
   for (const col of collectionsToSave) {
     if (state[col] && state[col].length > 0) {
@@ -298,11 +313,25 @@ export async function restoreDatabaseBackup(jsonData) {
     }
   }
 
+  addAuditLog({
+    action: 'restore_json_backup',
+    collection: 'Database',
+    docId: 'full_restore',
+    changes: {
+      summary: `Database restored from JSON backup: ${prcs.length} PRCs, ${state.totalMaterials} materials, ${state.allocations.length} allocations, ${state.rfqs.length} RFQs, ${state.tcds.length} TCDs, ${state.pods.length} POs.`
+    }
+  });
+
   emit('*');
   return {
+    success: true,
     prcCount: state.prcs.length,
+    materialsCount: state.totalMaterials,
     allocationsCount: state.allocations.length,
-    rfqCount: state.rfqs.length
+    rfqCount: state.rfqs.length,
+    tcdCount: state.tcds.length,
+    podCount: state.pods.length,
+    vendorCount: state.vendors.length
   };
 }
 
