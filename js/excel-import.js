@@ -1554,14 +1554,15 @@ export function applyBulkAllocationImport(processedRows, fileName = 'Bulk_Alloca
 }
 
 // ═══════════════════════════════════════════════════════════
-// DEDICATED PO REPORT LINE-ITEM EXCEL ENGINE (13 Columns)
-// PRC Number, Material Code, Allocation Number, Allocation Date,
-// Buyer Name, RFQ Number, TCD Number, TCD Date, PO Number,
-// PO Amendment Number, PO Quantity, PO Date, Vendor Name
+// DEDICATED PO REPORT LINE-ITEM EXCEL ENGINE (14 Columns)
+// PRC Number, PRC Date, Material Code, Allocation Number,
+// Allocation Date, Buyer Name, RFQ Number, TCD Number, TCD Date,
+// PO Number, PO Amendment Number, PO Quantity, PO Date, Vendor Name
 // ═══════════════════════════════════════════════════════════
 
 export const PO_REPORT_COLUMNS = [
   'PRC NUMBER',
+  'PRC DATE',
   'MATERIAL CODE',
   'ALLOCATION NUMBER',
   'ALLOCATION DATE',
@@ -1578,6 +1579,7 @@ export const PO_REPORT_COLUMNS = [
 
 const PO_REPORT_ALIAS_MAP = {
   'PRC NUMBER': ['PRC NUMBER', 'PRC NO', 'PR NUMBER', 'PR NO', 'PR_NUMBER', 'PRNUMBER', 'REQUISITION NUMBER', 'PR', 'PRC', 'PRC_NUMBER'],
+  'PRC DATE': ['PRC DATE', 'PR DATE', 'PR_DATE', 'PRC_DATE', 'REQUISITION DATE', 'PR DATE.', 'CREATED ON', 'PRC CREATED ON'],
   'MATERIAL CODE': ['MATERIAL CODE', 'MAT CODE', 'ITEM CODE', 'MATERIAL_CODE', 'MAT_CODE', 'ITEM NO', 'MATERIAL'],
   'ALLOCATION NUMBER': ['ALLOCATION NUMBER', 'ALLOCATION NO', 'ALLOCATION NO.', 'ALLOC NO', 'ALLOC NO.', 'ALLOCATION', 'ALLOCATION_NUMBER', 'ALLOC_NUMBER', 'ALLOCATION NUM'],
   'ALLOCATION DATE': ['ALLOCATION DATE', 'ALLOC DATE', 'ALLOCATION_DATE', 'ALLOC_DATE', 'ALLOCATION ON', 'ALLOC DATE.'],
@@ -1629,7 +1631,7 @@ export function normalizePOReportRow(rawRow) {
   });
 
   // Clean date strings
-  ['ALLOCATION DATE', 'TCD DATE', 'PO DATE'].forEach(dateField => {
+  ['PRC DATE', 'ALLOCATION DATE', 'TCD DATE', 'PO DATE'].forEach(dateField => {
     if (norm[dateField]) {
       let dateStr = String(norm[dateField]).trim();
       if (dateStr.includes('T')) dateStr = dateStr.split('T')[0];
@@ -1672,6 +1674,7 @@ export function downloadPOReportTemplate() {
       if (count >= 5) break;
       sampleData.push({
         'PRC NUMBER': prc.prNumber,
+        'PRC DATE': prc.prDate || prc.createdAt || todayStr,
         'MATERIAL CODE': m.matCode,
         'ALLOCATION NUMBER': m.allocationNumber || prc.allocationNumber || `AL-${prc.prNumber.replace(/\D/g, '') || '2026'}-01`,
         'ALLOCATION DATE': m.allocationDate || prc.allocationDate || todayStr,
@@ -1695,6 +1698,7 @@ export function downloadPOReportTemplate() {
     sampleData = [
       {
         'PRC NUMBER': 'PR-2026-1001',
+        'PRC DATE': todayStr,
         'MATERIAL CODE': 'MAT-50281',
         'ALLOCATION NUMBER': 'AL-2026-001',
         'ALLOCATION DATE': todayStr,
@@ -1710,6 +1714,7 @@ export function downloadPOReportTemplate() {
       },
       {
         'PRC NUMBER': 'PR-2026-1001',
+        'PRC DATE': todayStr,
         'MATERIAL CODE': 'MAT-50281',
         'ALLOCATION NUMBER': 'AL-2026-001',
         'ALLOCATION DATE': todayStr,
@@ -1725,6 +1730,7 @@ export function downloadPOReportTemplate() {
       },
       {
         'PRC NUMBER': 'PR-2026-1001',
+        'PRC DATE': todayStr,
         'MATERIAL CODE': 'MAT-70342',
         'ALLOCATION NUMBER': 'AL-2026-001',
         'ALLOCATION DATE': todayStr,
@@ -1740,6 +1746,7 @@ export function downloadPOReportTemplate() {
       },
       {
         'PRC NUMBER': 'PR-2026-1002',
+        'PRC DATE': todayStr,
         'MATERIAL CODE': 'MAT-88190',
         'ALLOCATION NUMBER': 'AL-2026-002',
         'ALLOCATION DATE': todayStr,
@@ -1762,6 +1769,7 @@ export function downloadPOReportTemplate() {
 
   ws['!cols'] = [
     { wch: 18 }, // PRC NUMBER
+    { wch: 16 }, // PRC DATE
     { wch: 18 }, // MATERIAL CODE
     { wch: 20 }, // ALLOCATION NUMBER
     { wch: 16 }, // ALLOCATION DATE
@@ -1837,6 +1845,7 @@ export function validatePOReportRows(rawRows) {
           latestEffectivePoNumber: '',
           latestRawPoNumber: '',
           latestAmdNumber: '',
+          latestPrcDate: '',
           latestAllocationNumber: '',
           latestAllocationDate: '',
           latestBuyerName: '',
@@ -1864,6 +1873,7 @@ export function validatePOReportRows(rawRows) {
       }
       if (norm['PO NUMBER']) g.latestRawPoNumber = norm['PO NUMBER'];
       if (norm['PO AMENDMENT NUMBER']) g.latestAmdNumber = String(norm['PO AMENDMENT NUMBER']).trim();
+      if (norm['PRC DATE']) g.latestPrcDate = String(norm['PRC DATE']).trim();
       if (norm['ALLOCATION NUMBER']) g.latestAllocationNumber = String(norm['ALLOCATION NUMBER']).trim();
       if (norm['ALLOCATION DATE']) g.latestAllocationDate = String(norm['ALLOCATION DATE']).trim();
       if (norm['BUYER NAME']) g.latestBuyerName = String(norm['BUYER NAME']).trim();
@@ -1957,6 +1967,7 @@ export function renderPOReportPreviewTable(processedGroups) {
       <tr class="${rowClass}">
         <td><strong>${idx + 1}</strong></td>
         <td><span class="font-mono font-semibold" style="color:var(--color-primary)">${g.prcNumber}</span></td>
+        <td>${g.latestPrcDate || '—'}</td>
         <td><span class="font-mono font-bold">${g.matCode}</span></td>
         <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis" title="${g.matDescription}"><strong>${g.matDescription}</strong></td>
         <td><span class="font-mono">${g.latestAllocationNumber || '—'}</span></td>
@@ -1988,6 +1999,7 @@ export function renderPOReportPreviewTable(processedGroups) {
           <tr>
             <th>#</th>
             <th>PRC Number</th>
+            <th>PRC Date</th>
             <th>Material Code</th>
             <th>Description</th>
             <th>Allocation No</th>
@@ -2025,7 +2037,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
 
   // Create pre-import snapshot for Call Back / Rollback
   const snapshotId = createImportSnapshot(
-    'PO Report Line-Item Import (13 Columns)',
+    'PO Report Line-Item Import (14 Columns)',
     fileName,
     `PO Report update for ${validGroups.length} line item(s).`
   );
@@ -2059,7 +2071,8 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
       prc = {
         id: g.prcNumber,
         prNumber: g.prcNumber,
-        createdAt: g.latestAllocationDate || g.latestPoDate || new Date().toISOString().split('T')[0],
+        prDate: g.latestPrcDate || g.latestAllocationDate || g.latestPoDate || new Date().toISOString().split('T')[0],
+        createdAt: g.latestPrcDate || g.latestAllocationDate || g.latestPoDate || new Date().toISOString().split('T')[0],
         importedBy: state.currentUser?.name || 'PO Report Import',
         priority: 'Medium',
         department: 'Procurement',
@@ -2133,6 +2146,10 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     updatedMaterialsCount++;
 
     // 4. Update PRC Header
+    if (g.latestPrcDate) {
+      prc.prDate = g.latestPrcDate;
+      prc.createdAt = g.latestPrcDate;
+    }
     if (g.latestAllocationNumber) {
       prc.allocationNumber = g.latestAllocationNumber;
       prc.allocationDate = g.latestAllocationDate;
@@ -2376,7 +2393,7 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
     collection: 'PODs',
     docId: 'bulk_import',
     changes: {
-      summary: `PO Report Import via Excel: ${validGroups.length} line items updated across ${validGroups.length} items (${updatedPRCCount} existing PRCs, ${createdPRCCount} new PRCs), with cumulated PO/RFQ/TCD quantities and vendor allocations.`
+      summary: `PO Report Import via Excel: ${validGroups.length} line items updated across ${validGroups.length} items (${updatedPRCCount} existing PRCs, ${createdPRCCount} new PRCs), with cumulated PO/RFQ/TCD quantities, allocation, and vendor records.`
     }
   });
 
