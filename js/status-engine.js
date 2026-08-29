@@ -524,8 +524,13 @@ export function isPRCOrMaterialInactive(prc, material) {
 export function getRFQStatus(rfq, prcs = []) {
   if (!rfq) return STATUS.PENDING;
 
-  // Explicitly Closed RFQ
-  const isClosed = !!(rfq.isClosed || String(rfq.status || '').trim().toLowerCase() === 'closed');
+  // Explicitly Closed RFQ or RFQ with TCD Number assigned
+  const isClosed = !!(
+    rfq.isClosed ||
+    String(rfq.status || '').trim().toLowerCase() === 'closed' ||
+    (rfq.tcdNumber && String(rfq.tcdNumber).trim() !== '') ||
+    (Array.isArray(rfq.items) && rfq.items.length > 0 && rfq.items.some(i => i.tcdNumber && String(i.tcdNumber).trim() !== ''))
+  );
   if (isClosed) return 'Closed';
 
   const rfqStatusRaw = String(rfq.status || '').trim().toLowerCase();

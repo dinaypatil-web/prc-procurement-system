@@ -2310,10 +2310,15 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
           }
         }
       });
+      const hasTCD = Boolean(rfq.tcdNumber || ex.tcdNumber);
       updatedRFQs[exIdx] = {
         ...ex,
         tcdNumber: rfq.tcdNumber || ex.tcdNumber || '',
         tcdDate: rfq.tcdDate || ex.tcdDate || '',
+        status: hasTCD ? 'Closed' : ex.status,
+        isClosed: hasTCD ? true : ex.isClosed,
+        closedAt: hasTCD ? (ex.closedAt || rfq.tcdDate || new Date().toISOString()) : ex.closedAt,
+        closedBy: hasTCD ? (ex.closedBy || 'PO Report Import (TCD Created)') : ex.closedBy,
         items: mergedItems,
         updatedAt: new Date().toISOString()
       };
@@ -2327,6 +2332,8 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
         items: rfq.items,
         status: 'Closed',
         isClosed: true,
+        closedAt: rfq.tcdDate || new Date().toISOString(),
+        closedBy: 'PO Report Import (TCD Created)',
         createdAt: new Date().toISOString(),
         createdBy: 'PO Report Import'
       });
