@@ -720,6 +720,215 @@ export function consolidateTCDs(tcds = []) {
   return result;
 }
 
+/** Consolidate multiple POD records with the same poNumber or (tcdNumber + vendor) into a single master POD */
+export function consolidatePODs(pods = []) {
+  if (!Array.isArray(pods) || pods.length === 0) return pods || [];
+
+  const groupMap = new Map();
+  const result = [];
+
+  pods.forEach(pod => {
+    if (!pod) return;
+    const poNum = String(pod.poNumber || '').trim().toUpperCase();
+    const tcdNum = String(pod.tcdNumber || '').trim().toUpperCase();
+    const vendor = String(pod.vendorName || '').trim().toUpperCase();
+
+    const groupKey = poNum ? `PO::${poNum}` : (tcdNum && vendor ? `TCD::${tcdNum}::${vendor}` : `ID::${pod.id || Math.random()}`);
+    if (!groupMap.has(groupKey)) {
+      groupMap.set(groupKey, []);
+    }
+    groupMap.get(groupKey).push(pod);
+  });
+
+  groupMap.forEach(group => {
+    if (group.length === 1) {
+      result.push(group[0]);
+      return;
+    }
+
+    const master = { ...group[0] };
+    const itemMap = new Map();
+
+    group.forEach(record => {
+      if (!master.poNumber && record.poNumber) master.poNumber = record.poNumber;
+      if (!master.poDate && record.poDate) master.poDate = record.poDate;
+      if (!master.vendorName && record.vendorName) master.vendorName = record.vendorName;
+      if (!master.tcdNumber && record.tcdNumber) master.tcdNumber = record.tcdNumber;
+      if (!master.tcdId && record.tcdId) master.tcdId = record.tcdId;
+      if (master.poNumber) master.status = 'Issued';
+
+      if (record.createdAt && (!master.createdAt || new Date(record.createdAt) < new Date(master.createdAt))) {
+        master.createdAt = record.createdAt;
+      }
+      if (record.updatedAt && (!master.updatedAt || new Date(record.updatedAt) > new Date(master.updatedAt))) {
+        master.updatedAt = record.updatedAt;
+        if (record.updatedBy) master.updatedBy = record.updatedBy;
+      }
+
+      (record.items || []).forEach(item => {
+        const itemKey = `${item.prcId || item.prNumber || ''}::${item.materialId || item.matCode || ''}`;
+        if (!itemMap.has(itemKey)) {
+          itemMap.set(itemKey, { ...item });
+        } else {
+          const ex = itemMap.get(itemKey);
+          ex.quantity = Math.max(parseFloat(ex.quantity) || 0, parseFloat(item.quantity) || 0);
+          if (!ex.description && item.description) ex.description = item.description;
+          if (!ex.unit && item.unit) ex.unit = item.unit;
+          if (!ex.prNumber && item.prNumber) ex.prNumber = item.prNumber;
+          if (!ex.matCode && item.matCode) ex.matCode = item.matCode;
+        }
+      });
+    });
+
+    master.items = Array.from(itemMap.values());
+    result.push(master);
+  });
+
+  return result;
+}
+
+/** Get all material items for a POD document (resolving from PRCs/TCDs if items array is empty) */
+export function getPODItems(pod, prcs = state.prcs, tcds = state.tcds) {
+  if (!pod) return [];
+  if (Array.isArray(pod.items) && pod.items.length > 0) {
+    return pod.items;
+  }
+
+  const items = [];
+  const poNum = String(pod.poNumber || '').trim().toUpperCase();
+  const tcdNum = String(pod.tcdNumber || '').trim().toUpperCase();
+  const vendor = String(pod.vendorName || '').trim().toUpperCase();
+
+  if (poNum) {
+    (prcs || []).forEach(p => {
+      (p.materials || []).forEach(m => {
+        if (String(m.poNumber || p.poNumber || '').trim().toUpperCase() === poNum) {
+          items.push({
+            prcId: p.id,
+            prNumber: p.prNumber,
+            materialId: m.id,
+            matCode: m.matCode,
+            description: m.description,
+            quantity: parseFloat(m.quantity) || 0,
+            unit: m.unit || '',
+            vendorName: m.vendorName || m.vendor || p.vendorName || p.vendor || pod.vendorName
+          });
+        }
+      });
+    });
+  } else if (tcdNum) {
+    const matchingTCD = (tcds || []).find(t => String(t.tcdNumber || '').trim().toUpperCase() === tcdNum);
+    if (matchingTCD) {
+      const va = (matchingTCD.vendorAllocations || matchingTCD.vendors || []).find(v => String(v.vendorName || v.name || '').trim().toUpperCase() === vendor);
+      if (va && Array.isArray(va.items) && va.items.length > 0) {
+        return va.items;
+      }
+    }
+    (prcs || []).forEach(p => {
+      (p.materials || []).forEach(m => {
+        const matTcd = String(m.tcdNumber || p.tcdNumber || '').trim().toUpperCase();
+        const matVendor = String(m.vendorName || m.vendor || p.vendorName || p.vendor || '').trim().toUpperCase();
+        if (matTcd === tcdNum && (!vendor || matVendor === vendor)) {
+          items.push({
+            prcId: p.id,
+            prNumber: p.prNumber,
+            materialId: m.id,
+            matCode: m.matCode,
+            description: m.description,
+            quantity: parseFloat(m.quantity) || 0,
+            unit: m.unit || '',
+            vendorName: m.vendorName || m.vendor || p.vendorName || p.vendor || pod.vendorName
+          });
+        }
+      });
+    });
+  }
+
+  return items;
+}
+
+/** Reconcile POD routing across all PRCs, TCDs, and POD records */
+export function reconcilePODRouting(prcs = state.prcs, pods = state.pods, tcds = state.tcds) {
+  if (!Array.isArray(prcs) || !Array.isArray(pods)) {
+    return { prcs: prcs || [], pods: pods || [], changed: false };
+  }
+
+  let changed = false;
+  const updatedPods = [...pods];
+
+  // 1. Fill items on existing PODs if items are empty or missing
+  updatedPods.forEach((pod, idx) => {
+    const currentItems = pod.items || [];
+    const resolvedItems = getPODItems(pod, prcs, tcds);
+    if (resolvedItems.length > currentItems.length) {
+      updatedPods[idx] = {
+        ...pod,
+        items: resolvedItems
+      };
+      changed = true;
+    }
+  });
+
+  // 2. Synthesize PODs for materials with PO Numbers that don't have a POD record yet
+  const poGroups = {};
+  prcs.forEach(p => {
+    (p.materials || []).forEach(m => {
+      const poNum = String(m.poNumber || p.poNumber || '').trim();
+      const vendorName = String(m.vendorName || m.vendor || p.vendorName || p.vendor || '').trim();
+      const poDate = String(m.poDate || p.poDate || '').trim();
+      const tcdNum = String(m.tcdNumber || p.tcdNumber || '').trim();
+
+      if (poNum) {
+        const key = poNum.toUpperCase();
+        if (!poGroups[key]) {
+          poGroups[key] = {
+            poNumber: poNum,
+            poDate: poDate,
+            vendorName: vendorName,
+            tcdNumber: tcdNum,
+            items: []
+          };
+        }
+        poGroups[key].items.push({
+          prcId: p.id,
+          materialId: m.id,
+          prNumber: p.prNumber,
+          matCode: m.matCode,
+          description: m.description,
+          quantity: parseFloat(m.quantity) || 0,
+          unit: m.unit || '',
+          vendorName: vendorName
+        });
+      }
+    });
+  });
+
+  Object.values(poGroups).forEach(group => {
+    const existing = updatedPods.find(p => String(p.poNumber || '').trim().toUpperCase() === group.poNumber.toUpperCase());
+    if (!existing) {
+      updatedPods.push({
+        id: `pod-auto-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        poNumber: group.poNumber,
+        poDate: group.poDate || '',
+        vendorName: group.vendorName || '',
+        tcdId: '',
+        tcdNumber: group.tcdNumber || '',
+        items: group.items,
+        status: 'Issued',
+        createdAt: new Date().toISOString(),
+        createdBy: 'System'
+      });
+      changed = true;
+    }
+  });
+
+  return {
+    prcs,
+    pods: consolidatePODs(updatedPods),
+    changed
+  };
+}
+
 export function setState(patch) {
   if (patch.allocations) {
     patch.allocations = consolidateAllocations(patch.allocations);
@@ -730,6 +939,9 @@ export function setState(patch) {
   if (patch.tcds) {
     patch.tcds = consolidateTCDs(patch.tcds);
   }
+  if (patch.pods) {
+    patch.pods = consolidatePODs(patch.pods);
+  }
 
   Object.assign(state, patch);
 
@@ -738,6 +950,13 @@ export function setState(patch) {
     if (reconciled.allocChanged || reconciled.prcChanged) {
       state.prcs = reconciled.prcs;
       state.allocations = consolidateAllocations(reconciled.allocations);
+    }
+  }
+
+  if (patch.prcs || patch.pods || patch.tcds) {
+    const podRec = reconcilePODRouting(state.prcs, state.pods, state.tcds);
+    if (podRec.changed) {
+      state.pods = podRec.pods;
     }
   }
 
@@ -856,12 +1075,14 @@ export async function initAppData(forceClean = false) {
     }
   }
 
-  // Reconcile allocation document routing for all available data
+  // Reconcile allocation & POD document routing for all available data
   const reconciled = reconcileAllocationRouting(prcs, allocations);
   prcs = reconciled.prcs;
   allocations = consolidateAllocations(reconciled.allocations);
   rfqs = consolidateRFQs(rfqs);
   tcds = consolidateTCDs(tcds);
+  const podRec = reconcilePODRouting(prcs, pods, tcds);
+  pods = podRec.pods;
 
   const summary = buildStatusSummary(prcs);
   const totalMats = prcs.reduce((acc, p) => acc + (p.materials || []).length, 0);
@@ -1052,7 +1273,9 @@ export async function setAuthenticatedUser(firebaseUser) {
     state.allocations = consolidateAllocations(cached.allocations || []);
     state.rfqs = consolidateRFQs(cached.rfqs || []);
     state.tcds = consolidateTCDs(cached.tcds || []);
-    state.pods = cached.pods || [];
+    state.pods = consolidatePODs(cached.pods || []);
+    const podRec = reconcilePODRouting(state.prcs, state.pods, state.tcds);
+    state.pods = podRec.pods;
     state.vendors = cached.vendors || [];
     state.users = cached.users || [];
     state.notifications = cached.notifications || [];
@@ -1079,6 +1302,7 @@ function handleRealtimeUpdate(colName, items) {
     if (colName === 'allocations') processedItems = consolidateAllocations(items);
     if (colName === 'rfqs') processedItems = consolidateRFQs(items);
     if (colName === 'tcds') processedItems = consolidateTCDs(items);
+    if (colName === 'pods') processedItems = consolidatePODs(items);
 
     // Only update if incoming items differ from current local state
     const currentList = state[colName] || [];
@@ -1091,6 +1315,8 @@ function handleRealtimeUpdate(colName, items) {
         state.statusSummary = buildStatusSummary(items);
         state.totalMaterials = items.reduce((acc, p) => acc + (p.materials || []).length, 0);
         state.poToday = items.filter(p => p.poDate === new Date().toISOString().split('T')[0]).length;
+        const podRec = reconcilePODRouting(state.prcs, state.pods, state.tcds);
+        if (podRec.changed) state.pods = podRec.pods;
       }
       saveToLocalCache();
       emit(colName);
@@ -1114,7 +1340,9 @@ export async function forceSyncWithFirestore() {
       state.allocations = consolidateAllocations(firestoreData.allocations || []);
       state.rfqs = consolidateRFQs(firestoreData.rfqs || []);
       state.tcds = consolidateTCDs(firestoreData.tcds || []);
-      state.pods = firestoreData.pods || [];
+      state.pods = consolidatePODs(firestoreData.pods || []);
+      const podRec = reconcilePODRouting(state.prcs, state.pods, state.tcds);
+      state.pods = podRec.pods;
       state.vendors = firestoreData.vendors || [];
       state.users = firestoreData.users || [];
       state.notifications = firestoreData.notifications || [];
@@ -3901,7 +4129,10 @@ export function createPOD(data) {
 
   if (existingIdx !== -1) {
     const existing = state.pods[existingIdx];
-    const existingItems = [...(existing.items || [])];
+    let existingItems = [...(existing.items || [])];
+    if (existingItems.length === 0) {
+      existingItems = getPODItems(existing, state.prcs, state.tcds);
+    }
     const itemKeySet = new Set(existingItems.map(i => `${i.prcId}::${i.materialId}`));
 
     (data.items || []).forEach(newItem => {
@@ -3930,6 +4161,11 @@ export function createPOD(data) {
     pods = [...state.pods];
     pods[existingIdx] = pod;
   } else {
+    let items = (data.items || []).map(i => ({ ...i }));
+    if (items.length === 0) {
+      items = getPODItems(data, state.prcs, state.tcds);
+    }
+
     pod = {
       id: `pod-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
       poNumber: normNum,
@@ -3937,7 +4173,7 @@ export function createPOD(data) {
       vendorName: data.vendorName || '',
       tcdId: data.tcdId || '',
       tcdNumber: data.tcdNumber || '',
-      items: (data.items || []).map(i => ({ ...i })),
+      items: items,
       createdAt: new Date().toISOString(),
       createdBy: state.currentUser?.name || 'Admin',
       status: normNum ? 'Issued' : 'Pending PO Number'
@@ -3948,7 +4184,7 @@ export function createPOD(data) {
   const prcs = [...state.prcs];
 
   if (pod.poNumber || pod.poDate) {
-    pod.items.forEach(item => {
+    (pod.items || []).forEach(item => {
       const prcIdx = prcs.findIndex(p => p.id === item.prcId || p.prNumber === item.prcId || p.prNumber === item.prNumber || p.id === item.prNumber);
       if (prcIdx === -1) return;
       const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
@@ -3987,7 +4223,7 @@ export function createPOD(data) {
     action: existingIdx !== -1 ? 'update_pod' : 'create_pod',
     collection: 'PODs',
     docId: pod.id,
-    changes: { poNumber: pod.poNumber, vendorName: pod.vendorName, itemCount: pod.items.length }
+    changes: { poNumber: pod.poNumber, vendorName: pod.vendorName, itemCount: (pod.items || []).length }
   });
 
   return pod;
@@ -4075,7 +4311,10 @@ export function updatePOD(podId, patch) {
   const podIdx = state.pods.findIndex(p => p.id === podId);
   if (podIdx === -1) return;
 
-  const pod = { ...state.pods[podIdx], ...patch };
+  const existingPod = state.pods[podIdx];
+  const items = (existingPod.items && existingPod.items.length) ? existingPod.items : getPODItems(existingPod, state.prcs, state.tcds);
+
+  const pod = { ...existingPod, items, ...patch };
   if (patch.poNumber) pod.status = 'Issued';
   pod.updatedAt = new Date().toISOString();
   pod.updatedBy = state.currentUser?.name || 'Admin';
@@ -4085,11 +4324,11 @@ export function updatePOD(podId, patch) {
 
   const prcs = [...state.prcs];
   if (patch.poNumber || patch.poDate) {
-    pod.items.forEach(item => {
-      const prcIdx = prcs.findIndex(p => p.id === item.prcId);
+    (pod.items || []).forEach(item => {
+      const prcIdx = prcs.findIndex(p => p.id === item.prcId || p.prNumber === item.prcId || p.prNumber === item.prNumber);
       if (prcIdx === -1) return;
       const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
-      const matIdx = prc.materials.findIndex(m => m.id === item.materialId);
+      const matIdx = prc.materials.findIndex(m => m.id === item.materialId || (item.matCode && m.matCode === item.matCode));
       if (matIdx === -1) return;
       const mat = { ...prc.materials[matIdx] };
       if (patch.poNumber) mat.poNumber = patch.poNumber;

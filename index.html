@@ -336,7 +336,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getPODItems } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA } from './js/excel-import.js';
@@ -6850,13 +6850,15 @@ function renderPODsPage(container) {
     <table class="data-table">
       <thead><tr><th>PO Number</th><th>PO Date</th><th>Vendor</th><th>TCD Ref</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
       <tbody id="pod-docs-tbody">
-        ${pods.map(p => `
+        ${pods.map(p => {
+          const items = getPODItems(p, state.prcs, state.tcds);
+          return `
           <tr>
             <td>${p.poNumber ? `<span class="copy-badge" onclick="copyToClipboard('${p.poNumber}','PO Number',event)" title="Click to copy PO Number"><span class="font-mono font-semibold text-brand">${p.poNumber}</span><span class="copy-icon">📋</span></span>` : '<span class="chip chip-awaiting font-mono">⚠️ Not Set</span>'}</td>
             <td>${p.poDate ? fmtDate(p.poDate) : '—'}</td>
             <td><strong>${p.vendorName}</strong></td>
             <td><span class="copy-badge" onclick="copyToClipboard('${p.tcdNumber}','TCD Reference Number',event)" title="Click to copy TCD Reference Number"><span class="font-mono text-sm">${p.tcdNumber}</span><span class="copy-icon">📋</span></span></td>
-            <td><span class="chip chip-pending">${(p.items || []).length} items</span></td>
+            <td><span class="chip chip-pending">${items.length} items</span></td>
             <td><span class="chip ${p.poNumber ? 'chip-completed' : 'chip-awaiting'}">${p.status}</span></td>
             <td>${fmtDate(p.createdAt)}</td>
             <td>
