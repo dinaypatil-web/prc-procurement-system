@@ -2153,7 +2153,7 @@ function _syncMaterialPatchToDownstream(prcId, materialId, patch) {
   });
 
   // 1. ALLOCATION
-  const targetAllocNum = (patch.allocationNumber || mat?.allocationNumber || '').trim();
+  const targetAllocNum = (patch.allocationNumber !== undefined ? patch.allocationNumber : (mat?.allocationNumber || '')).trim();
   if (targetAllocNum) {
     let allocations = [...state.allocations];
     let allocIdx = allocations.findIndex(a => String(a.allocationNumber || '').trim().toUpperCase() === targetAllocNum.toUpperCase());
@@ -2211,6 +2211,28 @@ function _syncMaterialPatchToDownstream(prcId, materialId, patch) {
       };
       allocations = [newAlloc, ...allocations];
       directSaveAllocation(uid, newAlloc);
+      setState({ allocations });
+    }
+  } else if (patch.allocationNumber === '') {
+    let allocations = [...state.allocations];
+    let allocChanged = false;
+    allocations = allocations.map(a => {
+      const remainingItems = (a.items || []).filter(i => !( (i.prcId === prcId || i.prNumber === prNumber) && (i.materialId === materialId || (matCode && i.matCode === matCode)) ));
+      if (remainingItems.length !== (a.items || []).length) {
+        allocChanged = true;
+        return { ...a, items: remainingItems, updatedAt: new Date().toISOString() };
+      }
+      return a;
+    }).filter(a => {
+      if (a.items && a.items.length === 0) {
+        directDeleteAllocation(uid, a.id);
+        if (a.allocationNumber && a.allocationNumber !== a.id) directDeleteAllocation(uid, a.allocationNumber);
+        return false;
+      }
+      if (allocChanged) directSaveAllocation(uid, a);
+      return true;
+    });
+    if (allocChanged) {
       setState({ allocations });
     }
   }
@@ -2823,17 +2845,128 @@ export function updateAllocation(id, data) {
   return { success: true, allocation: updatedAlloc };
 }
 
-export function deleteAllocation(id) {
-  const hasRFQs = state.rfqs.some(r => r.items.some(i => i.allocationId === id));
-  if (hasRFQs) {
-    return { success: false, reason: 'Cannot delete Allocation — it has downstream RFQ documents.' };
+export function deleteAllocation(id, forceCascade = false) {
+  const alloc = state.allocations.find(a => a.id === id || a.allocationNumber === id);
+  if (!alloc) {
+    return { success: false, reason: 'Allocation document not found.' };
   }
-  const allocations = state.allocations.filter(a => a.id !== id);
-  setState({ allocations });
 
-  directDeleteAllocation(_getEffectiveUid(), id);
+  const allocId = alloc.id;
+  const allocNum = alloc.allocationNumber;
 
-  addAuditLog({ action: 'delete_allocation', collection: 'Allocations', docId: id, changes: {} });
+  // Check downstream RFQs referencing this allocation
+  const downstreamRFQs = (state.rfqs || []).filter(r =>
+    (r.items || []).some(i => i.allocationId === allocId || i.allocationId === allocNum || i.allocationNumber === allocNum)
+  );
+
+  if (downstreamRFQs.length > 0 && !isSuperAdmin() && !forceCascade) {
+    return {
+      success: false,
+      reason: `Cannot delete Allocation "${allocNum}" — it has ${downstreamRFQs.length} downstream RFQ document(s). Please delete or unlink downstream RFQ documents first.`
+    };
+  }
+
+  const effectiveUid = _getEffectiveUid();
+
+  // If superadmin or forceCascade, clean downstream RFQs
+  if (downstreamRFQs.length > 0 && (isSuperAdmin() || forceCascade)) {
+    let updatedRFQs = [];
+    state.rfqs.forEach(r => {
+      const remainingItems = (r.items || []).filter(i => i.allocationId !== allocId && i.allocationId !== allocNum && i.allocationNumber !== allocNum);
+      if (remainingItems.length > 0) {
+        const updatedRfq = { ...r, items: remainingItems, updatedAt: new Date().toISOString() };
+        updatedRFQs.push(updatedRfq);
+        directSaveRFQ(effectiveUid, updatedRfq);
+      } else {
+        directDeleteRFQ(effectiveUid, r.id);
+      }
+    });
+    state.rfqs = updatedRFQs;
+  }
+
+  // 1. Remove from state.allocations
+  const allocations = state.allocations.filter(a => a.id !== allocId && a.allocationNumber !== allocNum);
+
+  // 2. Identify all affected PRCs & materials
+  const affectedPrcIds = new Set((alloc.items || []).map(i => i.prcId).filter(Boolean));
+  const affectedMatKeys = new Set((alloc.items || []).map(i => `${i.prcId}::${i.materialId}`));
+
+  // Also include any PRCs currently referencing this allocationNumber
+  state.prcs.forEach(p => {
+    if (p.allocationNumber === allocNum || (p.materials || []).some(m => m.allocationNumber === allocNum)) {
+      affectedPrcIds.add(p.id);
+    }
+  });
+
+  const updatedPrcs = state.prcs.map(prc => {
+    if (!affectedPrcIds.has(prc.id)) return prc;
+
+    let prcCopy = { ...prc, materials: [...(prc.materials || [])] };
+    let prcModified = false;
+
+    prcCopy.materials = prcCopy.materials.map(m => {
+      const matKey = `${prc.id}::${m.id}`;
+      const isTargetMat = affectedMatKeys.has(matKey) || m.allocationNumber === allocNum;
+
+      if (isTargetMat) {
+        prcModified = true;
+        const updatedM = {
+          ...m,
+          allocationNumber: '',
+          allocationDate: '',
+          buyerName: '',
+          allocatedBy: ''
+        };
+        updatedM.status = calculateMaterialStatus(updatedM);
+        return updatedM;
+      }
+      return m;
+    });
+
+    // Re-determine top-level PRC allocation fields from remaining materials
+    const remainingAllocMat = prcCopy.materials.find(m => m.allocationNumber && m.allocationNumber !== allocNum);
+    if (remainingAllocMat) {
+      prcCopy.allocationNumber = remainingAllocMat.allocationNumber;
+      prcCopy.allocationDate = remainingAllocMat.allocationDate || '';
+      prcCopy.buyerName = remainingAllocMat.buyerName || remainingAllocMat.allocatedBy || '';
+      prcCopy.allocatedBy = remainingAllocMat.allocatedBy || remainingAllocMat.buyerName || '';
+      prcModified = true;
+    } else if (prcCopy.allocationNumber === allocNum || !prcCopy.materials.some(m => m.allocationNumber)) {
+      prcCopy.allocationNumber = '';
+      prcCopy.allocationDate = '';
+      prcCopy.buyerName = '';
+      prcCopy.allocatedBy = '';
+      prcModified = true;
+    }
+
+    if (prcModified) {
+      prcCopy.status = calculateStatus(prcCopy, prcCopy.materials);
+      prcCopy.updatedAt = new Date().toISOString();
+      directSavePRC(effectiveUid, prcCopy);
+    }
+
+    return prcCopy;
+  });
+
+  state.allocations = allocations;
+  state.prcs = updatedPrcs;
+  state.statusSummary = buildStatusSummary(updatedPrcs);
+
+  saveToLocalCache();
+
+  // 3. Database direct delete
+  directDeleteAllocation(effectiveUid, allocId);
+  if (allocNum && allocNum !== allocId) {
+    directDeleteAllocation(effectiveUid, allocNum);
+  }
+
+  addAuditLog({
+    action: 'delete_allocation',
+    collection: 'Allocations',
+    docId: allocId,
+    changes: { allocationNumber: allocNum, prcCount: affectedPrcIds.size }
+  });
+
   return { success: true };
 }
 
@@ -3137,17 +3270,97 @@ export function updateRFQ(id, data) {
   return { success: true, rfq: updatedRFQ };
 }
 
-export function deleteRFQ(id) {
-  const hasTCDs = state.tcds.some(t => (t.vendorAllocations || []).some(va => va.items.some(i => i.rfqId === id)));
-  if (hasTCDs) {
-    return { success: false, reason: 'Cannot delete RFQ — it has downstream TCD documents.' };
+export function deleteRFQ(id, forceCascade = false) {
+  const rfq = state.rfqs.find(r => r.id === id || r.rfqNumber === id);
+  if (!rfq) return { success: false, reason: 'RFQ not found.' };
+
+  const rfqId = rfq.id;
+  const rfqNum = rfq.rfqNumber;
+
+  const hasTCDs = (state.tcds || []).some(t => (t.vendorAllocations || []).some(va => (va.items || []).some(i => i.rfqId === rfqId || i.rfqNumber === rfqNum)));
+  if (hasTCDs && !isSuperAdmin() && !forceCascade) {
+    return { success: false, reason: 'Cannot delete RFQ — it has downstream TCD documents. Please delete or unlink downstream TCD documents first.' };
   }
-  const rfqs = state.rfqs.filter(r => r.id !== id);
-  setState({ rfqs });
 
-  directDeleteRFQ(_getEffectiveUid(), id);
+  const effectiveUid = _getEffectiveUid();
 
-  addAuditLog({ action: 'delete_rfq', collection: 'RFQs', docId: id, changes: {} });
+  if (hasTCDs && (isSuperAdmin() || forceCascade)) {
+    let updatedTcds = [];
+    state.tcds.forEach(t => {
+      let remainingVAs = [];
+      (t.vendorAllocations || []).forEach(va => {
+        const remainingItems = (va.items || []).filter(i => i.rfqId !== rfqId && i.rfqNumber !== rfqNum);
+        if (remainingItems.length > 0) remainingVAs.push({ ...va, items: remainingItems });
+      });
+      if (remainingVAs.length > 0) {
+        const updatedTcd = { ...t, vendorAllocations: remainingVAs, updatedAt: new Date().toISOString() };
+        updatedTcds.push(updatedTcd);
+        directSaveTCD(effectiveUid, updatedTcd);
+      } else {
+        directDeleteTCD(effectiveUid, t.id);
+      }
+    });
+    state.tcds = updatedTcds;
+  }
+
+  const rfqs = state.rfqs.filter(r => r.id !== rfqId && r.rfqNumber !== rfqNum);
+
+  // Revert RFQ fields on affected PRCs/materials
+  const affectedPrcIds = new Set((rfq.items || []).map(i => i.prcId).filter(Boolean));
+  const affectedMatKeys = new Set((rfq.items || []).map(i => `${i.prcId}::${i.materialId}`));
+
+  state.prcs.forEach(p => {
+    if (p.rfqNumber === rfqNum || (p.materials || []).some(m => m.rfqNumber === rfqNum)) {
+      affectedPrcIds.add(p.id);
+    }
+  });
+
+  const updatedPrcs = state.prcs.map(prc => {
+    if (!affectedPrcIds.has(prc.id)) return prc;
+    let prcCopy = { ...prc, materials: [...(prc.materials || [])] };
+    let prcModified = false;
+
+    prcCopy.materials = prcCopy.materials.map(m => {
+      const matKey = `${prc.id}::${m.id}`;
+      if (affectedMatKeys.has(matKey) || m.rfqNumber === rfqNum) {
+        prcModified = true;
+        const updatedM = { ...m, rfqNumber: '', rfqDate: '', rfqBy: '', offersReceived: false, offersReceivedDate: '' };
+        updatedM.status = calculateMaterialStatus(updatedM);
+        return updatedM;
+      }
+      return m;
+    });
+
+    const remainingRfqMat = prcCopy.materials.find(m => m.rfqNumber && m.rfqNumber !== rfqNum);
+    if (remainingRfqMat) {
+      prcCopy.rfqNumber = remainingRfqMat.rfqNumber;
+      prcCopy.rfqDate = remainingRfqMat.rfqDate || '';
+    } else if (prcCopy.rfqNumber === rfqNum || !prcCopy.materials.some(m => m.rfqNumber)) {
+      prcCopy.rfqNumber = '';
+      prcCopy.rfqDate = '';
+      prcCopy.rfqBy = '';
+      prcCopy.offersReceived = false;
+      prcCopy.offersReceivedDate = '';
+      prcModified = true;
+    }
+
+    if (prcModified) {
+      prcCopy.status = calculateStatus(prcCopy, prcCopy.materials);
+      prcCopy.updatedAt = new Date().toISOString();
+      directSavePRC(effectiveUid, prcCopy);
+    }
+    return prcCopy;
+  });
+
+  state.rfqs = rfqs;
+  state.prcs = updatedPrcs;
+  state.statusSummary = buildStatusSummary(updatedPrcs);
+  saveToLocalCache();
+
+  directDeleteRFQ(effectiveUid, rfqId);
+  if (rfqNum && rfqNum !== rfqId) directDeleteRFQ(effectiveUid, rfqNum);
+
+  addAuditLog({ action: 'delete_rfq', collection: 'RFQs', docId: rfqId, changes: { rfqNumber: rfqNum } });
   return { success: true };
 }
 
@@ -3424,19 +3637,93 @@ export function approveTCD(tcdId) {
   return { success: true, pods: generatedPODs };
 }
 
-export function deleteTCD(id) {
-  const hasPODs = state.pods.some(p => p.tcdId === id && p.poNumber);
-  if (hasPODs) {
-    return { success: false, reason: 'Cannot delete TCD — it has downstream issued Purchase Orders.' };
+export function deleteTCD(id, forceCascade = false) {
+  const tcd = state.tcds.find(t => t.id === id || t.tcdNumber === id);
+  if (!tcd) return { success: false, reason: 'TCD not found.' };
+
+  const tcdId = tcd.id;
+  const tcdNum = tcd.tcdNumber;
+
+  const hasPODs = (state.pods || []).some(p => (p.tcdId === tcdId || p.tcdNumber === tcdNum) && p.poNumber);
+  if (hasPODs && !isSuperAdmin() && !forceCascade) {
+    return { success: false, reason: 'Cannot delete TCD — it has downstream issued Purchase Orders. Please delete or un-issue POs first.' };
   }
-  const tcds = state.tcds.filter(t => t.id !== id);
-  // Also remove un-issued generated pods for this TCD
-  const pods = state.pods.filter(p => p.tcdId !== id);
-  setState({ tcds, pods });
 
-  directDeleteTCD(_getEffectiveUid(), id);
+  const effectiveUid = _getEffectiveUid();
+  const tcds = state.tcds.filter(t => t.id !== tcdId && t.tcdNumber !== tcdNum);
+  const pods = state.pods.filter(p => p.tcdId !== tcdId && p.tcdNumber !== tcdNum);
 
-  addAuditLog({ action: 'delete_tcd', collection: 'TCDs', docId: id, changes: {} });
+  // Revert TCD fields on affected PRCs/materials
+  const affectedPrcIds = new Set();
+  const affectedMatKeys = new Set();
+  (tcd.vendorAllocations || []).forEach(va => {
+    (va.items || []).forEach(i => {
+      if (i.prcId) affectedPrcIds.add(i.prcId);
+      affectedMatKeys.add(`${i.prcId}::${i.materialId}`);
+    });
+  });
+
+  state.prcs.forEach(p => {
+    if (p.tcdNumber === tcdNum || (p.materials || []).some(m => m.tcdNumber === tcdNum)) {
+      affectedPrcIds.add(p.id);
+    }
+  });
+
+  const updatedPrcs = state.prcs.map(prc => {
+    if (!affectedPrcIds.has(prc.id)) return prc;
+    let prcCopy = { ...prc, materials: [...(prc.materials || [])] };
+    let prcModified = false;
+
+    prcCopy.materials = prcCopy.materials.map(m => {
+      const matKey = `${prc.id}::${m.id}`;
+      if (affectedMatKeys.has(matKey) || m.tcdNumber === tcdNum) {
+        prcModified = true;
+        const updatedM = {
+          ...m,
+          tcdNumber: '',
+          tcdDate: '',
+          tcdApproved: false,
+          tcdApprovedDate: null,
+          vendorName: '',
+          vendor: ''
+        };
+        updatedM.status = calculateMaterialStatus(updatedM);
+        return updatedM;
+      }
+      return m;
+    });
+
+    const remainingTcdMat = prcCopy.materials.find(m => m.tcdNumber && m.tcdNumber !== tcdNum);
+    if (remainingTcdMat) {
+      prcCopy.tcdNumber = remainingTcdMat.tcdNumber;
+      prcCopy.tcdDate = remainingTcdMat.tcdDate || '';
+    } else if (prcCopy.tcdNumber === tcdNum || !prcCopy.materials.some(m => m.tcdNumber)) {
+      prcCopy.tcdNumber = '';
+      prcCopy.tcdDate = '';
+      prcCopy.tcdApproved = false;
+      prcCopy.tcdApprovedDate = null;
+      prcCopy.tcdApprovedBy = null;
+      prcModified = true;
+    }
+
+    if (prcModified) {
+      prcCopy.status = calculateStatus(prcCopy, prcCopy.materials);
+      prcCopy.updatedAt = new Date().toISOString();
+      directSavePRC(effectiveUid, prcCopy);
+    }
+    return prcCopy;
+  });
+
+  state.tcds = tcds;
+  state.pods = pods;
+  state.prcs = updatedPrcs;
+  state.statusSummary = buildStatusSummary(updatedPrcs);
+  saveToLocalCache();
+
+  directDeleteTCD(effectiveUid, tcdId);
+  if (tcdNum && tcdNum !== tcdId) directDeleteTCD(effectiveUid, tcdNum);
+
+  addAuditLog({ action: 'delete_tcd', collection: 'TCDs', docId: tcdId, changes: { tcdNumber: tcdNum } });
   return { success: true };
 }
 
@@ -3577,12 +3864,80 @@ export function createPOD(data) {
 }
 
 export function deletePOD(id) {
-  const pods = state.pods.filter(p => p.id !== id);
-  setState({ pods });
+  const pod = state.pods.find(p => p.id === id || p.poNumber === id);
+  if (!pod) return { success: false, reason: 'POD document not found.' };
 
-  directDeletePOD(_getEffectiveUid(), id);
+  const podId = pod.id;
+  const poNum = pod.poNumber;
+  const effectiveUid = _getEffectiveUid();
 
-  addAuditLog({ action: 'delete_pod', collection: 'PODs', docId: id, changes: {} });
+  const pods = state.pods.filter(p => p.id !== podId && p.poNumber !== podId);
+
+  // If PO had been issued and stamped on materials, revert them
+  const affectedPrcIds = new Set((pod.items || []).map(i => i.prcId).filter(Boolean));
+  const affectedMatKeys = new Set((pod.items || []).map(i => `${i.prcId}::${i.materialId}`));
+
+  state.prcs.forEach(p => {
+    if ((poNum && p.poNumber === poNum) || (p.materials || []).some(m => poNum && m.poNumber === poNum)) {
+      affectedPrcIds.add(p.id);
+    }
+  });
+
+  const updatedPrcs = state.prcs.map(prc => {
+    if (!affectedPrcIds.has(prc.id)) return prc;
+    let prcCopy = { ...prc, materials: [...(prc.materials || [])] };
+    let prcModified = false;
+
+    prcCopy.materials = prcCopy.materials.map(m => {
+      const matKey = `${prc.id}::${m.id}`;
+      const itemMatch = (pod.items || []).find(i => i.prcId === prc.id && i.materialId === m.id);
+      if (affectedMatKeys.has(matKey) || (poNum && m.poNumber === poNum)) {
+        prcModified = true;
+        const subQty = parseFloat(itemMatch?.quantity) || 0;
+        const currentProc = parseFloat(m.processedQty) || 0;
+        const newProc = Math.max(0, currentProc - subQty);
+        const totalQty = parseFloat(m.quantity) || 0;
+        const clsQty = parseFloat(m.closedQty) || 0;
+        const updatedM = {
+          ...m,
+          poNumber: '',
+          poDate: '',
+          processedQty: newProc,
+          pendingQty: Math.max(0, totalQty - newProc - clsQty)
+        };
+        updatedM.status = calculateMaterialStatus(updatedM);
+        return updatedM;
+      }
+      return m;
+    });
+
+    const remainingPoMat = prcCopy.materials.find(m => m.poNumber && m.poNumber !== poNum);
+    if (remainingPoMat) {
+      prcCopy.poNumber = remainingPoMat.poNumber;
+      prcCopy.poDate = remainingPoMat.poDate || '';
+    } else if ((poNum && prcCopy.poNumber === poNum) || !prcCopy.materials.some(m => m.poNumber)) {
+      prcCopy.poNumber = '';
+      prcCopy.poDate = '';
+      prcModified = true;
+    }
+
+    if (prcModified) {
+      prcCopy.status = calculateStatus(prcCopy, prcCopy.materials);
+      prcCopy.updatedAt = new Date().toISOString();
+      directSavePRC(effectiveUid, prcCopy);
+    }
+    return prcCopy;
+  });
+
+  state.pods = pods;
+  state.prcs = updatedPrcs;
+  state.statusSummary = buildStatusSummary(updatedPrcs);
+  saveToLocalCache();
+
+  directDeletePOD(effectiveUid, podId);
+  if (poNum && poNum !== podId) directDeletePOD(effectiveUid, poNum);
+
+  addAuditLog({ action: 'delete_pod', collection: 'PODs', docId: podId, changes: { poNumber: poNum } });
   return { success: true };
 }
 

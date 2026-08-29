@@ -889,9 +889,10 @@ export async function directSaveAllocation(uid, alloc) {
 
 export async function directDeleteAllocation(uid, allocId) {
   if (!allocId) return false;
+  const strId = String(allocId);
   const statements = [
-    { sql: `DELETE FROM allocation_items WHERE allocation_id = ?;`, args: [String(allocId)] },
-    { sql: `DELETE FROM allocations WHERE id = ?;`, args: [String(allocId)] }
+    { sql: `DELETE FROM allocation_items WHERE allocation_id = ? OR allocation_id IN (SELECT id FROM allocations WHERE allocation_number = ?);`, args: [strId, strId] },
+    { sql: `DELETE FROM allocations WHERE id = ? OR allocation_number = ?;`, args: [strId, strId] }
   ];
   const result = await executeTursoPipeline(statements);
   return result && result.results && result.results[1]?.type === 'ok';

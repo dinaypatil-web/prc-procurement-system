@@ -4709,9 +4709,16 @@ window.viewAllocationDetail = function(id) {
           <tbody>${(alloc.items || []).map(i => `<tr><td><span class="copy-badge" onclick="copyToClipboard('${i.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono">${i.prNumber}</span><span class="copy-icon">📋</span></span></td><td><span class="copy-badge" onclick="copyToClipboard('${i.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono">${i.matCode}</span><span class="copy-icon">📋</span></span></td><td><strong>${i.description}</strong></td><td class="font-semibold">${i.quantity}</td><td>${i.unit||''}</td></tr>`).join('')}</tbody>
         </table>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button>
-        <button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();openEditAllocationModal('${alloc.id}')">✏️ Edit Allocation</button>
+      <div class="modal-footer" style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <button class="btn btn-ghost btn-sm" style="color:var(--color-danger);gap:6px" onclick="document.getElementById('${modalId}').remove();handleDeleteAllocation('${alloc.id}')" title="Delete / Undo this allocation document">
+            <span>🗑️</span> <span>Delete Allocation Document</span>
+          </button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Close</button>
+          <button class="btn btn-primary" onclick="document.getElementById('${modalId}').remove();openEditAllocationModal('${alloc.id}')">✏️ Edit Allocation</button>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(el);
@@ -4788,9 +4795,16 @@ window.openEditAllocationModal = function(id) {
           </table>
         </form>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
-        <button class="btn btn-primary" onclick="submitEditAllocation('${alloc.id}')">💾 Save Changes</button>
+      <div class="modal-footer" style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <button type="button" class="btn btn-ghost btn-sm" style="color:var(--color-danger);gap:6px" onclick="document.getElementById('${modalId}').remove();handleDeleteAllocation('${alloc.id}')" title="Delete / Undo Allocation">
+            <span>🗑️</span> <span>Delete Allocation</span>
+          </button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+          <button class="btn btn-primary" onclick="submitEditAllocation('${alloc.id}')">💾 Save Changes</button>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(el);
@@ -4834,20 +4848,34 @@ window.submitEditAllocation = function(id) {
 };
 
 window.handleDeleteAllocation = async function(id) {
-  const confirmed = await confirmDialog('Delete this allocation document?', 'Delete Allocation');
+  const alloc = getAllocationById(id) || getState().allocations.find(a => a.id === id || a.allocationNumber === id);
+  const allocNum = alloc ? alloc.allocationNumber : id;
+  const confirmed = await confirmDialog(
+    `Are you sure you want to delete / undo Allocation Document "${allocNum}"?\n\nThis will remove the allocation record and revert all allocated material items back to Pending Authorised state so they can be re-allocated.`,
+    'Delete / Undo Allocation'
+  );
   if (!confirmed) return;
   const result = deleteAllocation(id);
   if (result.success) {
-    toast('Allocation deleted', 'success');
+    document.getElementById('alloc-detail-modal')?.remove();
+    document.getElementById('edit-alloc-modal')?.remove();
+    toast(`Allocation ${allocNum} deleted and materials reverted successfully!`, 'success');
     const container = document.getElementById('page-content');
-    if (container && getState().currentPage === 'allocations') {
+    const cur = getState().currentPage;
+    if (container && cur === 'allocations') {
       preserveScroll(() => renderAllocationsPage(container));
+    } else if (container && cur === 'prcs') {
+      preserveScroll(() => renderPRCPage(container));
+    } else if (container && cur === 'materials') {
+      preserveScroll(() => renderMaterialsPage(container));
+    } else if (container && cur === 'create-allocation') {
+      preserveScroll(() => renderCreateAllocationPage(container));
     } else {
       navigate('allocations');
     }
     updateSidebarBadges();
   } else {
-    toast(result.reason, 'error');
+    toast(result.reason || 'Failed to delete Allocation.', 'error');
   }
 };
 
