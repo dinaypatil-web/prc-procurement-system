@@ -144,6 +144,9 @@ export function downloadText(text, filename, mime = 'text/plain') {
 
 /** Show toast notification */
 export function toast(message, type = 'info', duration = 4000) {
+  if (typeof document === 'undefined') {
+    return;
+  }
   const container = document.getElementById('toast-container');
   if (!container) return;
 

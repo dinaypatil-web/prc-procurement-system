@@ -151,6 +151,16 @@
         <button id="topbar-sync-btn" class="btn btn-ghost btn-xs" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid var(--color-border)" onclick="triggerManualSync()" title="Refresh & fetch latest live data from Firestore server">
           <span>🔄</span> <span id="topbar-sync-text">Sync</span>
         </button>
+        <!-- Undo Button & Dropdown -->
+        <div id="topbar-undo-wrap" style="display:inline-flex;align-items:center;">
+          <button id="topbar-undo-btn" class="btn btn-ghost btn-xs" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 8px;border-radius:6px 0 0 6px;border:1px solid var(--color-border);background:var(--color-surface);font-weight:600" onclick="handleQuickUndo()" title="Undo last record update (Ctrl+Z)">
+            <span style="font-size:12px">↺</span> <span>Undo</span>
+            <span id="topbar-undo-badge" class="badge" style="background:var(--color-primary);color:#fff;font-size:10px;padding:1px 5px;border-radius:10px;display:none">0</span>
+          </button>
+          <button id="topbar-undo-menu-btn" class="btn btn-ghost btn-xs" style="padding:3px 6px;margin-left:-1px;border:1px solid var(--color-border);border-radius:0 6px 6px 0;background:var(--color-surface)" onclick="openUndoHistoryModal()" title="View Last 10 Updates & Undo History">
+            <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+        </div>
         <div class="relative" id="global-search-wrap">
           <div class="topbar-search" id="global-search-box">
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="flex-shrink:0;color:var(--color-text-tertiary)"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -336,7 +346,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getPODItems } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getPODItems, getUndoHistory, undoRecordUpdate, undoLastRecordUpdate, undoMultipleRecordUpdates, clearUndoHistory } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment, rollbackImportSnapshot, getImportHistory, renderImportHistoryTable, getLastImportSnapshotId, clearImportHistory } from './js/excel-import.js';
@@ -2934,6 +2944,282 @@ window.refreshImportHistoryView = function() {
     target.innerHTML = renderImportHistoryTable();
     toast('Import history refreshed', 'info', 1500);
   }
+};
+
+// ═══════════════════════════════════════════════════════════
+// RECORD UPDATE UNDO CONTROLS & MODAL
+// ═══════════════════════════════════════════════════════════
+
+export function updateTopbarUndoBadge() {
+  const history = getUndoHistory();
+  const badge = document.getElementById('topbar-undo-badge');
+  const btn = document.getElementById('topbar-undo-btn');
+  const count = history ? history.length : 0;
+  
+  if (badge) {
+    badge.textContent = count;
+    badge.style.display = count > 0 ? 'inline-block' : 'none';
+  }
+  if (btn) {
+    if (count > 0) {
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+      btn.title = `Undo last update: "${history[0].description}" (Ctrl+Z)`;
+    } else {
+      btn.style.opacity = '0.6';
+      btn.title = 'No recent record updates to undo (Ctrl+Z)';
+    }
+  }
+}
+
+window.handleQuickUndo = async function() {
+  const history = getUndoHistory();
+  if (!history || !history.length) {
+    toast('No recent record updates to undo', 'info', 2500);
+    return;
+  }
+
+  const targetEntry = history[0];
+  const res = undoLastRecordUpdate();
+  if (res.success) {
+    toast(`↺ Reverted update: "${targetEntry.description}"`, 'success', 3500);
+    updateTopbarUndoBadge();
+    
+    // Refresh current view
+    const cur = getState().currentPage || 'dashboard';
+    const container = document.getElementById('page-content');
+    if (container && PAGES[cur]) {
+      preserveScroll(() => PAGES[cur].render(container));
+    }
+    
+    // Refresh open PRC detail modal if active
+    const modal = document.getElementById('prc-detail-modal');
+    if (modal && modal.classList.contains('open') && targetEntry.targetId) {
+      const prcId = String(targetEntry.targetId).split('/')[0];
+      if (getPRCById(prcId)) {
+        openPRCDetail(prcId);
+      }
+    }
+
+    // Refresh Undo History modal if open
+    const historyModal = document.getElementById('record-undo-history-modal');
+    if (historyModal) {
+      const listEl = document.getElementById('undo-history-list-container');
+      if (listEl) listEl.innerHTML = renderUndoHistoryModalContent();
+    }
+  } else {
+    toast(res.reason || 'Failed to undo record update', 'error');
+  }
+};
+
+window.handleUndoSpecificUpdate = async function(id) {
+  const history = getUndoHistory();
+  const targetEntry = history.find(e => e.id === id);
+  if (!targetEntry) {
+    toast('Update snapshot not found', 'warning');
+    return;
+  }
+
+  const res = undoRecordUpdate(id);
+  if (res.success) {
+    toast(`↺ Reverted: "${targetEntry.description}"`, 'success', 3500);
+    updateTopbarUndoBadge();
+    
+    const cur = getState().currentPage || 'dashboard';
+    const container = document.getElementById('page-content');
+    if (container && PAGES[cur]) {
+      preserveScroll(() => PAGES[cur].render(container));
+    }
+
+    const listEl = document.getElementById('undo-history-list-container');
+    if (listEl) listEl.innerHTML = renderUndoHistoryModalContent();
+  } else {
+    toast(res.reason || 'Failed to undo record update', 'error');
+  }
+};
+
+window.handleUndoLast10Updates = async function() {
+  const history = getUndoHistory();
+  if (!history || !history.length) {
+    toast('No recent record updates to undo', 'info');
+    return;
+  }
+
+  const countToUndo = Math.min(10, history.length);
+  const confirmed = await confirmDialog(
+    `Are you sure you want to revert the last ${countToUndo} record update(s) in reverse order? This will restore all affected PRCs, materials, and procurement records to their previous values.`,
+    `Undo Last ${countToUndo} Updates`
+  );
+  if (!confirmed) return;
+
+  const res = undoMultipleRecordUpdates(countToUndo);
+  if (res.success) {
+    toast(`✅ Successfully undid last ${res.undoneCount} record updates!`, 'success', 5000);
+    updateTopbarUndoBadge();
+    
+    const cur = getState().currentPage || 'dashboard';
+    const container = document.getElementById('page-content');
+    if (container && PAGES[cur]) {
+      preserveScroll(() => PAGES[cur].render(container));
+    }
+
+    const listEl = document.getElementById('undo-history-list-container');
+    if (listEl) listEl.innerHTML = renderUndoHistoryModalContent();
+  } else {
+    toast('Failed to perform batch undo', 'error');
+  }
+};
+
+window.handleClearUndoHistory = async function() {
+  const confirmed = await confirmDialog(
+    'Are you sure you want to clear the undo history? You will no longer be able to revert recent updates.',
+    'Clear Undo History'
+  );
+  if (!confirmed) return;
+
+  clearUndoHistory();
+  updateTopbarUndoBadge();
+  toast('Undo history cleared', 'info', 2000);
+  
+  const listEl = document.getElementById('undo-history-list-container');
+  if (listEl) listEl.innerHTML = renderUndoHistoryModalContent();
+};
+
+function renderUndoHistoryModalContent() {
+  const history = getUndoHistory();
+  const top10 = history.slice(0, 10);
+
+  if (!top10.length) {
+    return `
+      <div class="empty-state" style="padding:48px 24px;text-align:center">
+        <div style="font-size:48px;margin-bottom:12px">↺</div>
+        <h4 style="font-size:16px;font-weight:700;margin-bottom:6px">No Record Updates Recorded</h4>
+        <p style="font-size:13px;color:var(--color-text-secondary);max-width:380px;margin:0 auto">
+          Whenever you edit PRCs, update materials, modify allocations, RFQs, or purchase orders, the previous state will appear here so you can undo up to the last 10 updates.
+        </p>
+      </div>`;
+  }
+
+  return `
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${top10.map((entry, index) => {
+        let badgeColor = 'var(--color-primary)';
+        let badgeBg = 'var(--color-primary-bg, rgba(37,99,235,0.1))';
+        let icon = '📝';
+
+        if (entry.type === 'UPDATE_PRC' || entry.targetType === 'PRC') {
+          icon = '📋'; badgeColor = '#2563eb'; badgeBg = 'rgba(37,99,235,0.1)';
+        } else if (entry.type === 'UPDATE_MATERIAL' || entry.type === 'BULK_UPDATE_MATERIALS' || entry.targetType === 'Material') {
+          icon = '📦'; badgeColor = '#0891b2'; badgeBg = 'rgba(8,145,178,0.1)';
+        } else if (entry.targetType === 'Allocation') {
+          icon = '🔀'; badgeColor = '#8b5cf6'; badgeBg = 'rgba(139,92,246,0.1)';
+        } else if (entry.targetType === 'RFQ') {
+          icon = '📨'; badgeColor = '#f59e0b'; badgeBg = 'rgba(245,158,11,0.1)';
+        } else if (entry.targetType === 'Purchase Order') {
+          icon = '🛒'; badgeColor = '#10b981'; badgeBg = 'rgba(16,185,129,0.1)';
+        } else if (entry.type.startsWith('DELETE_')) {
+          icon = '🗑️'; badgeColor = '#ef4444'; badgeBg = 'rgba(239,68,68,0.1)';
+        }
+
+        // Format diff or changes summary
+        let changesSummary = '';
+        if (entry.patch && Object.keys(entry.patch).length) {
+          const keys = Object.keys(entry.patch);
+          changesSummary = keys.map(k => {
+            const val = entry.patch[k];
+            const strVal = typeof val === 'object' ? JSON.stringify(val) : String(val);
+            const truncVal = strVal.length > 35 ? strVal.slice(0, 32) + '…' : strVal;
+            return `<code style="font-size:11px;padding:2px 5px;background:var(--color-bg-secondary);border-radius:4px;border:1px solid var(--color-border)">${k}: ${truncVal || '(empty)'}</code>`;
+          }).join(' ');
+        }
+
+        return `
+          <div class="card" style="padding:12px 16px;margin:0;border:1px solid var(--color-border);background:var(--color-surface);display:flex;align-items:center;justify-content:space-between;gap:12px;transition:all 0.2s ease">
+            <div style="display:flex;align-items:center;gap:12px;min-width:0;flex:1">
+              <div style="width:36px;height:36px;border-radius:8px;background:${badgeBg};color:${badgeColor};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0">
+                ${icon}
+              </div>
+              <div style="min-width:0;flex:1">
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <span style="font-weight:700;font-size:13px;color:var(--color-text)">
+                    #${index + 1} ${entry.description}
+                  </span>
+                  <span class="chip" style="background:${badgeBg};color:${badgeColor};font-size:10px;font-weight:700;padding:1px 6px">
+                    ${entry.targetType}
+                  </span>
+                </div>
+                <div style="font-size:11px;color:var(--color-text-secondary);margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                  <span>🕒 ${fmtDateTime(entry.timestamp)} (${timeAgo(entry.timestamp)})</span>
+                  <span>👤 ${entry.user || 'User'}</span>
+                  ${changesSummary ? `<div style="margin-top:2px;display:flex;gap:4px;flex-wrap:wrap">${changesSummary}</div>` : ''}
+                </div>
+              </div>
+            </div>
+            <div style="flex-shrink:0">
+              <button class="btn btn-secondary btn-xs" style="display:inline-flex;align-items:center;gap:5px;font-weight:600" onclick="handleUndoSpecificUpdate('${entry.id}')" title="Undo this specific update">
+                <span>↺</span> Undo
+              </button>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
+window.openUndoHistoryModal = function() {
+  const modalId = 'record-undo-history-modal';
+  let modalEl = document.getElementById(modalId);
+  if (modalEl) modalEl.remove();
+
+  const history = getUndoHistory();
+  const top10 = history.slice(0, 10);
+
+  modalEl = document.createElement('div');
+  modalEl.id = modalId;
+  modalEl.className = 'modal-overlay open';
+  modalEl.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:750px;max-height:88vh;display:flex;flex-direction:column">
+      <div class="modal-header" style="flex-shrink:0">
+        <div>
+          <h3 class="modal-title" style="display:flex;align-items:center;gap:8px">
+            <span>⏪</span> Undo Record Updates (Last 10 Records)
+          </h3>
+          <p style="font-size:12px;color:var(--color-text-secondary);margin:2px 0 0 0">
+            View recent changes across PRCs, materials, allocations, RFQs, and purchase orders. Revert any individual update or undo all 10 at once.
+          </p>
+        </div>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()">✕</button>
+      </div>
+
+      <div style="padding:12px 20px;border-bottom:1px solid var(--color-border);background:var(--color-bg-secondary);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;flex-shrink:0">
+        <div style="font-size:12px;font-weight:600;color:var(--color-text-secondary)">
+          Available Undo Steps: <strong style="color:var(--color-text)">${top10.length}</strong> (Max 10 displayed)
+        </div>
+        <div class="flex gap-2">
+          ${top10.length > 0 ? `
+            <button class="btn btn-primary btn-xs" style="display:inline-flex;align-items:center;gap:5px" onclick="handleUndoLast10Updates()">
+              <span>⏪</span> Undo Last ${top10.length} Updates
+            </button>
+            <button class="btn btn-ghost btn-xs" style="color:var(--color-danger)" onclick="handleClearUndoHistory()">
+              <span>🗑️</span> Clear History
+            </button>
+          ` : ''}
+          <button class="btn btn-secondary btn-xs" onclick="document.getElementById('undo-history-list-container').innerHTML = renderUndoHistoryModalContent()">
+            🔄 Refresh
+          </button>
+        </div>
+      </div>
+
+      <div id="undo-history-list-container" class="modal-body" style="padding:16px 20px;overflow-y:auto;flex:1">
+        ${renderUndoHistoryModalContent()}
+      </div>
+
+      <div class="modal-footer" style="flex-shrink:0;justify-content:space-between">
+        <span style="font-size:11px;color:var(--color-text-secondary)">💡 Shortcut: Press <kbd style="font-size:10px;padding:2px 5px">Ctrl+Z</kbd> anytime to undo the last update.</span>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('${modalId}').remove()">Close</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modalEl);
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -8252,6 +8538,7 @@ window.triggerManualSync = async function() {
 // Auto update active UI when data changes from other devices/PCs in real-time
 on('*', () => {
   updateSidebarBadges();
+  updateTopbarUndoBadge();
   const currentPage = getState().currentPage;
   if (currentPage && ['dashboard', 'prc-list', 'allocations', 'rfqs', 'tcds', 'pods'].includes(currentPage)) {
     const activeModal = document.querySelector('.modal-overlay.open');
@@ -8261,6 +8548,26 @@ on('*', () => {
       if (p && content && !document.querySelector('input:focus, textarea:focus')) {
         p.render(content);
       }
+    }
+  }
+});
+
+on('undo_stack_changed', () => {
+  updateTopbarUndoBadge();
+});
+
+// Global Keyboard Shortcut for Undo (Ctrl+Z / Cmd+Z)
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+    const active = document.activeElement;
+    const isInput = active && (
+      active.tagName === 'INPUT' || 
+      active.tagName === 'TEXTAREA' || 
+      active.isContentEditable
+    );
+    if (!isInput) {
+      e.preventDefault();
+      handleQuickUndo();
     }
   }
 });
@@ -8288,6 +8595,9 @@ async function init() {
     console.warn('Initial cache preload skipped:', e);
   }
 
+  // Update undo badge from cache immediately
+  updateTopbarUndoBadge();
+
   // Render initial page immediately
   navigate(initialPage);
 
@@ -8298,6 +8608,7 @@ async function init() {
 
     updateUserUI();
     updateSidebarBadges();
+    updateTopbarUndoBadge();
 
     // Re-render active page with fresh Turso data
     const activePage = getState().currentPage || 'dashboard';
@@ -8316,6 +8627,7 @@ async function init() {
 
     updateUserUI();
     updateSidebarBadges();
+    updateTopbarUndoBadge();
 
     // Ensure loading screen is cleared if still present
     const content = document.getElementById('page-content');

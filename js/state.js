@@ -28,6 +28,8 @@ import {
 import { isFirebaseConfigured } from './firebase-config.js';
 import { isTursoConfigured } from './turso-db.js';
 
+import { clone } from './utils.js';
+
 export const LOCAL_CACHE_KEY = 'PRC_PROCUREMENT_USER_CACHE';
 
 export const DEFAULT_USER = {
@@ -51,7 +53,7 @@ const state = {
   currentUser: { ...DEFAULT_USER },
   isAuthenticated: false,
   firebaseUser: null,
-  theme: localStorage.getItem('theme') || 'light',
+  theme: (typeof localStorage !== 'undefined' ? localStorage.getItem('theme') : 'light') || 'light',
 
   // Core Data Collections
   prcs: [],
@@ -63,6 +65,7 @@ const state = {
   users: [],
   notifications: [],
   activityLogs: [],
+  recordUndoHistory: [],
 
   // UI
   sidebarCollapsed: false,
@@ -121,7 +124,8 @@ function saveToLocalCache() {
       vendors: state.vendors,
       users: state.users,
       notifications: state.notifications,
-      activityLogs: state.activityLogs
+      activityLogs: state.activityLogs,
+      recordUndoHistory: state.recordUndoHistory || []
     };
     // Save ONLY to current user-scoped key to prevent cross-user data leakage
     localStorage.setItem(_getCacheKey(), JSON.stringify(dataToSave));
@@ -138,6 +142,9 @@ export function loadFromLocalCache() {
       try {
         const parsed = JSON.parse(uidRaw);
         if (parsed && Array.isArray(parsed.prcs)) {
+          if (Array.isArray(parsed.recordUndoHistory)) {
+            state.recordUndoHistory = parsed.recordUndoHistory;
+          }
           console.info(`📦 Local cache loaded for current user key (${uidKey}): ${parsed.prcs?.length || 0} PRCs`);
           return parsed;
         }
@@ -2161,6 +2168,20 @@ export function updatePRC(id, patch, cascadeToMaterials = false) {
   if (idx === -1) return;
 
   const current = state.prcs[idx];
+
+  // Capture snapshot for undo stack
+  recordUpdateSnapshot({
+    type: 'UPDATE_PRC',
+    targetType: 'PRC',
+    targetId: id,
+    targetName: current.prNumber || id,
+    description: `Updated PRC "${current.prNumber || id}" (${Object.keys(patch).join(', ')})`,
+    patch,
+    previousState: {
+      prc: clone(current)
+    }
+  });
+
   let materials = [...(current.materials || [])];
 
   if (cascadeToMaterials) {
@@ -2229,6 +2250,23 @@ export function deletePRC(id, forceCascade = true) {
   if (hasTrails && !isAdmin && !forceCascade) {
     return { success: false, reason: 'Cannot delete PRC — it has downstream Allocation, RFQ, TCD, or PO documents. Only Super Admin has right to delete PRC and all its trails.' };
   }
+
+  // Capture snapshot for undo stack before deletion
+  recordUpdateSnapshot({
+    type: 'DELETE_PRC',
+    targetType: 'PRC',
+    targetId: prcId,
+    targetName: prNumber || prcId,
+    description: `Deleted PRC "${prNumber || prcId}"`,
+    patch: {},
+    previousState: {
+      prc: clone(prc),
+      allocations: clone(state.allocations.filter(a => (a.items || []).some(i => i.prcId === prcId || i.prNumber === prNumber))),
+      rfqs: clone(state.rfqs.filter(r => (r.items || []).some(i => i.prcId === prcId || i.prNumber === prNumber))),
+      tcds: clone(state.tcds.filter(t => (t.vendorAllocations || []).some(va => (va.items || []).some(i => i.prcId === prcId || i.prNumber === prNumber)))),
+      pods: clone(state.pods.filter(p => (p.items || []).some(i => i.prcId === prcId || i.prNumber === prNumber)))
+    }
+  });
 
   const effectiveUid = _getEffectiveUid();
 
@@ -2364,6 +2402,22 @@ export function updateMaterial(prcId, materialId, patch) {
   if (prcIdx === -1) return;
   const prc = state.prcs[prcIdx];
 
+  const currentMat = (prc.materials || []).find(m => m.id === materialId || (patch.matCode && m.matCode === patch.matCode));
+  const matName = currentMat ? (currentMat.matCode || currentMat.description || materialId) : materialId;
+
+  // Capture snapshot for undo stack
+  recordUpdateSnapshot({
+    type: 'UPDATE_MATERIAL',
+    targetType: 'Material',
+    targetId: `${prcId}/${materialId}`,
+    targetName: matName,
+    description: `Updated Material "${matName}" in PRC "${prc.prNumber || prcId}"`,
+    patch,
+    previousState: {
+      prc: clone(prc)
+    }
+  });
+
   const materials = (prc.materials || []).map(m => {
     if (m.id === materialId || (patch.matCode && m.matCode === patch.matCode)) {
       const updatedMat = { ...m, ...patch };
@@ -2421,6 +2475,19 @@ export function bulkUpdateMaterials(prcId, materialIds, patch) {
   const prcIdx = state.prcs.findIndex(p => p.id === prcId || p.prNumber === prcId);
   if (prcIdx === -1) return;
   const prc = state.prcs[prcIdx];
+
+  // Capture snapshot for undo stack
+  recordUpdateSnapshot({
+    type: 'BULK_UPDATE_MATERIALS',
+    targetType: 'Material',
+    targetId: prcId,
+    targetName: prc.prNumber || prcId,
+    description: `Bulk updated ${materialIds.length} materials in PRC "${prc.prNumber || prcId}"`,
+    patch,
+    previousState: {
+      prc: clone(prc)
+    }
+  });
 
   const idSet = new Set(materialIds);
   const materials = (prc.materials || []).map(m => {
@@ -3174,6 +3241,23 @@ export function updateAllocation(id, data) {
   if (allocIdx === -1) return { success: false, reason: 'Allocation document not found' };
 
   const existingAlloc = state.allocations[allocIdx];
+
+  // Capture snapshot for undo stack
+  const affectedPrcIdsBefore = new Set((existingAlloc.items || []).concat(data.items || []).map(i => i.prcId));
+  const affectedPRCsBefore = state.prcs.filter(p => affectedPrcIdsBefore.has(p.id));
+  recordUpdateSnapshot({
+    type: 'UPDATE_ALLOCATION',
+    targetType: 'Allocation',
+    targetId: id,
+    targetName: existingAlloc.allocationNumber || id,
+    description: `Updated Allocation "${existingAlloc.allocationNumber || id}"`,
+    patch: data,
+    previousState: {
+      allocation: clone(existingAlloc),
+      prcs: clone(affectedPRCsBefore)
+    }
+  });
+
   const updatedAlloc = {
     ...existingAlloc,
     allocationNumber: data.allocationNumber || existingAlloc.allocationNumber,
@@ -3252,6 +3336,26 @@ export function deleteAllocation(id, forceCascade = false) {
       reason: `Cannot delete Allocation "${allocNum}" — it has ${downstreamRFQs.length} downstream RFQ document(s). Please delete or unlink downstream RFQ documents first.`
     };
   }
+
+  // Snapshot before deletion
+  const affectedPrcsBeforeDelete = state.prcs.filter(p =>
+    (alloc.items || []).some(i => i.prcId === p.id) ||
+    p.allocationNumber === allocNum ||
+    (p.materials || []).some(m => m.allocationNumber === allocNum)
+  );
+  recordUpdateSnapshot({
+    type: 'DELETE_ALLOCATION',
+    targetType: 'Allocation',
+    targetId: allocId,
+    targetName: allocNum || allocId,
+    description: `Deleted Allocation "${allocNum || allocId}"`,
+    patch: {},
+    previousState: {
+      allocation: clone(alloc),
+      prcs: clone(affectedPrcsBeforeDelete),
+      rfqs: clone(downstreamRFQs)
+    }
+  });
 
   const effectiveUid = _getEffectiveUid();
 
@@ -3523,6 +3627,22 @@ export function updateRFQ(id, data) {
     }
   }
 
+  // Capture snapshot for undo stack
+  const affectedPrcIdsBefore = new Set((existingRFQ.items || []).concat(newItems || []).map(i => i.prcId));
+  const affectedPRCsBefore = state.prcs.filter(p => affectedPrcIdsBefore.has(p.id));
+  recordUpdateSnapshot({
+    type: 'UPDATE_RFQ',
+    targetType: 'RFQ',
+    targetId: id,
+    targetName: existingRFQ.rfqNumber || id,
+    description: `Updated RFQ "${existingRFQ.rfqNumber || id}"`,
+    patch: data,
+    previousState: {
+      rfq: clone(existingRFQ),
+      prcs: clone(affectedPRCsBefore)
+    }
+  });
+
   const updatedRFQ = {
     ...existingRFQ,
     rfqNumber: newRfqNumber,
@@ -3668,6 +3788,26 @@ export function deleteRFQ(id, forceCascade = false) {
   if (hasTCDs && !isSuperAdmin() && !forceCascade) {
     return { success: false, reason: 'Cannot delete RFQ — it has downstream TCD documents. Please delete or unlink downstream TCD documents first.' };
   }
+
+  // Capture snapshot for undo stack before deletion
+  const affectedPrcsBeforeDelete = state.prcs.filter(p =>
+    (rfq.items || []).some(i => i.prcId === p.id) ||
+    p.rfqNumber === rfqNum ||
+    (p.materials || []).some(m => m.rfqNumber === rfqNum)
+  );
+  recordUpdateSnapshot({
+    type: 'DELETE_RFQ',
+    targetType: 'RFQ',
+    targetId: rfqId,
+    targetName: rfqNum || rfqId,
+    description: `Deleted RFQ "${rfqNum || rfqId}"`,
+    patch: {},
+    previousState: {
+      rfq: clone(rfq),
+      prcs: clone(affectedPrcsBeforeDelete),
+      tcds: clone(state.tcds.filter(t => (t.vendorAllocations || []).some(va => (va.items || []).some(i => i.rfqId === rfqId || i.rfqNumber === rfqNum))))
+    }
+  });
 
   const effectiveUid = _getEffectiveUid();
 
@@ -4266,6 +4406,25 @@ export function deletePOD(id) {
   const poNum = pod.poNumber;
   const effectiveUid = _getEffectiveUid();
 
+  // Snapshot before deletion
+  const affectedPrcsBeforeDelete = state.prcs.filter(p =>
+    (pod.items || []).some(i => i.prcId === p.id) ||
+    (poNum && p.poNumber === poNum) ||
+    (p.materials || []).some(m => poNum && m.poNumber === poNum)
+  );
+  recordUpdateSnapshot({
+    type: 'DELETE_POD',
+    targetType: 'Purchase Order',
+    targetId: podId,
+    targetName: poNum || podId,
+    description: `Deleted PO "${poNum || podId}"`,
+    patch: {},
+    previousState: {
+      pod: clone(pod),
+      prcs: clone(affectedPrcsBeforeDelete)
+    }
+  });
+
   const pods = state.pods.filter(p => p.id !== podId && p.poNumber !== podId);
 
   // If PO had been issued and stamped on materials, revert them
@@ -4342,6 +4501,22 @@ export function updatePOD(podId, patch) {
 
   const existingPod = state.pods[podIdx];
   const items = (existingPod.items && existingPod.items.length) ? existingPod.items : getPODItems(existingPod, state.prcs, state.tcds);
+
+  // Capture snapshot for undo stack
+  const affectedPrcIdsBefore = new Set((items || []).map(i => i.prcId));
+  const affectedPRCsBefore = state.prcs.filter(p => affectedPrcIdsBefore.has(p.id));
+  recordUpdateSnapshot({
+    type: 'UPDATE_POD',
+    targetType: 'Purchase Order',
+    targetId: podId,
+    targetName: existingPod.poNumber || podId,
+    description: `Updated PO "${existingPod.poNumber || podId}"`,
+    patch,
+    previousState: {
+      pod: clone(existingPod),
+      prcs: clone(affectedPRCsBefore)
+    }
+  });
 
   const pod = { ...existingPod, items, ...patch };
   if (patch.poNumber) pod.status = 'Issued';
@@ -4436,4 +4611,283 @@ export function expandAllPRCs(prcIds) {
 export function collapseAllPRCs() {
   setState({ expandedPRCIds: [] });
 }
+
+// ═══════════════════════════════════════════════════════════
+// RECORD UPDATE UNDO ENGINE (LAST 10+ UPDATES)
+// ═══════════════════════════════════════════════════════════
+export const MAX_UNDO_RECORDS = 20;
+
+function _getUndoStorageKey() {
+  const uid = state.firebaseUser?.uid || state.currentUser?.uid || state.currentUser?.id || 'guest';
+  return `PRC_RECORD_UNDO_STACK_${uid}`;
+}
+
+/** Retrieve current undo stack for active user */
+export function getUndoHistory() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(_getUndoStorageKey());
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) return list;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load undo history from storage:', e);
+  }
+  return state.recordUndoHistory || [];
+}
+
+/** Save snapshot of pre-update state before any record mutation */
+export function recordUpdateSnapshot({
+  type = 'UPDATE_RECORD',
+  targetType = 'PRC',
+  targetId = '',
+  targetName = '',
+  description = '',
+  patch = {},
+  previousState = {},
+  user = null
+}) {
+  const snapshotId = `undo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const entry = {
+    id: snapshotId,
+    timestamp: new Date().toISOString(),
+    type,
+    targetType,
+    targetId,
+    targetName: targetName || targetId,
+    description: description || `Updated ${targetType} ${targetName || targetId}`,
+    patch: clone(patch || {}),
+    previousState: clone(previousState || {}),
+    user: user || state.currentUser?.name || 'User'
+  };
+
+  try {
+    const history = getUndoHistory();
+    const updatedHistory = [entry, ...history].slice(0, MAX_UNDO_RECORDS);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(_getUndoStorageKey(), JSON.stringify(updatedHistory));
+    }
+    state.recordUndoHistory = updatedHistory;
+    emit('undo_stack_changed', updatedHistory);
+  } catch (e) {
+    console.warn('Failed to record update snapshot:', e);
+  }
+
+  return snapshotId;
+}
+
+/** Undo a specific record update or the most recent one */
+export function undoRecordUpdate(updateId = null) {
+  const history = getUndoHistory();
+  if (!history || !history.length) {
+    return { success: false, reason: 'No recent record updates to undo.' };
+  }
+
+  const entry = updateId ? history.find(e => e.id === updateId) : history[0];
+  if (!entry) {
+    return { success: false, reason: 'Update record not found in undo history.' };
+  }
+
+  const effectiveUid = _getEffectiveUid();
+  const { previousState, targetType, targetId, description } = entry;
+  const restoredItems = [];
+
+  // 1. Restore PRC(s)
+  if (previousState.prc) {
+    const prcToRestore = clone(previousState.prc);
+    const prcIdx = state.prcs.findIndex(p => p.id === prcToRestore.id || p.prNumber === prcToRestore.prNumber);
+    if (prcIdx !== -1) {
+      state.prcs[prcIdx] = prcToRestore;
+    } else {
+      state.prcs = [prcToRestore, ...state.prcs];
+    }
+    directSavePRC(effectiveUid, prcToRestore);
+    restoredItems.push(`PRC ${prcToRestore.prNumber || prcToRestore.id}`);
+  }
+
+  if (Array.isArray(previousState.prcs)) {
+    previousState.prcs.forEach(prcToRestore => {
+      const cloned = clone(prcToRestore);
+      const prcIdx = state.prcs.findIndex(p => p.id === cloned.id || p.prNumber === cloned.prNumber);
+      if (prcIdx !== -1) {
+        state.prcs[prcIdx] = cloned;
+      } else {
+        state.prcs = [cloned, ...state.prcs];
+      }
+      directSavePRC(effectiveUid, cloned);
+      restoredItems.push(`PRC ${cloned.prNumber || cloned.id}`);
+    });
+  }
+
+  // 2. Restore Allocation(s)
+  if (previousState.allocation) {
+    const allocToRestore = clone(previousState.allocation);
+    const allocIdx = state.allocations.findIndex(a => a.id === allocToRestore.id || a.allocationNumber === allocToRestore.allocationNumber);
+    if (allocIdx !== -1) {
+      state.allocations[allocIdx] = allocToRestore;
+    } else {
+      state.allocations = [allocToRestore, ...state.allocations];
+    }
+    directSaveAllocation(effectiveUid, allocToRestore);
+    restoredItems.push(`Allocation ${allocToRestore.allocationNumber || allocToRestore.id}`);
+  }
+
+  if (Array.isArray(previousState.allocations)) {
+    previousState.allocations.forEach(a => {
+      const cloned = clone(a);
+      const idx = state.allocations.findIndex(al => al.id === cloned.id || al.allocationNumber === cloned.allocationNumber);
+      if (idx !== -1) state.allocations[idx] = cloned;
+      else state.allocations = [cloned, ...state.allocations];
+      directSaveAllocation(effectiveUid, cloned);
+      restoredItems.push(`Allocation ${cloned.allocationNumber || cloned.id}`);
+    });
+  }
+
+  // 3. Restore RFQ(s)
+  if (previousState.rfq) {
+    const rfqToRestore = clone(previousState.rfq);
+    const rfqIdx = state.rfqs.findIndex(r => r.id === rfqToRestore.id || r.rfqNumber === rfqToRestore.rfqNumber);
+    if (rfqIdx !== -1) {
+      state.rfqs[rfqIdx] = rfqToRestore;
+    } else {
+      state.rfqs = [rfqToRestore, ...state.rfqs];
+    }
+    directSaveRFQ(effectiveUid, rfqToRestore);
+    restoredItems.push(`RFQ ${rfqToRestore.rfqNumber || rfqToRestore.id}`);
+  }
+
+  if (Array.isArray(previousState.rfqs)) {
+    previousState.rfqs.forEach(r => {
+      const cloned = clone(r);
+      const idx = state.rfqs.findIndex(rf => rf.id === cloned.id || rf.rfqNumber === cloned.rfqNumber);
+      if (idx !== -1) state.rfqs[idx] = cloned;
+      else state.rfqs = [cloned, ...state.rfqs];
+      directSaveRFQ(effectiveUid, cloned);
+      restoredItems.push(`RFQ ${cloned.rfqNumber || cloned.id}`);
+    });
+  }
+
+  // 4. Restore TCD(s)
+  if (previousState.tcd) {
+    const tcdToRestore = clone(previousState.tcd);
+    const tcdIdx = state.tcds.findIndex(t => t.id === tcdToRestore.id || t.tcdNumber === tcdToRestore.tcdNumber);
+    if (tcdIdx !== -1) {
+      state.tcds[tcdIdx] = tcdToRestore;
+    } else {
+      state.tcds = [tcdToRestore, ...state.tcds];
+    }
+    directSaveTCD(effectiveUid, tcdToRestore);
+    restoredItems.push(`TCD ${tcdToRestore.tcdNumber || tcdToRestore.id}`);
+  }
+
+  if (Array.isArray(previousState.tcds)) {
+    previousState.tcds.forEach(t => {
+      const cloned = clone(t);
+      const idx = state.tcds.findIndex(tc => tc.id === cloned.id || tc.tcdNumber === cloned.tcdNumber);
+      if (idx !== -1) state.tcds[idx] = cloned;
+      else state.tcds = [cloned, ...state.tcds];
+      directSaveTCD(effectiveUid, cloned);
+      restoredItems.push(`TCD ${cloned.tcdNumber || cloned.id}`);
+    });
+  }
+
+  // 5. Restore POD(s)
+  if (previousState.pod) {
+    const podToRestore = clone(previousState.pod);
+    const podIdx = state.pods.findIndex(p => p.id === podToRestore.id || p.poNumber === podToRestore.poNumber);
+    if (podIdx !== -1) {
+      state.pods[podIdx] = podToRestore;
+    } else {
+      state.pods = [podToRestore, ...state.pods];
+    }
+    directSavePOD(effectiveUid, podToRestore);
+    restoredItems.push(`PO ${podToRestore.poNumber || podToRestore.id}`);
+  }
+
+  if (Array.isArray(previousState.pods)) {
+    previousState.pods.forEach(p => {
+      const cloned = clone(p);
+      const idx = state.pods.findIndex(po => po.id === cloned.id || po.poNumber === cloned.poNumber);
+      if (idx !== -1) state.pods[idx] = cloned;
+      else state.pods = [cloned, ...state.pods];
+      directSavePOD(effectiveUid, cloned);
+      restoredItems.push(`PO ${cloned.poNumber || cloned.id}`);
+    });
+  }
+
+  // Re-calculate state summaries
+  state.statusSummary = buildStatusSummary(state.prcs);
+  state.totalMaterials = state.prcs.reduce((sum, p) => sum + (p.materials || []).length, 0);
+
+  // Update undo history by removing this entry
+  const updatedHistory = history.filter(e => e.id !== entry.id);
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(_getUndoStorageKey(), JSON.stringify(updatedHistory));
+    }
+    state.recordUndoHistory = updatedHistory;
+  } catch (e) {}
+
+  saveToLocalCache();
+
+  addAuditLog({
+    action: 'undo_record_update',
+    collection: targetType || 'PRCs',
+    docId: targetId || entry.id,
+    changes: {
+      revertedAction: entry.type,
+      description: `Undid update: ${description}`,
+      restored: restoredItems
+    }
+  });
+
+  emit('*');
+  emit('undo_stack_changed', updatedHistory);
+
+  return {
+    success: true,
+    entry,
+    restoredItems,
+    remainingCount: updatedHistory.length
+  };
+}
+
+/** Helper to undo the latest record update */
+export function undoLastRecordUpdate() {
+  return undoRecordUpdate(null);
+}
+
+/** Revert up to N recent updates in reverse chronological order */
+export function undoMultipleRecordUpdates(count = 10) {
+  const history = getUndoHistory();
+  const limit = Math.min(count, history.length);
+  const results = [];
+  for (let i = 0; i < limit; i++) {
+    const res = undoLastRecordUpdate();
+    if (res.success) results.push(res);
+    else break;
+  }
+  return {
+    success: results.length > 0,
+    undoneCount: results.length,
+    results
+  };
+}
+
+/** Clear all stored record undo history */
+export function clearUndoHistory() {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(_getUndoStorageKey());
+    }
+    state.recordUndoHistory = [];
+    emit('undo_stack_changed', []);
+    return { success: true };
+  } catch (e) {
+    return { success: false, reason: e.message };
+  }
+}
+
 
