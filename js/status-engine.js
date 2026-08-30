@@ -596,4 +596,263 @@ export function getAllocationStatus(alloc, prcs = []) {
   return alloc.status || 'Active';
 }
 
+/**
+ * Computes stage-by-stage funnel progression and analyzes exact bottleneck/drop-off reasons between steps.
+ * Transitions:
+ * 1. Imported -> Allocated
+ * 2. Allocated -> RFQ Issued
+ * 3. RFQ Issued -> Offers In
+ * 4. Offers In -> TCD Done
+ * 5. TCD Done -> PO Issued
+ *
+ * @param {Array} prcs
+ * @returns {Array} List of stage objects with counts, drop deltas, and categorized reasons
+ */
+function isPRCShortClosedCheck(p) {
+  if (!p) return false;
+  if (p.isShortClosed || p.shortClosed) return true;
+  const s = String(p.status || '').trim().toLowerCase();
+  return s.includes('short close') || s.includes('short-close') || s.includes('shortclosed') || s.includes('shortclose') || s.includes('not active');
+}
+
+export function getProcurementFunnelBreakdown(prcs = []) {
+  const totalImported = prcs.length;
+
+  // Stage 1 -> 2: Imported to Allocated
+  const allocatedPRCs = prcs.filter(p => isPRCAllocationComplete(p) || p.allocationNumber || (p.materials || []).some(m => m.allocationNumber || (m.allocatedQty || 0) > 0));
+  const notAllocatedPRCs = prcs.filter(p => !allocatedPRCs.includes(p));
+
+  const s1ShortClosedPRCs = notAllocatedPRCs.filter(p => isPRCShortClosedCheck(p));
+  const s1PendingPRCs = notAllocatedPRCs.filter(p => !s1ShortClosedPRCs.includes(p));
+
+  const stage1Reasons = [];
+  if (s1PendingPRCs.length > 0) {
+    stage1Reasons.push({
+      reasonKey: 'pending_allocation',
+      label: 'Pending Buyer Allocation (Unassigned)',
+      count: s1PendingPRCs.length,
+      icon: '⏳',
+      prcIds: s1PendingPRCs.map(p => p.id || p.prNumber),
+      prcs: s1PendingPRCs
+    });
+  }
+  if (s1ShortClosedPRCs.length > 0) {
+    stage1Reasons.push({
+      reasonKey: 'short_closed_pr',
+      label: 'Short Closed / Dropped at PR Stage',
+      count: s1ShortClosedPRCs.length,
+      icon: '🚫',
+      prcIds: s1ShortClosedPRCs.map(p => p.id || p.prNumber),
+      prcs: s1ShortClosedPRCs
+    });
+  }
+
+  // Stage 2 -> 3: Allocated to RFQ Issued
+  const rfqPRCs = allocatedPRCs.filter(p => p.rfqNumber || (p.materials || []).some(m => m.rfqNumber));
+  const notRfqPRCs = allocatedPRCs.filter(p => !rfqPRCs.includes(p));
+
+  const s2ShortClosedPRCs = notRfqPRCs.filter(p => isPRCShortClosedCheck(p));
+  const s2DirectPoPRCs = notRfqPRCs.filter(p => !s2ShortClosedPRCs.includes(p) && (p.poNumber || (p.materials || []).some(m => m.poNumber)));
+  const s2PendingSourcingPRCs = notRfqPRCs.filter(p => !s2ShortClosedPRCs.includes(p) && !s2DirectPoPRCs.includes(p));
+
+  const stage2Reasons = [];
+  if (s2PendingSourcingPRCs.length > 0) {
+    stage2Reasons.push({
+      reasonKey: 'pending_rfq',
+      label: 'Sourcing & RFQ Drafting in Progress',
+      count: s2PendingSourcingPRCs.length,
+      icon: '📝',
+      prcIds: s2PendingSourcingPRCs.map(p => p.id || p.prNumber),
+      prcs: s2PendingSourcingPRCs
+    });
+  }
+  if (s2DirectPoPRCs.length > 0) {
+    stage2Reasons.push({
+      reasonKey: 'direct_po',
+      label: 'Direct / Repeat Order (Bypassed RFQ)',
+      count: s2DirectPoPRCs.length,
+      icon: '⚡',
+      prcIds: s2DirectPoPRCs.map(p => p.id || p.prNumber),
+      prcs: s2DirectPoPRCs
+    });
+  }
+  if (s2ShortClosedPRCs.length > 0) {
+    stage2Reasons.push({
+      reasonKey: 'short_closed_post_alloc',
+      label: 'Short Closed Post-Allocation',
+      count: s2ShortClosedPRCs.length,
+      icon: '🚫',
+      prcIds: s2ShortClosedPRCs.map(p => p.id || p.prNumber),
+      prcs: s2ShortClosedPRCs
+    });
+  }
+
+  // Stage 3 -> 4: RFQ Issued to Offers In
+  const offersPRCs = rfqPRCs.filter(p => p.offersReceived || p.tcdNumber || p.tcdApproved || p.poNumber || (p.materials || []).some(m => m.offersReceived || m.tcdNumber || m.tcdApproved || m.poNumber));
+  const notOffersPRCs = rfqPRCs.filter(p => !offersPRCs.includes(p));
+
+  const s3AwaitingPRCs = notOffersPRCs.filter(p => {
+    const age = calcAgeDays(p.rfqDate || p.updatedAt);
+    return age <= 14;
+  });
+  const s3OverduePRCs = notOffersPRCs.filter(p => !s3AwaitingPRCs.includes(p));
+
+  const stage3Reasons = [];
+  if (s3AwaitingPRCs.length > 0) {
+    stage3Reasons.push({
+      reasonKey: 'awaiting_quotes',
+      label: 'Awaiting Vendor Quotations (Active)',
+      count: s3AwaitingPRCs.length,
+      icon: '📬',
+      prcIds: s3AwaitingPRCs.map(p => p.id || p.prNumber),
+      prcs: s3AwaitingPRCs
+    });
+  }
+  if (s3OverduePRCs.length > 0) {
+    stage3Reasons.push({
+      reasonKey: 'quotes_followup',
+      label: 'Quotation Follow-up / Overdue / Clarification',
+      count: s3OverduePRCs.length,
+      icon: '⚠️',
+      prcIds: s3OverduePRCs.map(p => p.id || p.prNumber),
+      prcs: s3OverduePRCs
+    });
+  }
+
+  // Stage 4 -> 5: Offers In to TCD Done
+  const tcdPRCs = offersPRCs.filter(p => p.tcdNumber || p.tcdApproved || p.poNumber || (p.materials || []).some(m => m.tcdNumber || m.tcdApproved || m.poNumber));
+  const notTcdPRCs = offersPRCs.filter(p => !tcdPRCs.includes(p));
+
+  const s4CommercialEvalPRCs = notTcdPRCs.filter(p => (p.offersReceived || (p.materials || []).some(m => m.offersReceived)) && !p.tcdNumber && !(p.materials || []).some(m => m.tcdNumber));
+  const s4ApprovalPendingPRCs = notTcdPRCs.filter(p => !s4CommercialEvalPRCs.includes(p));
+
+  const stage4Reasons = [];
+  if (s4CommercialEvalPRCs.length > 0) {
+    stage4Reasons.push({
+      reasonKey: 'commercial_eval',
+      label: 'Techno-Commercial Evaluation & Negotiation',
+      count: s4CommercialEvalPRCs.length,
+      icon: '⚖️',
+      prcIds: s4CommercialEvalPRCs.map(p => p.id || p.prNumber),
+      prcs: s4CommercialEvalPRCs
+    });
+  }
+  if (s4ApprovalPendingPRCs.length > 0) {
+    stage4Reasons.push({
+      reasonKey: 'tcd_approval_pending',
+      label: 'TCD Approval Pending from Authority',
+      count: s4ApprovalPendingPRCs.length,
+      icon: '✍️',
+      prcIds: s4ApprovalPendingPRCs.map(p => p.id || p.prNumber),
+      prcs: s4ApprovalPendingPRCs
+    });
+  }
+  if (!stage4Reasons.length && notTcdPRCs.length > 0) {
+    stage4Reasons.push({
+      reasonKey: 'tcd_in_progress',
+      label: 'Commercial Discussion in Progress',
+      count: notTcdPRCs.length,
+      icon: '💬',
+      prcIds: notTcdPRCs.map(p => p.id || p.prNumber),
+      prcs: notTcdPRCs
+    });
+  }
+
+  // Stage 5 -> 6: TCD Done to PO Issued
+  const poPRCs = tcdPRCs.filter(p => p.poNumber || (p.materials || []).some(m => m.poNumber));
+  const notPoPRCs = tcdPRCs.filter(p => !poPRCs.includes(p));
+
+  const s5PoDraftingPRCs = notPoPRCs.filter(p => p.tcdApproved || (p.materials || []).some(m => m.tcdApproved) || p.tcdNumber || (p.materials || []).some(m => m.tcdNumber));
+  const s5BudgetPendingPRCs = notPoPRCs.filter(p => !s5PoDraftingPRCs.includes(p));
+
+  const stage5Reasons = [];
+  if (s5PoDraftingPRCs.length > 0) {
+    stage5Reasons.push({
+      reasonKey: 'po_creation_pending',
+      label: 'PO Creation & SAP Approval Pending',
+      count: s5PoDraftingPRCs.length,
+      icon: '🛒',
+      prcIds: s5PoDraftingPRCs.map(p => p.id || p.prNumber),
+      prcs: s5PoDraftingPRCs
+    });
+  }
+  if (s5BudgetPendingPRCs.length > 0) {
+    stage5Reasons.push({
+      reasonKey: 'budget_release_pending',
+      label: 'Vendor Acceptance / Budget Release Pending',
+      count: s5BudgetPendingPRCs.length,
+      icon: '🏦',
+      prcIds: s5BudgetPendingPRCs.map(p => p.id || p.prNumber),
+      prcs: s5BudgetPendingPRCs
+    });
+  }
+  if (!stage5Reasons.length && notPoPRCs.length > 0) {
+    stage5Reasons.push({
+      reasonKey: 'po_in_process',
+      label: 'PO Processing & Issuance in Progress',
+      count: notPoPRCs.length,
+      icon: '⏳',
+      prcIds: notPoPRCs.map(p => p.id || p.prNumber),
+      prcs: notPoPRCs
+    });
+  }
+
+  return [
+    {
+      stage: 'Imported',
+      label: '1. Imported',
+      count: totalImported,
+      color: '#3b82f6',
+      dropCount: 0,
+      dropReasons: []
+    },
+    {
+      stage: 'Allocated',
+      label: '2. Allocated',
+      count: allocatedPRCs.length,
+      color: '#06b6d4',
+      dropCount: totalImported - allocatedPRCs.length,
+      dropFrom: 'Imported',
+      dropReasons: stage1Reasons
+    },
+    {
+      stage: 'RFQ Issued',
+      label: '3. RFQ Issued',
+      count: rfqPRCs.length,
+      color: '#8b5cf6',
+      dropCount: allocatedPRCs.length - rfqPRCs.length,
+      dropFrom: 'Allocated',
+      dropReasons: stage2Reasons
+    },
+    {
+      stage: 'Offers In',
+      label: '4. Offers In',
+      count: offersPRCs.length,
+      color: '#f59e0b',
+      dropCount: rfqPRCs.length - offersPRCs.length,
+      dropFrom: 'RFQ Issued',
+      dropReasons: stage3Reasons
+    },
+    {
+      stage: 'TCD Done',
+      label: '5. TCD Done',
+      count: tcdPRCs.length,
+      color: '#10b981',
+      dropCount: offersPRCs.length - tcdPRCs.length,
+      dropFrom: 'Offers In',
+      dropReasons: stage4Reasons
+    },
+    {
+      stage: 'PO Issued',
+      label: '6. PO Issued',
+      count: poPRCs.length,
+      color: '#059669',
+      dropCount: tcdPRCs.length - poPRCs.length,
+      dropFrom: 'TCD Done',
+      dropReasons: stage5Reasons
+    }
+  ];
+}
+
+
 
