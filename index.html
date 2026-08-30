@@ -772,15 +772,15 @@ function renderDashboard(container) {
   </div>
 </div>
 
-<!-- AGEING CHART -->
+<!-- AGEING CHART: PENDING PRC VS TCD CREATION -->
 <div class="card chart-card" style="margin-top:20px">
-  <div class="card-header">
+  <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
     <div>
-      <div class="card-title">Ageing Analysis — Pending PRCs</div>
-      <div class="card-subtitle">Days since allocation for unresolved PRCs (0-5, 6-10, 11-15, >15 days)</div>
+      <div class="card-title">Ageing Analysis — Pending PRC vs TCD Creation</div>
+      <div class="card-subtitle">Comparing current pending PRC backlog ageing against completed TCD turnaround lead time (0-5, 6-10, 11-15, >15 days)</div>
     </div>
   </div>
-  <div class="chart-canvas-wrap" style="height:220px">
+  <div class="chart-canvas-wrap" style="height:240px">
     <canvas id="chart-ageing"></canvas>
   </div>
 </div>
@@ -980,41 +980,85 @@ function initDashboardCharts(prcs, s) {
     });
   }
 
-  // Ageing Analysis (0-5 days, 6-10 days, 11-15 days, >15 days)
-  const ageBuckets = {
+  // Ageing Analysis — Pending PRC vs TCD Creation (0-5 days, 6-10 days, 11-15 days, >15 days)
+  const pendingAgeBuckets = {
     '0-5 days': 0,
     '6-10 days': 0,
     '11-15 days': 0,
     'More than 15 days': 0
   };
-  prcs.filter(p => !['Process Completed', 'Wrong PRC', 'PR Not Approved', 'Future PRC', 'System Issue', 'Short-Close'].includes(p.status)).forEach(p => {
-    const age = getPRCAge(p);
-    if (age <= 5) ageBuckets['0-5 days']++;
-    else if (age <= 10) ageBuckets['6-10 days']++;
-    else if (age <= 15) ageBuckets['11-15 days']++;
-    else ageBuckets['More than 15 days']++;
+  const tcdCreationBuckets = {
+    '0-5 days': 0,
+    '6-10 days': 0,
+    '11-15 days': 0,
+    'More than 15 days': 0
+  };
+
+  const ignoredStatuses = ['Process Completed', 'Wrong PRC', 'PR Not Approved', 'Future PRC', 'System Issue', 'Short-Close'];
+
+  prcs.forEach(p => {
+    const mats = p.materials || [];
+    const tcdDt = p.tcdDate || p.tcdApprovedDate || p.tcdCreationDate || mats.find(m => m.tcdDate)?.tcdDate;
+    const hasTCD = !!(p.tcdNumber || tcdDt || mats.some(m => m.tcdNumber || m.tcdDate));
+
+    const start = p.allocationDate || p.allocatedDate || mats.find(m => m.allocationDate)?.allocationDate || p.prDate || p.createdAt;
+    if (!start) return;
+
+    if (hasTCD && tcdDt) {
+      // 1. TCD Creation (Turnaround time from Allocation to TCD Creation)
+      const tcdAge = Math.max(0, calcAgeDays(start, tcdDt));
+      if (tcdAge <= 5) tcdCreationBuckets['0-5 days']++;
+      else if (tcdAge <= 10) tcdCreationBuckets['6-10 days']++;
+      else if (tcdAge <= 15) tcdCreationBuckets['11-15 days']++;
+      else tcdCreationBuckets['More than 15 days']++;
+    } else if (!ignoredStatuses.includes(p.status)) {
+      // 2. Pending PRC (Current backlog ageing from Allocation to Today)
+      const pendingAge = Math.max(0, getPRCAge(p));
+      if (pendingAge <= 5) pendingAgeBuckets['0-5 days']++;
+      else if (pendingAge <= 10) pendingAgeBuckets['6-10 days']++;
+      else if (pendingAge <= 15) pendingAgeBuckets['11-15 days']++;
+      else pendingAgeBuckets['More than 15 days']++;
+    }
   });
+
   const ageingEl = document.getElementById('chart-ageing');
   if (ageingEl) {
     charts['ageing'] = new Chart(ageingEl, {
       type: 'bar',
       data: {
-        labels: Object.keys(ageBuckets),
-        datasets: [{
-          label: 'Pending PRCs',
-          data: Object.values(ageBuckets),
-          backgroundColor: ['#10b981', '#f59e0b', '#ea580c', '#ef4444'],
-          borderRadius: 6
-        }]
+        labels: Object.keys(pendingAgeBuckets),
+        datasets: [
+          {
+            label: 'Pending PRCs (Current Ageing)',
+            data: Object.values(pendingAgeBuckets),
+            backgroundColor: 'rgba(59, 130, 246, 0.85)',
+            borderColor: '#3b82f6',
+            borderWidth: 1.5,
+            borderRadius: 6
+          },
+          {
+            label: 'TCD Creation (Turnaround Time)',
+            data: Object.values(tcdCreationBuckets),
+            backgroundColor: 'rgba(139, 92, 246, 0.85)',
+            borderColor: '#8b5cf6',
+            borderWidth: 1.5,
+            borderRadius: 6
+          }
+        ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: false },
+          legend: {
+            display: true,
+            position: 'top',
+            align: 'end',
+            labels: { boxWidth: 12, boxHeight: 12, padding: 12, font: { size: 11, weight: '600' } }
+          },
           tooltip: {
             callbacks: {
-              label: ctx => ` ${ctx.dataset.label || 'PRCs'}: ${ctx.raw} pending`
+              label: ctx => ` ${ctx.dataset.label}: ${ctx.raw} PRCs`
             }
           }
         },
