@@ -346,7 +346,7 @@
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
 // =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getPODItems, getUndoHistory, undoRecordUpdate, undoLastRecordUpdate, undoMultipleRecordUpdates, clearUndoHistory } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, getFilteredVendors, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getTableColumnFilters, setTableColumnFilter, clearTableColumnFilter, clearAllTableColumnFilters, getTableActiveFilterCount, getDistinctTableColumnValues, matchCellFilter, getPODItems, getUndoHistory, undoRecordUpdate, undoLastRecordUpdate, undoMultipleRecordUpdates, clearUndoHistory } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus, getProcurementFunnelBreakdown } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, monthlyPRCVsPODistribution, weeklyPRCVsPODistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment, rollbackImportSnapshot, getImportHistory, renderImportHistoryTable, getLastImportSnapshotId, clearImportHistory } from './js/excel-import.js';
@@ -1517,21 +1517,77 @@ window.renderProgressStars = function(item, isPRC) {
 // ── EXCEL COLUMN FILTER CONTROLLER ──────────────────────────
 let _activeExcelPopover = null;
 
-function renderFilterableTh(field, label, isMaterial = false) {
+// ── UNIVERSAL EXCEL COLUMN FILTER CONTROLLER ──────────────
+let _activeExcelPopover = null;
+
+function refreshTableForContext(tableContext) {
+  const container = document.getElementById('page-content');
+  if (tableContext === 'allocations') {
+    if (container) preserveScroll(() => renderAllocationsPage(container));
+  } else if (tableContext === 'rfqs') {
+    if (container) preserveScroll(() => renderRFQsPage(container));
+  } else if (tableContext === 'tcds') {
+    if (container) preserveScroll(() => renderTCDsPage(container));
+  } else if (tableContext === 'pods') {
+    if (container) preserveScroll(() => renderPODsPage(container));
+  } else if (tableContext === 'vendors') {
+    if (container) preserveScroll(() => renderVendors(container));
+  } else if (tableContext === 'audit') {
+    if (container) preserveScroll(() => renderAudit(container));
+  } else if (tableContext === 'reports') {
+    if (container) preserveScroll(() => renderReports(container));
+  } else {
+    preserveScroll(() => renderPRCTable());
+  }
+}
+
+function sortTableContext(tableContext, field) {
   const state = getState();
-  const isSorted = state.sortField === field;
-  const sortIcon = isSorted ? (state.sortDir === 'asc' ? '▲' : '▼') : '↕';
-  const activeFilters = state.columnFilters?.[field] || [];
-  const hasFilter = Array.isArray(activeFilters) && activeFilters.length > 0;
+  let sortField = state.sortField;
+  let sortDir = state.sortDir;
+  if (tableContext === 'allocations') { sortField = state.allocSortField || 'allocationNumber'; sortDir = state.allocSortDir || 'desc'; }
+  else if (tableContext === 'rfqs') { sortField = state.rfqSortField || 'rfqNumber'; sortDir = state.rfqSortDir || 'desc'; }
+  else if (tableContext === 'tcds') { sortField = state.tcdSortField || 'tcdNumber'; sortDir = state.tcdSortDir || 'desc'; }
+  else if (tableContext === 'pods') { sortField = state.poSortField || 'poNumber'; sortDir = state.poSortDir || 'desc'; }
+  else if (tableContext === 'vendors') { sortField = state.vendorSortField || 'name'; sortDir = state.vendorSortDir || 'desc'; }
+
+  const nextDir = (sortField === field && sortDir === 'asc') ? 'desc' : 'asc';
+  sortFromExcelMenu(field, nextDir, tableContext);
+}
+
+function renderFilterableTh(field, label, tableContextOrIsMat = 'prc', isMaterial = false) {
+  let tableContext = 'prc';
+  if (typeof tableContextOrIsMat === 'boolean') {
+    tableContext = tableContextOrIsMat ? 'material' : 'prc';
+    isMaterial = tableContextOrIsMat;
+  } else if (typeof tableContextOrIsMat === 'string') {
+    tableContext = tableContextOrIsMat;
+  }
+
+  const state = getState();
+  let sortField = state.sortField;
+  let sortDir = state.sortDir;
+  if (tableContext === 'allocations') { sortField = state.allocSortField || 'allocationNumber'; sortDir = state.allocSortDir || 'desc'; }
+  else if (tableContext === 'rfqs') { sortField = state.rfqSortField || 'rfqNumber'; sortDir = state.rfqSortDir || 'desc'; }
+  else if (tableContext === 'tcds') { sortField = state.tcdSortField || 'tcdNumber'; sortDir = state.tcdSortDir || 'desc'; }
+  else if (tableContext === 'pods') { sortField = state.poSortField || 'poNumber'; sortDir = state.poSortDir || 'desc'; }
+  else if (tableContext === 'vendors') { sortField = state.vendorSortField || 'name'; sortDir = state.vendorSortDir || 'desc'; }
+
+  const isSorted = sortField === field;
+  const sortIcon = isSorted ? (sortDir === 'asc' ? '▲' : '▼') : '↕';
+
+  const colFilters = getTableColumnFilters(tableContext);
+  const activeFilterSpec = colFilters?.[field];
+  const hasFilter = Array.isArray(activeFilterSpec) ? activeFilterSpec.length > 0 : !!(activeFilterSpec && (activeFilterSpec.value || activeFilterSpec.rule === 'empty' || activeFilterSpec.rule === 'not_empty'));
 
   return `
     <th class="th-filterable ${hasFilter ? 'has-active-filter' : ''}">
       <div class="th-content">
-        <span class="th-label" onclick="sortTable('${field}')" title="Sort by ${label}">
+        <span class="th-label" onclick="sortTableContext('${tableContext}', '${field}')" title="Sort by ${label}">
           <span>${label}</span>
           <span class="sort-icon" style="font-size:10px;opacity:${isSorted?1:0.35}">${sortIcon}</span>
         </span>
-        <button type="button" class="excel-filter-btn ${hasFilter ? 'active' : ''}" onclick="event.stopPropagation(); openExcelFilterMenu('${field}', '${label}', this, event, ${isMaterial})" title="${hasFilter ? `Filtered (${activeFilters.length} active) - Click to edit` : `Filter by ${label}`}">
+        <button type="button" class="excel-filter-btn ${hasFilter ? 'active' : ''}" onclick="event.stopPropagation(); openExcelFilterMenu('${field}', '${label}', this, event, '${tableContext}', ${isMaterial})" title="${hasFilter ? 'Active Filter - Click to edit/clear' : `Filter by ${label}`}">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
             <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/>
           </svg>
@@ -1541,24 +1597,48 @@ function renderFilterableTh(field, label, isMaterial = false) {
   `;
 }
 
-function renderActiveFiltersBar() {
-  const container = document.getElementById('prc-active-filters-container');
+function renderActiveFiltersBar(tableContext = 'prc', containerId = null) {
+  const targetId = containerId || (tableContext === 'prc' || tableContext === 'material' ? 'prc-active-filters-container' : `${tableContext}-active-filters-container`);
+  const container = document.getElementById(targetId);
   if (!container) return;
-  const state = getState();
-  const activeEntries = Object.entries(state.columnFilters || {}).filter(([_, vals]) => Array.isArray(vals) && vals.length > 0);
+
+  const colFilters = getTableColumnFilters(tableContext);
+  const activeEntries = Object.entries(colFilters || {}).filter(([_, spec]) => {
+    if (Array.isArray(spec)) return spec.length > 0;
+    if (spec && typeof spec === 'object') return !!spec.value || spec.rule === 'empty' || spec.rule === 'not_empty';
+    return !!spec;
+  });
 
   if (activeEntries.length === 0) {
     container.innerHTML = '';
     return;
   }
 
-  const pills = activeEntries.map(([field, vals]) => {
+  const pills = activeEntries.map(([field, spec]) => {
     const fieldDisplay = field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-    const valText = vals.length === 1 ? vals[0] : `${vals.length} selected`;
+    let valText = '';
+    if (Array.isArray(spec)) {
+      valText = spec.length === 1 ? spec[0] : `${spec.length} selected`;
+    } else if (spec && typeof spec === 'object') {
+      const ruleMap = {
+        contains: 'contains',
+        not_contains: 'does not contain',
+        equals: '=',
+        not_equals: '≠',
+        starts_with: 'begins with',
+        ends_with: 'ends with',
+        empty: 'is blank',
+        not_empty: 'is not blank'
+      };
+      valText = `${ruleMap[spec.rule] || spec.rule} "${spec.value || ''}"`;
+    } else {
+      valText = String(spec);
+    }
+
     return `
-      <span class="active-filter-tag" title="${fieldDisplay}: ${vals.join(', ')}">
+      <span class="active-filter-tag" title="${fieldDisplay}: ${valText}">
         <strong>${fieldDisplay}:</strong> ${valText}
-        <span class="active-filter-tag-remove" onclick="clearColumnFilter('${field}'); renderPRCTable();" title="Remove ${fieldDisplay} filter">✕</span>
+        <span class="active-filter-tag-remove" onclick="clearTableColumnFilter('${tableContext}', '${field}'); refreshTableForContext('${tableContext}');" title="Remove ${fieldDisplay} filter">✕</span>
       </span>
     `;
   }).join('');
@@ -1569,7 +1649,7 @@ function renderActiveFiltersBar() {
         <span>⚡</span> Active Filters (${activeEntries.length}):
       </span>
       ${pills}
-      <button class="btn btn-ghost btn-xs" style="color:var(--color-danger);font-weight:600;padding:2px 6px;margin-left:auto" onclick="clearAllColumnFilters(); renderPRCTable();" title="Clear all active column filters">✕ Clear All</button>
+      <button class="btn btn-ghost btn-xs" style="color:var(--color-danger);font-weight:600;padding:2px 6px;margin-left:auto" onclick="clearAllTableColumnFilters('${tableContext}'); refreshTableForContext('${tableContext}');" title="Clear all active column filters">✕ Clear All</button>
     </div>
   `;
 }
@@ -1581,15 +1661,20 @@ function closeExcelFilterMenu() {
   }
 }
 
-function openExcelFilterMenu(field, label, triggerBtn, event, isMaterial = false) {
+function openExcelFilterMenu(field, label, triggerBtn, event, tableContext = 'prc', isMaterial = false) {
   event?.stopPropagation?.();
   closeExcelFilterMenu();
 
-  const state = getState();
-  const distinctVals = getDistinctColumnValues(field, isMaterial);
-  const currentSelections = state.columnFilters?.[field] || null;
-  const hasActiveFilter = Array.isArray(currentSelections) && currentSelections.length > 0;
-  const selectedSet = hasActiveFilter ? new Set(currentSelections.map(v => String(v).toLowerCase())) : null;
+  const distinctVals = getDistinctTableColumnValues(tableContext, field, isMaterial);
+  const currentSelections = getTableColumnFilters(tableContext)?.[field] || null;
+  const isCriteriaMode = currentSelections && typeof currentSelections === 'object' && !Array.isArray(currentSelections);
+  const activeRule = isCriteriaMode ? (currentSelections.rule || 'contains') : 'contains';
+  const activeCriteriaVal = isCriteriaMode ? (currentSelections.value || '') : '';
+
+  const hasActiveFilter = isCriteriaMode ? (!!activeCriteriaVal || activeRule === 'empty' || activeRule === 'not_empty') : (Array.isArray(currentSelections) && currentSelections.length > 0);
+  const selectedSet = Array.isArray(currentSelections) ? new Set(currentSelections.map(v => String(v).toLowerCase())) : null;
+
+  let currentTab = isCriteriaMode ? 'criteria' : 'values';
 
   const popover = document.createElement('div');
   popover.className = 'excel-filter-popover';
@@ -1598,62 +1683,99 @@ function openExcelFilterMenu(field, label, triggerBtn, event, isMaterial = false
 
   popover.innerHTML = `
     <div class="excel-popover-header">
-      <span>Filter: ${label}</span>
+      <span style="display:flex;align-items:center;gap:6px">
+        <span>🔍</span>
+        <span>Filter: ${label}</span>
+      </span>
       <button type="button" class="btn-ghost btn-icon" style="padding:2px 4px;font-size:12px;cursor:pointer;border:none;background:transparent" onclick="closeExcelFilterMenu()">✕</button>
     </div>
 
     <div class="excel-popover-sort-section">
-      <button type="button" class="excel-sort-btn" onclick="sortFromExcelMenu('${field}', 'asc')">
+      <button type="button" class="excel-sort-btn" onclick="sortFromExcelMenu('${field}', 'asc', '${tableContext}')">
         <span>⬆️</span> <span>Sort Ascending (A → Z)</span>
       </button>
-      <button type="button" class="excel-sort-btn" onclick="sortFromExcelMenu('${field}', 'desc')">
+      <button type="button" class="excel-sort-btn" onclick="sortFromExcelMenu('${field}', 'desc', '${tableContext}')">
         <span>⬇️</span> <span>Sort Descending (Z → A)</span>
       </button>
     </div>
 
-    <div class="excel-search-box">
-      <span class="excel-search-icon">🔍</span>
-      <input type="text" class="excel-search-input" id="excel-search-input" placeholder="Search values..." oninput="filterExcelCheckboxList(this.value)" autocomplete="off"/>
+    <!-- Mode Tabs: Values vs Text Criteria -->
+    <div class="excel-tab-nav">
+      <button type="button" class="excel-tab-btn ${currentTab === 'values' ? 'active' : ''}" id="excel-tab-btn-values" onclick="switchExcelFilterTab('values')">
+        <span>☑️ Values</span>
+      </button>
+      <button type="button" class="excel-tab-btn ${currentTab === 'criteria' ? 'active' : ''}" id="excel-tab-btn-criteria" onclick="switchExcelFilterTab('criteria')">
+        <span>📝 Text Filter / Words</span>
+      </button>
     </div>
 
-    <div style="padding:4px 8px;border-bottom:1px solid var(--color-border);background:var(--color-surface-2)">
-      <label class="excel-checkbox-item" style="font-weight:600;padding:2px 4px">
-        <input type="checkbox" id="excel-select-all-chk" ${!hasActiveFilter || selectedSet.size === distinctVals.length ? 'checked' : ''} onchange="toggleExcelSelectAll(this)"/>
-        <span class="excel-checkbox-label">(Select All)</span>
-      </label>
+    <!-- Tab 1: Values Checklist Panel -->
+    <div id="excel-panel-values" style="display:${currentTab === 'values' ? 'block' : 'none'}">
+      <div class="excel-search-box">
+        <span class="excel-search-icon">🔍</span>
+        <input type="text" class="excel-search-input" id="excel-search-input" placeholder="Search values / words..." oninput="filterExcelCheckboxList(this.value)" autocomplete="off"/>
+      </div>
+
+      <div style="padding:4px 8px;border-bottom:1px solid var(--color-border);background:var(--color-surface-2)">
+        <label class="excel-checkbox-item" style="font-weight:600;padding:2px 4px">
+          <input type="checkbox" id="excel-select-all-chk" ${!hasActiveFilter || (selectedSet && selectedSet.size === distinctVals.length) ? 'checked' : ''} onchange="toggleExcelSelectAll(this)"/>
+          <span class="excel-checkbox-label">(Select All)</span>
+        </label>
+      </div>
+
+      <div class="excel-checkbox-list" id="excel-checkbox-list">
+        ${distinctVals.map((item) => {
+          const valLower = String(item.value).toLowerCase();
+          const isChecked = !hasActiveFilter || (selectedSet && selectedSet.has(valLower));
+          return `
+            <label class="excel-checkbox-item" data-val="${String(item.value).replace(/"/g, '&quot;')}">
+              <input type="checkbox" class="excel-item-chk" value="${String(item.value).replace(/"/g, '&quot;')}" ${isChecked ? 'checked' : ''} onchange="updateExcelSelectAllState()"/>
+              <span class="excel-checkbox-label" title="${item.label}">${item.label}</span>
+              <span class="excel-checkbox-count">${item.count}</span>
+            </label>
+          `;
+        }).join('')}
+      </div>
     </div>
 
-    <div class="excel-checkbox-list" id="excel-checkbox-list">
-      ${distinctVals.map((item, idx) => {
-        const valLower = String(item.value).toLowerCase();
-        const isChecked = !hasActiveFilter || (selectedSet && selectedSet.has(valLower));
-        return `
-          <label class="excel-checkbox-item" data-val="${item.value.replace(/"/g, '&quot;')}">
-            <input type="checkbox" class="excel-item-chk" value="${item.value.replace(/"/g, '&quot;')}" ${isChecked ? 'checked' : ''} onchange="updateExcelSelectAllState()"/>
-            <span class="excel-checkbox-label" title="${item.label}">${item.label}</span>
-            <span class="excel-checkbox-count">${item.count}</span>
-          </label>
-        `;
-      }).join('')}
+    <!-- Tab 2: Text Criteria / Words Filter Panel -->
+    <div id="excel-panel-criteria" style="display:${currentTab === 'criteria' ? 'block' : 'none'}">
+      <div class="excel-criteria-section">
+        <div style="font-size:11px;font-weight:700;color:var(--color-text-secondary);text-transform:uppercase">Filter Criteria:</div>
+        <select id="excel-criteria-rule" class="excel-criteria-select" onchange="handleCriteriaRuleChange(this.value)">
+          <option value="contains" ${activeRule === 'contains' ? 'selected' : ''}>Contains word(s)...</option>
+          <option value="not_contains" ${activeRule === 'not_contains' ? 'selected' : ''}>Does not contain...</option>
+          <option value="equals" ${activeRule === 'equals' ? 'selected' : ''}>Equals (Exact match)...</option>
+          <option value="starts_with" ${activeRule === 'starts_with' ? 'selected' : ''}>Begins with...</option>
+          <option value="ends_with" ${activeRule === 'ends_with' ? 'selected' : ''}>Ends with...</option>
+          <option value="empty" ${activeRule === 'empty' ? 'selected' : ''}>Is Blank / Empty</option>
+          <option value="not_empty" ${activeRule === 'not_empty' ? 'selected' : ''}>Is Not Blank</option>
+        </select>
+        <input type="text" id="excel-criteria-val" class="excel-criteria-input" value="${activeCriteriaVal.replace(/"/g, '&quot;')}" placeholder="Enter word(s) e.g. valve, skf, pending..." onkeydown="if(event.key==='Enter'){event.preventDefault(); applyExcelFilter('${tableContext}', '${field}');}" style="display:${(activeRule==='empty'||activeRule==='not_empty')?'none':'block'}"/>
+        <div style="font-size:10.5px;color:var(--color-text-tertiary);line-height:1.35">
+          💡 Filter by any partial phrase or space-separated words (e.g. <em>"pipe 200"</em>).
+        </div>
+      </div>
     </div>
 
     <div class="excel-popover-footer">
       ${hasActiveFilter ? `
-        <button type="button" class="btn btn-ghost btn-xs" style="color:var(--color-danger);padding:3px 6px;font-size:11px" onclick="clearExcelFilter('${field}')">Clear</button>
+        <button type="button" class="btn btn-ghost btn-xs" style="color:var(--color-danger);padding:3px 6px;font-size:11px" onclick="clearExcelFilter('${tableContext}', '${field}')">Clear</button>
       ` : '<div></div>'}
       <div style="display:flex;gap:6px">
         <button type="button" class="btn btn-secondary btn-xs" style="padding:3px 8px;font-size:11px" onclick="closeExcelFilterMenu()">Cancel</button>
-        <button type="button" class="btn btn-primary btn-xs" style="padding:3px 10px;font-size:11px;font-weight:600" onclick="applyExcelFilter('${field}')">Apply</button>
+        <button type="button" class="btn btn-primary btn-xs" style="padding:3px 10px;font-size:11px;font-weight:600" onclick="applyExcelFilter('${tableContext}', '${field}')">Apply</button>
       </div>
     </div>
   `;
 
   document.body.appendChild(popover);
   _activeExcelPopover = popover;
+  _activeExcelPopover._currentTab = currentTab;
 
   // Positioning
   const rect = triggerBtn.getBoundingClientRect();
-  const popoverWidth = 270;
+  const popoverWidth = 275;
   let left = rect.left;
   let top = rect.bottom + 4;
 
@@ -1661,17 +1783,57 @@ function openExcelFilterMenu(field, label, triggerBtn, event, isMaterial = false
     left = window.innerWidth - popoverWidth - 12;
   }
   if (left < 12) left = 12;
-  if (top + 340 > window.innerHeight - 12) {
-    top = Math.max(12, rect.top - 340);
+  if (top + 350 > window.innerHeight - 12) {
+    top = Math.max(12, rect.top - 350);
   }
 
   popover.style.left = `${left}px`;
   popover.style.top = `${top}px`;
 
   setTimeout(() => {
-    const inp = popover.querySelector('#excel-search-input');
-    if (inp) inp.focus();
+    if (currentTab === 'values') {
+      const inp = popover.querySelector('#excel-search-input');
+      if (inp) inp.focus();
+    } else {
+      const inp = popover.querySelector('#excel-criteria-val');
+      if (inp) inp.focus();
+    }
   }, 50);
+}
+
+function switchExcelFilterTab(tabName) {
+  if (!_activeExcelPopover) return;
+  _activeExcelPopover._currentTab = tabName;
+
+  const btnVals = _activeExcelPopover.querySelector('#excel-tab-btn-values');
+  const btnCrit = _activeExcelPopover.querySelector('#excel-tab-btn-criteria');
+  const pnlVals = _activeExcelPopover.querySelector('#excel-panel-values');
+  const pnlCrit = _activeExcelPopover.querySelector('#excel-panel-criteria');
+
+  if (btnVals) btnVals.className = `excel-tab-btn ${tabName === 'values' ? 'active' : ''}`;
+  if (btnCrit) btnCrit.className = `excel-tab-btn ${tabName === 'criteria' ? 'active' : ''}`;
+  if (pnlVals) pnlVals.style.display = tabName === 'values' ? 'block' : 'none';
+  if (pnlCrit) pnlCrit.style.display = tabName === 'criteria' ? 'block' : 'none';
+
+  if (tabName === 'values') {
+    const inp = _activeExcelPopover.querySelector('#excel-search-input');
+    if (inp) inp.focus();
+  } else {
+    const inp = _activeExcelPopover.querySelector('#excel-criteria-val');
+    if (inp) inp.focus();
+  }
+}
+
+function handleCriteriaRuleChange(rule) {
+  if (!_activeExcelPopover) return;
+  const inp = _activeExcelPopover.querySelector('#excel-criteria-val');
+  if (!inp) return;
+  if (rule === 'empty' || rule === 'not_empty') {
+    inp.style.display = 'none';
+  } else {
+    inp.style.display = 'block';
+    inp.focus();
+  }
 }
 
 function filterExcelCheckboxList(query) {
@@ -1687,6 +1849,7 @@ function filterExcelCheckboxList(query) {
       item.style.display = 'none';
     }
   });
+  updateExcelSelectAllState();
 }
 
 function toggleExcelSelectAll(selectAllChk) {
@@ -1703,38 +1866,89 @@ function updateExcelSelectAllState() {
   const selectAll = document.getElementById('excel-select-all-chk');
   const list = document.getElementById('excel-checkbox-list');
   if (!selectAll || !list) return;
-  const checkboxes = Array.from(list.querySelectorAll('.excel-item-chk'));
-  const checked = checkboxes.filter(c => c.checked);
-  selectAll.checked = checked.length === checkboxes.length;
-  selectAll.indeterminate = checked.length > 0 && checked.length < checkboxes.length;
+  const visibleCheckboxes = Array.from(list.querySelectorAll('.excel-checkbox-item'))
+    .filter(i => i.style.display !== 'none')
+    .map(i => i.querySelector('.excel-item-chk'))
+    .filter(Boolean);
+
+  if (visibleCheckboxes.length === 0) {
+    selectAll.checked = false;
+    selectAll.indeterminate = false;
+    return;
+  }
+  const checked = visibleCheckboxes.filter(c => c.checked);
+  selectAll.checked = checked.length === visibleCheckboxes.length;
+  selectAll.indeterminate = checked.length > 0 && checked.length < visibleCheckboxes.length;
 }
 
-function applyExcelFilter(field) {
-  const list = document.getElementById('excel-checkbox-list');
-  if (!list) return;
-  const allCheckboxes = Array.from(list.querySelectorAll('.excel-item-chk'));
-  const checked = allCheckboxes.filter(c => c.checked).map(c => c.value);
+function applyExcelFilter(tableContext, field) {
+  if (!_activeExcelPopover) return;
+  const currentTab = _activeExcelPopover._currentTab || 'values';
 
-  if (checked.length === allCheckboxes.length) {
-    clearColumnFilter(field);
+  if (currentTab === 'criteria') {
+    const rule = _activeExcelPopover.querySelector('#excel-criteria-rule')?.value || 'contains';
+    const val = _activeExcelPopover.querySelector('#excel-criteria-val')?.value?.trim() || '';
+
+    if (rule === 'empty' || rule === 'not_empty') {
+      setTableColumnFilter(tableContext, field, { rule, value: '' });
+    } else if (val) {
+      setTableColumnFilter(tableContext, field, { rule, value: val });
+    } else {
+      clearTableColumnFilter(tableContext, field);
+    }
   } else {
-    setColumnFilter(field, checked);
+    const list = document.getElementById('excel-checkbox-list');
+    if (!list) return;
+    const searchInp = document.getElementById('excel-search-input');
+    const searchQ = (searchInp?.value || '').trim();
+
+    const allCheckboxes = Array.from(list.querySelectorAll('.excel-item-chk'));
+    const visibleCheckboxes = Array.from(list.querySelectorAll('.excel-checkbox-item'))
+      .filter(i => i.style.display !== 'none')
+      .map(i => i.querySelector('.excel-item-chk'))
+      .filter(Boolean);
+
+    // If search query is active, only apply checked visible items
+    let checked = [];
+    if (searchQ) {
+      checked = visibleCheckboxes.filter(c => c.checked).map(c => c.value);
+    } else {
+      checked = allCheckboxes.filter(c => c.checked).map(c => c.value);
+    }
+
+    if (!searchQ && checked.length === allCheckboxes.length) {
+      clearTableColumnFilter(tableContext, field);
+    } else {
+      setTableColumnFilter(tableContext, field, checked);
+    }
   }
 
   closeExcelFilterMenu();
-  renderPRCTable();
+  refreshTableForContext(tableContext);
 }
 
-function clearExcelFilter(field) {
-  clearColumnFilter(field);
+function clearExcelFilter(tableContext, field) {
+  clearTableColumnFilter(tableContext, field);
   closeExcelFilterMenu();
-  renderPRCTable();
+  refreshTableForContext(tableContext);
 }
 
-function sortFromExcelMenu(field, dir) {
-  setState({ sortField: field, sortDir: dir });
+function sortFromExcelMenu(field, dir, tableContext = 'prc') {
+  if (tableContext === 'allocations') {
+    setState({ allocSortField: field, allocSortDir: dir });
+  } else if (tableContext === 'rfqs') {
+    setState({ rfqSortField: field, rfqSortDir: dir });
+  } else if (tableContext === 'tcds') {
+    setState({ tcdSortField: field, tcdSortDir: dir });
+  } else if (tableContext === 'pods') {
+    setState({ poSortField: field, poSortDir: dir });
+  } else if (tableContext === 'vendors') {
+    setState({ vendorSortField: field, vendorSortDir: dir });
+  } else {
+    setState({ sortField: field, sortDir: dir });
+  }
   closeExcelFilterMenu();
-  renderPRCTable();
+  refreshTableForContext(tableContext);
 }
 
 window.addEventListener('click', (e) => {
@@ -1750,6 +1964,8 @@ window.addEventListener('keydown', (e) => {
 
 window.openExcelFilterMenu = openExcelFilterMenu;
 window.closeExcelFilterMenu = closeExcelFilterMenu;
+window.switchExcelFilterTab = switchExcelFilterTab;
+window.handleCriteriaRuleChange = handleCriteriaRuleChange;
 window.filterExcelCheckboxList = filterExcelCheckboxList;
 window.toggleExcelSelectAll = toggleExcelSelectAll;
 window.updateExcelSelectAllState = updateExcelSelectAllState;
@@ -1759,6 +1975,11 @@ window.sortFromExcelMenu = sortFromExcelMenu;
 window.renderFilterableTh = renderFilterableTh;
 window.clearColumnFilter = clearColumnFilter;
 window.clearAllColumnFilters = clearAllColumnFilters;
+window.clearTableColumnFilter = clearTableColumnFilter;
+window.clearAllTableColumnFilters = clearAllTableColumnFilters;
+window.sortTableContext = sortTableContext;
+window.refreshTableForContext = refreshTableForContext;
+window.renderActiveFiltersBar = renderActiveFiltersBar;
 
 function renderPRCTable() {
   const state = getState();
@@ -4064,7 +4285,20 @@ window.markAllRead = function() {
 // ═══════════════════════════════════════════════════════════
 function renderReports(container) {
   const prcs = getFilteredPRCs();
-  const ageingData = getAgeingReport();
+  let ageingData = getAgeingReport();
+
+  const reportFilters = getTableColumnFilters('reports');
+  if (Object.keys(reportFilters).length > 0) {
+    ageingData = ageingData.filter(p => {
+      for (const [field, spec] of Object.entries(reportFilters)) {
+        let val = p[field];
+        if (field === 'ageDays') val = String(p.ageDays || 0);
+        if (!matchCellFilter(val, spec)) return false;
+      }
+      return true;
+    });
+  }
+
   const completed = ageingData.filter(p => p.status === STATUS.COMPLETED);
   const partly = ageingData.filter(p => p.status === STATUS.PARTLY_COMPLETED);
 
@@ -4110,11 +4344,20 @@ function renderReports(container) {
     </div>
     <button class="btn btn-secondary btn-sm" onclick="exportExcel('prc','Ageing Report')">Download Excel</button>
   </div>
+  <div id="reports-active-filters-container"></div>
   <div class="table-wrapper">
     <table class="data-table">
-      <thead><tr><th>PR Number</th><th>Status</th><th>Department</th><th>Allocation Date</th><th>Completion / PO Date</th><th>Total Age (days)</th><th>Alert</th></tr></thead>
+      <thead><tr>
+        ${renderFilterableTh('prNumber', 'PR Number', 'reports')}
+        ${renderFilterableTh('status', 'Status', 'reports')}
+        ${renderFilterableTh('department', 'Department', 'reports')}
+        ${renderFilterableTh('allocationDate', 'Allocation Date', 'reports')}
+        <th>Completion / PO Date</th>
+        ${renderFilterableTh('ageDays', 'Total Age (days)', 'reports')}
+        <th>Alert</th>
+      </tr></thead>
       <tbody>
-        ${ageingData.slice(0,15).map(p=>`
+        ${ageingData.slice(0,25).map(p=>`
           <tr onclick="openPRCDetail('${p.id}')" style="cursor:pointer">
             <td class="font-mono font-semibold">${p.prNumber}</td>
             <td><span class="chip ${getStatusChipClass(p.status)}">${p.status}</span></td>
@@ -4128,6 +4371,8 @@ function renderReports(container) {
     </table>
   </div>
 </div>`;
+
+  renderActiveFiltersBar('reports', 'reports-active-filters-container');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -4135,7 +4380,7 @@ function renderReports(container) {
 // ═══════════════════════════════════════════════════════════
 function renderVendors(container) {
   const state = getState();
-  const vendors = [...(state.vendors || [])];
+  const vendors = [...getFilteredVendors()];
   const sf = state.vendorSortField || 'name';
   const sd = state.vendorSortDir === 'desc' ? -1 : 1;
 
@@ -4224,10 +4469,17 @@ function renderAudit(container) {
   <button class="btn btn-secondary btn-sm" onclick="exportCSV()">Export Log</button>
 </div>
 <div class="card" style="padding:0">
+  <div id="audit-active-filters-container" style="padding:12px 16px 0 16px"></div>
   ${logs.length ? `
   <div class="table-wrapper">
     <table class="data-table">
-      <thead><tr><th>Timestamp</th><th>User</th><th>Action</th><th>Record</th><th>Changes</th></tr></thead>
+      <thead><tr>
+        ${renderFilterableTh('timestamp', 'Timestamp', 'audit')}
+        ${renderFilterableTh('user', 'User', 'audit')}
+        ${renderFilterableTh('action', 'Action', 'audit')}
+        ${renderFilterableTh('collection', 'Record', 'audit')}
+        ${renderFilterableTh('changes', 'Changes', 'audit')}
+      </tr></thead>
       <tbody>
         ${logs.map(l=>`
           <tr>
@@ -4245,6 +4497,8 @@ function renderAudit(container) {
     </table>
   </div>` : `<div class="empty-state" style="padding:80px"><div class="empty-state-icon">📋</div><div class="empty-state-title">No audit records</div></div>`}
 </div>`;
+
+  renderActiveFiltersBar('audit', 'audit-active-filters-container');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5246,10 +5500,17 @@ function renderAllocationsPage(container) {
   </div>
 
   ${allocs.length ? `
+  <div id="allocations-active-filters-container"></div>
   <div class="table-wrapper" style="overflow:auto">
     <table class="data-table">
       <thead><tr>
-        <th>Allocation Number</th><th>Date</th><th>Buyer</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th>
+        ${renderFilterableTh('allocationNumber', 'Allocation Number', 'allocations')}
+        ${renderFilterableTh('allocationDate', 'Date', 'allocations')}
+        ${renderFilterableTh('buyerName', 'Buyer', 'allocations')}
+        ${renderFilterableTh('materials', 'Materials', 'allocations')}
+        ${renderFilterableTh('status', 'Status', 'allocations')}
+        ${renderFilterableTh('createdAt', 'Created', 'allocations')}
+        <th>Actions</th>
       </tr></thead>
       <tbody id="alloc-docs-tbody">
         ${allocs.map(a => {
@@ -5282,6 +5543,8 @@ function renderAllocationsPage(container) {
     </div>
   </div>`}
 </div>`;
+
+  renderActiveFiltersBar('allocations', 'allocations-active-filters-container');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -6387,9 +6650,18 @@ function renderRFQsPage(container) {
   </div>
 
   ${rfqs.length ? `
+  <div id="rfqs-active-filters-container"></div>
   <div class="table-wrapper" style="overflow:auto">
     <table class="data-table">
-      <thead><tr><th>RFQ Number</th><th>Date</th><th>Materials</th><th>Status</th><th>TCD</th><th>Created</th><th>Actions</th></tr></thead>
+      <thead><tr>
+        ${renderFilterableTh('rfqNumber', 'RFQ Number', 'rfqs')}
+        ${renderFilterableTh('rfqDate', 'Date', 'rfqs')}
+        ${renderFilterableTh('materials', 'Materials', 'rfqs')}
+        ${renderFilterableTh('status', 'Status', 'rfqs')}
+        ${renderFilterableTh('tcdNumber', 'TCD', 'rfqs')}
+        ${renderFilterableTh('createdAt', 'Created', 'rfqs')}
+        <th>Actions</th>
+      </tr></thead>
       <tbody id="rfq-docs-tbody">
         ${rfqs.map(r => {
           const rfqSt = getRFQStatus(r, state.prcs);
@@ -6462,6 +6734,8 @@ function renderRFQsPage(container) {
     </div>
   </div>`}
 </div>`;
+
+  renderActiveFiltersBar('rfqs', 'rfqs-active-filters-container');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -7536,9 +7810,19 @@ function renderTCDsPage(container) {
   </div>
 
   ${tcds.length ? `
+  <div id="tcds-active-filters-container"></div>
   <div class="table-wrapper" style="overflow:auto">
     <table class="data-table">
-      <thead><tr><th>TCD Number</th><th>Date</th><th>Vendors</th><th>Materials</th><th>Status</th><th>PO</th><th>Created</th><th>Actions</th></tr></thead>
+      <thead><tr>
+        ${renderFilterableTh('tcdNumber', 'TCD Number', 'tcds')}
+        ${renderFilterableTh('tcdDate', 'Date', 'tcds')}
+        ${renderFilterableTh('vendorName', 'Vendors', 'tcds')}
+        ${renderFilterableTh('materials', 'Materials', 'tcds')}
+        ${renderFilterableTh('status', 'Status', 'tcds')}
+        ${renderFilterableTh('poNumber', 'PO', 'tcds')}
+        ${renderFilterableTh('createdAt', 'Created', 'tcds')}
+        <th>Actions</th>
+      </tr></thead>
       <tbody id="tcd-docs-tbody">
         ${tcds.map(t => {
           const tcdVendors = t.vendorAllocations || t.vendors || [];
@@ -7604,6 +7888,8 @@ function renderTCDsPage(container) {
     </div>
   </div>`}
 </div>`;
+
+  renderActiveFiltersBar('tcds', 'tcds-active-filters-container');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -8286,9 +8572,19 @@ function renderPODsPage(container) {
   </div>
 
   ${pods.length ? `
+  <div id="pods-active-filters-container"></div>
   <div class="table-wrapper" style="overflow:auto">
     <table class="data-table">
-      <thead><tr><th>PO Number</th><th>PO Date</th><th>Vendor</th><th>TCD Ref</th><th>Materials</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+      <thead><tr>
+        ${renderFilterableTh('poNumber', 'PO Number', 'pods')}
+        ${renderFilterableTh('poDate', 'PO Date', 'pods')}
+        ${renderFilterableTh('vendorName', 'Vendor', 'pods')}
+        ${renderFilterableTh('tcdNumber', 'TCD Ref', 'pods')}
+        ${renderFilterableTh('materials', 'Materials', 'pods')}
+        ${renderFilterableTh('status', 'Status', 'pods')}
+        ${renderFilterableTh('createdAt', 'Created', 'pods')}
+        <th>Actions</th>
+      </tr></thead>
       <tbody id="pod-docs-tbody">
         ${pods.map(p => {
           const items = getPODItems(p, state.prcs, state.tcds);
@@ -8320,6 +8616,8 @@ function renderPODsPage(container) {
     </div>
   </div>`}
 </div>`;
+
+  renderActiveFiltersBar('pods', 'pods-active-filters-container');
 }
 
 // ═══════════════════════════════════════════════════════════
