@@ -348,7 +348,7 @@
 // =========================================================
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getPODItems, getUndoHistory, undoRecordUpdate, undoLastRecordUpdate, undoMultipleRecordUpdates, clearUndoHistory } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus, getProcurementFunnelBreakdown } from './js/status-engine.js';
-import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, monthlyPRCVsPODistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
+import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, monthlyPRCVsPODistribution, weeklyPRCVsPODistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment, rollbackImportSnapshot, getImportHistory, renderImportHistoryTable, getLastImportSnapshotId, clearImportHistory } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
 import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } from './js/turso-db.js';
@@ -711,10 +711,14 @@ function renderDashboard(container) {
     </div>
   </div>
   <div class="card chart-card">
-    <div class="card-header">
+    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div>
-        <div class="card-title">Monthly PRC Vs Monthly PO</div>
-        <div class="card-subtitle">PRCs created vs Purchase Orders issued per month</div>
+        <div class="card-title" id="prc-po-trend-title">Weekly PRC Vs Weekly PO</div>
+        <div class="card-subtitle" id="prc-po-trend-subtitle">PRCs created vs Purchase Orders issued across the last 10 weeks</div>
+      </div>
+      <div class="btn-group" style="display:inline-flex;border:1px solid var(--color-border);border-radius:6px;overflow:hidden;background:var(--color-surface)">
+        <button type="button" id="btn-trend-weekly" class="btn btn-primary btn-xs" style="padding:3px 8px;font-size:11px;font-weight:600" onclick="setDashboardTrendView('weekly')">Weekly (10 Wks)</button>
+        <button type="button" id="btn-trend-monthly" class="btn btn-ghost btn-xs" style="padding:3px 8px;font-size:11px;font-weight:600" onclick="setDashboardTrendView('monthly')">Monthly</button>
       </div>
     </div>
     <div class="chart-canvas-wrap" style="height:280px">
@@ -831,65 +835,8 @@ function initDashboardCharts(prcs, s) {
     });
   }
 
-  // Monthly PRC Vs Monthly PO Trend
-  const trendItems = monthlyPRCVsPODistribution(prcs, getState().pods || []);
-  const monthlyEl = document.getElementById('chart-monthly-trend');
-  if (monthlyEl) {
-    charts['monthly'] = new Chart(monthlyEl, {
-      type: 'line',
-      data: {
-        labels: trendItems.map(d => d.label),
-        datasets: [
-          {
-            label: 'Monthly PRCs',
-            data: trendItems.map(d => d.prcCount),
-            fill: true,
-            backgroundColor: 'rgba(59,130,246,0.12)',
-            borderColor: '#3b82f6',
-            borderWidth: 2.5,
-            pointBackgroundColor: '#3b82f6',
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            tension: 0.4
-          },
-          {
-            label: 'Monthly POs',
-            data: trendItems.map(d => d.poCount),
-            fill: true,
-            backgroundColor: 'rgba(16,185,129,0.12)',
-            borderColor: '#10b981',
-            borderWidth: 2.5,
-            pointBackgroundColor: '#10b981',
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            tension: 0.4
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: {
-            display: true,
-            position: 'top',
-            align: 'end',
-            labels: { boxWidth: 12, boxHeight: 12, padding: 12, font: { size: 11, weight: '600' } }
-          },
-          tooltip: {
-            callbacks: {
-              label: ctx => ` ${ctx.dataset.label}: ${ctx.raw} ${ctx.dataset.label.includes('PRC') ? 'PRCs' : 'POs'}`
-            }
-          }
-        },
-        scales: {
-          x: { grid: { color: grid } },
-          y: { grid: { color: grid }, beginAtZero: true, ticks: { precision: 0 } }
-        }
-      }
-    });
-  }
+  // Weekly / Monthly PRC Vs PO Trend
+  renderTrendChart(prcs);
 
   // Procurement Funnel
   const funnelStages = getProcurementFunnelBreakdown(prcs);
@@ -1018,6 +965,112 @@ function initDashboardCharts(prcs, s) {
     });
   }
 }
+
+// ── DASHBOARD TREND CHART (WEEKLY / MONTHLY) ───────────────
+let dashboardTrendView = 'weekly';
+
+function renderTrendChart(prcs) {
+  if (charts['monthly']) {
+    try {
+      charts['monthly'].destroy();
+    } catch (e) {}
+    delete charts['monthly'];
+  }
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const grid   = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const trendEl = document.getElementById('chart-monthly-trend');
+  if (!trendEl) return;
+
+  const isWeekly = dashboardTrendView === 'weekly';
+  const trendItems = isWeekly
+    ? weeklyPRCVsPODistribution(prcs, getState().pods || [], 10)
+    : monthlyPRCVsPODistribution(prcs, getState().pods || []);
+
+  charts['monthly'] = new Chart(trendEl, {
+    type: 'line',
+    data: {
+      labels: trendItems.map(d => d.label),
+      datasets: [
+        {
+          label: isWeekly ? 'Weekly PRCs' : 'Monthly PRCs',
+          data: trendItems.map(d => d.prcCount),
+          fill: true,
+          backgroundColor: 'rgba(59,130,246,0.12)',
+          borderColor: '#3b82f6',
+          borderWidth: 2.5,
+          pointBackgroundColor: '#3b82f6',
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          tension: 0.4
+        },
+        {
+          label: isWeekly ? 'Weekly POs' : 'Monthly POs',
+          data: trendItems.map(d => d.poCount),
+          fill: true,
+          backgroundColor: 'rgba(16,185,129,0.12)',
+          borderColor: '#10b981',
+          borderWidth: 2.5,
+          pointBackgroundColor: '#10b981',
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          tension: 0.4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          align: 'end',
+          labels: { boxWidth: 12, boxHeight: 12, padding: 12, font: { size: 11, weight: '600' } }
+        },
+        tooltip: {
+          callbacks: {
+            title: items => {
+              if (!items.length) return '';
+              const idx = items[0].dataIndex;
+              const item = trendItems[idx];
+              return (isWeekly && item && item.fullLabel) ? item.fullLabel : (item ? item.label : '');
+            },
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.raw} ${ctx.dataset.label.includes('PRC') ? 'PRCs' : 'POs'}`
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: grid } },
+        y: { grid: { color: grid }, beginAtZero: true, ticks: { precision: 0 } }
+      }
+    }
+  });
+}
+
+window.setDashboardTrendView = function(view) {
+  dashboardTrendView = view;
+  const prcs = typeof getFilteredPRCs === 'function' ? getFilteredPRCs() : (getState().prcs || []);
+  renderTrendChart(prcs);
+
+  const btnWeekly = document.getElementById('btn-trend-weekly');
+  const btnMonthly = document.getElementById('btn-trend-monthly');
+  const titleEl = document.getElementById('prc-po-trend-title');
+  const subEl = document.getElementById('prc-po-trend-subtitle');
+
+  if (btnWeekly) {
+    btnWeekly.className = view === 'weekly' ? 'btn btn-primary btn-xs' : 'btn btn-ghost btn-xs';
+  }
+  if (btnMonthly) {
+    btnMonthly.className = view === 'monthly' ? 'btn btn-primary btn-xs' : 'btn btn-ghost btn-xs';
+  }
+  if (titleEl) {
+    titleEl.textContent = view === 'weekly' ? 'Weekly PRC Vs Weekly PO' : 'Monthly PRC Vs Monthly PO';
+  }
+  if (subEl) {
+    subEl.textContent = view === 'weekly' ? 'PRCs created vs Purchase Orders issued (Last 10 Weeks)' : 'PRCs created vs Purchase Orders issued per month';
+  }
+};
 
 // ═══════════════════════════════════════════════════════════
 // PAGE: PRC LIST
