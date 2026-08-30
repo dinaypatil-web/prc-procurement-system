@@ -348,7 +348,7 @@
 // =========================================================
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, getFilteredVendors, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getTableColumnFilters, setTableColumnFilter, clearTableColumnFilter, clearAllTableColumnFilters, getTableActiveFilterCount, getDistinctTableColumnValues, matchCellFilter, getPODItems, getUndoHistory, undoRecordUpdate, undoLastRecordUpdate, undoMultipleRecordUpdates, clearUndoHistory } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus, getProcurementFunnelBreakdown } from './js/status-engine.js';
-import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, monthlyPRCVsPODistribution, weeklyPRCVsPODistribution, weeklyPRCVsPODistributionForMonth, dailyPRCVsPODistributionForWeek, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
+import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, monthlyPRCVsTCDDistribution, weeklyPRCVsTCDDistribution, weeklyPRCVsTCDDistributionForMonth, dailyPRCVsTCDDistributionForWeek, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment, rollbackImportSnapshot, getImportHistory, renderImportHistoryTable, getLastImportSnapshotId, clearImportHistory, detectExcelImportCategory, verifyExcelImportCategory, renderCategoricalCheckBanner, IMPORT_CATEGORIES } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
 import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } from './js/turso-db.js';
@@ -713,8 +713,8 @@ function renderDashboard(container) {
   <div class="card chart-card">
     <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div>
-        <div class="card-title" id="prc-po-trend-title">Monthly PRC Vs Monthly PO</div>
-        <div class="card-subtitle" id="prc-po-trend-subtitle">PRCs created vs Purchase Orders issued per month · 💡 Click any month for weekly breakdown (±2 Wks)</div>
+        <div class="card-title" id="prc-po-trend-title">Monthly PRC Vs Monthly TCD</div>
+        <div class="card-subtitle" id="prc-po-trend-subtitle">PRCs created vs TCDs finalized per month · 💡 Click any month for weekly breakdown (±2 Wks)</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
         <button type="button" id="btn-trend-back-weekly" class="btn btn-secondary btn-xs" style="display:none;padding:3px 9px;font-size:11px;font-weight:600;align-items:center;gap:4px" onclick="returnToWeeklyDrilldown()">
@@ -994,6 +994,8 @@ function renderTrendChart(prcs) {
   const trendEl = document.getElementById('chart-monthly-trend');
   if (!trendEl) return;
 
+  const tcds = typeof getFilteredTCDs === 'function' ? getFilteredTCDs() : (getState().tcds || []);
+
   const isDailyDrilldown = dashboardTrendView === 'daily_drilldown' && selectedDrilldownWeekStart;
   const isWeeklyDrilldown = dashboardTrendView === 'weekly_drilldown' && selectedDrilldownMonthKey;
   const isWeekly10 = dashboardTrendView === 'weekly';
@@ -1001,24 +1003,24 @@ function renderTrendChart(prcs) {
 
   let trendItems = [];
   let prcDatasetLabel = 'Monthly PRCs';
-  let poDatasetLabel = 'Monthly POs';
+  let tcdDatasetLabel = 'Monthly TCDs';
 
   if (isDailyDrilldown) {
-    trendItems = dailyPRCVsPODistributionForWeek(prcs, getState().pods || [], selectedDrilldownWeekStart, selectedDrilldownWeekEnd);
+    trendItems = dailyPRCVsTCDDistributionForWeek(prcs, tcds, selectedDrilldownWeekStart, selectedDrilldownWeekEnd);
     prcDatasetLabel = `Daily PRCs (${selectedDrilldownWeekLabel})`;
-    poDatasetLabel = `Daily POs (${selectedDrilldownWeekLabel})`;
+    tcdDatasetLabel = `Daily TCDs (${selectedDrilldownWeekLabel})`;
   } else if (isWeeklyDrilldown) {
-    trendItems = weeklyPRCVsPODistributionForMonth(prcs, getState().pods || [], selectedDrilldownMonthKey);
+    trendItems = weeklyPRCVsTCDDistributionForMonth(prcs, tcds, selectedDrilldownMonthKey);
     prcDatasetLabel = `Weekly PRCs (${selectedDrilldownMonthLabel} ±2 Wks)`;
-    poDatasetLabel = `Weekly POs (${selectedDrilldownMonthLabel} ±2 Wks)`;
+    tcdDatasetLabel = `Weekly TCDs (${selectedDrilldownMonthLabel} ±2 Wks)`;
   } else if (isWeekly10) {
-    trendItems = weeklyPRCVsPODistribution(prcs, getState().pods || [], 10);
+    trendItems = weeklyPRCVsTCDDistribution(prcs, tcds, 10);
     prcDatasetLabel = 'Weekly PRCs (Last 10 Wks)';
-    poDatasetLabel = 'Weekly POs (Last 10 Wks)';
+    tcdDatasetLabel = 'Weekly TCDs (Last 10 Wks)';
   } else {
-    trendItems = monthlyPRCVsPODistribution(prcs, getState().pods || []);
+    trendItems = monthlyPRCVsTCDDistribution(prcs, tcds);
     prcDatasetLabel = 'Monthly PRCs';
-    poDatasetLabel = 'Monthly POs';
+    tcdDatasetLabel = 'Monthly TCDs';
   }
 
   charts['monthly'] = new Chart(trendEl, {
@@ -1040,14 +1042,14 @@ function renderTrendChart(prcs) {
           tension: 0.35
         },
         {
-          label: poDatasetLabel,
-          data: trendItems.map(d => d.poCount),
+          label: tcdDatasetLabel,
+          data: trendItems.map(d => d.tcdCount !== undefined ? d.tcdCount : d.poCount),
           fill: true,
-          backgroundColor: 'rgba(16,185,129,0.12)',
-          borderColor: '#10b981',
+          backgroundColor: 'rgba(139,92,246,0.14)',
+          borderColor: '#8b5cf6',
           borderWidth: 2.5,
-          pointBackgroundColor: isWeeklyDrilldown ? trendItems.map(d => d.isTargetMonth ? '#059669' : '#a7f3d0') : '#10b981',
-          pointBorderColor: isWeeklyDrilldown ? trendItems.map(d => d.isTargetMonth ? '#047857' : '#6ee7b7') : '#10b981',
+          pointBackgroundColor: isWeeklyDrilldown ? trendItems.map(d => d.isTargetMonth ? '#7c3aed' : '#c4b5fd') : '#8b5cf6',
+          pointBorderColor: isWeeklyDrilldown ? trendItems.map(d => d.isTargetMonth ? '#6d28d9' : '#a78bfa') : '#8b5cf6',
           pointRadius: (isWeeklyDrilldown || isDailyDrilldown) ? 5 : 4,
           pointHoverRadius: 7,
           tension: 0.35
@@ -1101,7 +1103,7 @@ function renderTrendChart(prcs) {
               }
               return item.label || '';
             },
-            label: ctx => ` ${ctx.dataset.label}: ${ctx.raw} ${ctx.dataset.label.includes('PRC') ? 'PRCs' : 'POs'}`,
+            label: ctx => ` ${ctx.dataset.label}: ${ctx.raw} ${ctx.dataset.label.includes('PRC') ? 'PRCs' : 'TCDs'}`,
             afterBody: () => {
               if (isMonthly) {
                 return ['\n💡 Click on this month to view weekly breakdown (±2 weeks)'];
@@ -1144,7 +1146,7 @@ window.setDashboardTrendWeeklyDrilldown = function(monthKey, monthLabel) {
   if (btnWeekly) btnWeekly.className = 'btn btn-ghost btn-xs';
   if (btnMonthly) btnMonthly.className = 'btn btn-ghost btn-xs';
   if (titleEl) titleEl.textContent = `Weekly Breakdown: ${monthLabel} (±2 Weeks)`;
-  if (subEl) subEl.textContent = `Showing weekly PRC vs PO breakdown for ${monthLabel} · 💡 Click any week point to view daily breakdown`;
+  if (subEl) subEl.textContent = `Showing weekly PRC vs TCD breakdown for ${monthLabel} · 💡 Click any week point to view daily breakdown`;
 };
 
 window.setDashboardTrendDailyDrilldown = function(weekStartTs, weekEndTs, weekLabel) {
@@ -1168,7 +1170,7 @@ window.setDashboardTrendDailyDrilldown = function(weekStartTs, weekEndTs, weekLa
   if (btnWeekly) btnWeekly.className = 'btn btn-ghost btn-xs';
   if (btnMonthly) btnMonthly.className = 'btn btn-ghost btn-xs';
   if (titleEl) titleEl.textContent = `Daily Breakdown: ${weekLabel}`;
-  if (subEl) subEl.textContent = `Showing day-by-day PRC vs PO activity for ${weekLabel} (Active days)`;
+  if (subEl) subEl.textContent = `Showing day-by-day PRC vs TCD activity for ${weekLabel} (Active days)`;
 };
 
 window.returnToWeeklyDrilldown = function() {
@@ -1201,11 +1203,11 @@ window.setDashboardTrendView = function(view) {
   if (btnBackWeekly) btnBackWeekly.style.display = 'none';
   if (btnWeekly) btnWeekly.className = view === 'weekly' ? 'btn btn-primary btn-xs' : 'btn btn-ghost btn-xs';
   if (btnMonthly) btnMonthly.className = view === 'monthly' ? 'btn btn-primary btn-xs' : 'btn btn-ghost btn-xs';
-  if (titleEl) titleEl.textContent = view === 'weekly' ? 'Weekly PRC Vs Weekly PO' : 'Monthly PRC Vs Monthly PO';
+  if (titleEl) titleEl.textContent = view === 'weekly' ? 'Weekly PRC Vs Weekly TCD' : 'Monthly PRC Vs Monthly TCD';
   if (subEl) {
     subEl.textContent = view === 'weekly'
-      ? 'PRCs created vs Purchase Orders issued (Last 10 Weeks) · 💡 Click any week for daily breakdown'
-      : 'PRCs created vs Purchase Orders issued per month · 💡 Click any month for weekly breakdown (±2 Wks)';
+      ? 'PRCs created vs TCDs finalized (Last 10 Weeks) · 💡 Click any week for daily breakdown'
+      : 'PRCs created vs TCDs finalized per month · 💡 Click any month for weekly breakdown (±2 Wks)';
   }
 };
 

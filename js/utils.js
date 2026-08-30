@@ -260,10 +260,10 @@ export function monthlyDistribution(prcs, dateField = 'createdAt') {
   return Object.entries(months).sort(([a],[b]) => a.localeCompare(b));
 }
 
-/** Compute monthly distribution comparing PRCs created vs POs issued */
-export function monthlyPRCVsPODistribution(prcs = [], pods = []) {
+/** Compute monthly distribution comparing PRCs created vs TCDs finalized */
+export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
   const prcMonths = {};
-  const poMonths = {};
+  const tcdMonths = {};
   const allMonths = new Set();
 
   // 1. Tally Monthly PRCs
@@ -276,50 +276,52 @@ export function monthlyPRCVsPODistribution(prcs = [], pods = []) {
     allMonths.add(key);
   });
 
-  // 2. Tally Monthly POs (from PODs and PRC/material records with poNumber & poDate)
-  const countedPoKeys = new Set();
+  // 2. Tally Monthly TCDs (from TCDs collection and PRC/material records with tcdNumber & tcdDate)
+  const countedTcdKeys = new Set();
 
-  // A. From PODs collection
-  (pods || []).forEach(pod => {
-    const poNum = String(pod.poNumber || pod.id || '').trim();
-    const raw = pod.poDate || pod.createdAt || pod.updatedAt;
+  // A. From TCDs collection
+  (tcds || []).forEach(t => {
+    const tcdNum = String(t.tcdNumber || t.id || '').trim();
+    const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
     const dt = parseDateObj(raw);
-    if (!dt || !poNum) return;
+    if (!dt || !tcdNum) return;
     const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-    const dedupeKey = `${poNum}::${key}`;
-    if (!countedPoKeys.has(dedupeKey)) {
-      countedPoKeys.add(dedupeKey);
-      poMonths[key] = (poMonths[key] || 0) + 1;
+    const dedupeKey = `${tcdNum}::${key}`;
+    if (!countedTcdKeys.has(dedupeKey)) {
+      countedTcdKeys.add(dedupeKey);
+      tcdMonths[key] = (tcdMonths[key] || 0) + 1;
       allMonths.add(key);
     }
   });
 
-  // B. Also include any POs recorded on PRCs/materials not already counted
+  // B. Also include any TCDs recorded on PRCs/materials not already counted
   prcs.forEach(p => {
-    const pPoNum = String(p.poNumber || '').trim();
-    if (pPoNum && p.poDate) {
-      const dt = parseDateObj(p.poDate);
+    const pTcdNum = String(p.tcdNumber || '').trim();
+    const pRaw = p.tcdDate || p.tcdApprovedDate;
+    if (pTcdNum && pRaw) {
+      const dt = parseDateObj(pRaw);
       if (dt) {
         const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-        const dedupeKey = `${pPoNum}::${key}`;
-        if (!countedPoKeys.has(dedupeKey)) {
-          countedPoKeys.add(dedupeKey);
-          poMonths[key] = (poMonths[key] || 0) + 1;
+        const dedupeKey = `${pTcdNum}::${key}`;
+        if (!countedTcdKeys.has(dedupeKey)) {
+          countedTcdKeys.add(dedupeKey);
+          tcdMonths[key] = (tcdMonths[key] || 0) + 1;
           allMonths.add(key);
         }
       }
     }
 
     (p.materials || []).forEach(m => {
-      const mPoNum = String(m.poNumber || '').trim();
-      if (mPoNum && m.poDate) {
-        const dt = parseDateObj(m.poDate);
+      const mTcdNum = String(m.tcdNumber || '').trim();
+      const mRaw = m.tcdDate || m.tcdApprovedDate;
+      if (mTcdNum && mRaw) {
+        const dt = parseDateObj(mRaw);
         if (dt) {
           const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-          const dedupeKey = `${mPoNum}::${key}`;
-          if (!countedPoKeys.has(dedupeKey)) {
-            countedPoKeys.add(dedupeKey);
-            poMonths[key] = (poMonths[key] || 0) + 1;
+          const dedupeKey = `${mTcdNum}::${key}`;
+          if (!countedTcdKeys.has(dedupeKey)) {
+            countedTcdKeys.add(dedupeKey);
+            tcdMonths[key] = (tcdMonths[key] || 0) + 1;
             allMonths.add(key);
           }
         }
@@ -337,17 +339,19 @@ export function monthlyPRCVsPODistribution(prcs = [], pods = []) {
       ? dt.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
       : m;
 
+    const tcdCount = tcdMonths[m] || 0;
     return {
       monthKey: m,
       label,
       prcCount: prcMonths[m] || 0,
-      poCount: poMonths[m] || 0
+      tcdCount,
+      poCount: tcdCount // backward compatibility alias
     };
   }).filter(item => item.prcCount > 0); // Hide periods where PRC count is 0
 }
 
-/** Compute weekly distribution for the last N weeks (default 10) comparing PRCs created vs POs issued */
-export function weeklyPRCVsPODistribution(prcs = [], pods = [], numWeeks = 10) {
+/** Compute weekly distribution for the last N weeks (default 10) comparing PRCs created vs TCDs finalized */
+export function weeklyPRCVsTCDDistribution(prcs = [], tcds = [], numWeeks = 10) {
   const allTimestamps = [];
 
   // Collect all valid dates from PRCs
@@ -357,22 +361,22 @@ export function weeklyPRCVsPODistribution(prcs = [], pods = [], numWeeks = 10) {
     if (dt) allTimestamps.push(dt.getTime());
   });
 
-  // Collect dates from PODs
-  (pods || []).forEach(pod => {
-    const raw = pod.poDate || pod.createdAt || pod.updatedAt;
+  // Collect dates from TCDs
+  (tcds || []).forEach(t => {
+    const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
     const dt = parseDateObj(raw);
     if (dt) allTimestamps.push(dt.getTime());
   });
 
-  // Collect dates from PRC PO fields & materials
+  // Collect dates from PRC TCD fields & materials
   prcs.forEach(p => {
-    if (p.poDate) {
-      const dt = parseDateObj(p.poDate);
+    if (p.tcdDate || p.tcdApprovedDate) {
+      const dt = parseDateObj(p.tcdDate || p.tcdApprovedDate);
       if (dt) allTimestamps.push(dt.getTime());
     }
     (p.materials || []).forEach(m => {
-      if (m.poDate) {
-        const dt = parseDateObj(m.poDate);
+      if (m.tcdDate || m.tcdApprovedDate) {
+        const dt = parseDateObj(m.tcdDate || m.tcdApprovedDate);
         if (dt) allTimestamps.push(dt.getTime());
       }
     });
@@ -405,6 +409,7 @@ export function weeklyPRCVsPODistribution(prcs = [], pods = [], numWeeks = 10) {
       start: start.getTime(),
       end: end.getTime(),
       prcCount: 0,
+      tcdCount: 0,
       poCount: 0
     });
   }
@@ -419,36 +424,39 @@ export function weeklyPRCVsPODistribution(prcs = [], pods = [], numWeeks = 10) {
     if (w) w.prcCount++;
   });
 
-  // 2. Tally POs (deduplicated by PO number per week)
-  const countedPoKeys = new Set();
+  // 2. Tally TCDs (deduplicated by TCD number per week)
+  const countedTcdKeys = new Set();
 
-  (pods || []).forEach(pod => {
-    const poNum = String(pod.poNumber || pod.id || '').trim();
-    const raw = pod.poDate || pod.createdAt || pod.updatedAt;
+  (tcds || []).forEach(t => {
+    const tcdNum = String(t.tcdNumber || t.id || '').trim();
+    const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
     const dt = parseDateObj(raw);
-    if (!dt || !poNum) return;
+    if (!dt || !tcdNum) return;
     const ts = dt.getTime();
     const w = weeks.find(wk => ts >= wk.start && ts <= wk.end);
     if (w) {
-      const dedupeKey = `${poNum}::${w.start}`;
-      if (!countedPoKeys.has(dedupeKey)) {
-        countedPoKeys.add(dedupeKey);
+      const dedupeKey = `${tcdNum}::${w.start}`;
+      if (!countedTcdKeys.has(dedupeKey)) {
+        countedTcdKeys.add(dedupeKey);
+        w.tcdCount++;
         w.poCount++;
       }
     }
   });
 
   prcs.forEach(p => {
-    const pPoNum = String(p.poNumber || '').trim();
-    if (pPoNum && p.poDate) {
-      const dt = parseDateObj(p.poDate);
+    const pTcdNum = String(p.tcdNumber || '').trim();
+    const pRaw = p.tcdDate || p.tcdApprovedDate;
+    if (pTcdNum && pRaw) {
+      const dt = parseDateObj(pRaw);
       if (dt) {
         const ts = dt.getTime();
         const w = weeks.find(wk => ts >= wk.start && ts <= wk.end);
         if (w) {
-          const dedupeKey = `${pPoNum}::${w.start}`;
-          if (!countedPoKeys.has(dedupeKey)) {
-            countedPoKeys.add(dedupeKey);
+          const dedupeKey = `${pTcdNum}::${w.start}`;
+          if (!countedTcdKeys.has(dedupeKey)) {
+            countedTcdKeys.add(dedupeKey);
+            w.tcdCount++;
             w.poCount++;
           }
         }
@@ -456,16 +464,18 @@ export function weeklyPRCVsPODistribution(prcs = [], pods = [], numWeeks = 10) {
     }
 
     (p.materials || []).forEach(m => {
-      const mPoNum = String(m.poNumber || '').trim();
-      if (mPoNum && m.poDate) {
-        const dt = parseDateObj(m.poDate);
+      const mTcdNum = String(m.tcdNumber || '').trim();
+      const mRaw = m.tcdDate || m.tcdApprovedDate;
+      if (mTcdNum && mRaw) {
+        const dt = parseDateObj(mRaw);
         if (dt) {
           const ts = dt.getTime();
           const w = weeks.find(wk => ts >= wk.start && ts <= wk.end);
           if (w) {
-            const dedupeKey = `${mPoNum}::${w.start}`;
-            if (!countedPoKeys.has(dedupeKey)) {
-              countedPoKeys.add(dedupeKey);
+            const dedupeKey = `${mTcdNum}::${w.start}`;
+            if (!countedTcdKeys.has(dedupeKey)) {
+              countedTcdKeys.add(dedupeKey);
+              w.tcdCount++;
               w.poCount++;
             }
           }
@@ -478,8 +488,8 @@ export function weeklyPRCVsPODistribution(prcs = [], pods = [], numWeeks = 10) {
   return weeks.filter(w => w.prcCount > 0);
 }
 
-/** Compute weekly distribution for a specific month (including 2 weeks prior & 2 weeks later) */
-export function weeklyPRCVsPODistributionForMonth(prcs = [], pods = [], monthKey = '') {
+/** Compute weekly distribution for a specific month (including 2 weeks prior & 2 weeks later) comparing PRCs vs TCDs */
+export function weeklyPRCVsTCDDistributionForMonth(prcs = [], tcds = [], monthKey = '') {
   if (!monthKey) return [];
   const [yStr, mStr] = monthKey.split('-');
   const year = parseInt(yStr, 10);
@@ -523,6 +533,7 @@ export function weeklyPRCVsPODistributionForMonth(prcs = [], pods = [], monthKey
       start: wStart.getTime(),
       end: wEnd.getTime(),
       prcCount: 0,
+      tcdCount: 0,
       poCount: 0
     });
 
@@ -540,36 +551,39 @@ export function weeklyPRCVsPODistributionForMonth(prcs = [], pods = [], monthKey
     if (w) w.prcCount++;
   });
 
-  // 2. Tally POs (deduplicated by PO number per week)
-  const countedPoKeys = new Set();
+  // 2. Tally TCDs (deduplicated by TCD number per week)
+  const countedTcdKeys = new Set();
 
-  (pods || []).forEach(pod => {
-    const poNum = String(pod.poNumber || pod.id || '').trim();
-    const raw = pod.poDate || pod.createdAt || pod.updatedAt;
+  (tcds || []).forEach(t => {
+    const tcdNum = String(t.tcdNumber || t.id || '').trim();
+    const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
     const dt = parseDateObj(raw);
-    if (!dt || !poNum) return;
+    if (!dt || !tcdNum) return;
     const ts = dt.getTime();
     const w = weeks.find(wk => ts >= wk.start && ts <= wk.end);
     if (w) {
-      const dedupeKey = `${poNum}::${w.start}`;
-      if (!countedPoKeys.has(dedupeKey)) {
-        countedPoKeys.add(dedupeKey);
+      const dedupeKey = `${tcdNum}::${w.start}`;
+      if (!countedTcdKeys.has(dedupeKey)) {
+        countedTcdKeys.add(dedupeKey);
+        w.tcdCount++;
         w.poCount++;
       }
     }
   });
 
   prcs.forEach(p => {
-    const pPoNum = String(p.poNumber || '').trim();
-    if (pPoNum && p.poDate) {
-      const dt = parseDateObj(p.poDate);
+    const pTcdNum = String(p.tcdNumber || '').trim();
+    const pRaw = p.tcdDate || p.tcdApprovedDate;
+    if (pTcdNum && pRaw) {
+      const dt = parseDateObj(pRaw);
       if (dt) {
         const ts = dt.getTime();
         const w = weeks.find(wk => ts >= wk.start && ts <= wk.end);
         if (w) {
-          const dedupeKey = `${pPoNum}::${w.start}`;
-          if (!countedPoKeys.has(dedupeKey)) {
-            countedPoKeys.add(dedupeKey);
+          const dedupeKey = `${pTcdNum}::${w.start}`;
+          if (!countedTcdKeys.has(dedupeKey)) {
+            countedTcdKeys.add(dedupeKey);
+            w.tcdCount++;
             w.poCount++;
           }
         }
@@ -577,16 +591,18 @@ export function weeklyPRCVsPODistributionForMonth(prcs = [], pods = [], monthKey
     }
 
     (p.materials || []).forEach(m => {
-      const mPoNum = String(m.poNumber || '').trim();
-      if (mPoNum && m.poDate) {
-        const dt = parseDateObj(m.poDate);
+      const mTcdNum = String(m.tcdNumber || '').trim();
+      const mRaw = m.tcdDate || m.tcdApprovedDate;
+      if (mTcdNum && mRaw) {
+        const dt = parseDateObj(mRaw);
         if (dt) {
           const ts = dt.getTime();
           const w = weeks.find(wk => ts >= wk.start && ts <= wk.end);
           if (w) {
-            const dedupeKey = `${mPoNum}::${w.start}`;
-            if (!countedPoKeys.has(dedupeKey)) {
-              countedPoKeys.add(dedupeKey);
+            const dedupeKey = `${mTcdNum}::${w.start}`;
+            if (!countedTcdKeys.has(dedupeKey)) {
+              countedTcdKeys.add(dedupeKey);
+              w.tcdCount++;
               w.poCount++;
             }
           }
@@ -599,8 +615,8 @@ export function weeklyPRCVsPODistributionForMonth(prcs = [], pods = [], monthKey
   return weeks.filter(w => w.prcCount > 0);
 }
 
-/** Compute daily distribution for a specific week window */
-export function dailyPRCVsPODistributionForWeek(prcs = [], pods = [], weekStartTs = 0, weekEndTs = 0) {
+/** Compute daily distribution for a specific week window comparing PRCs vs TCDs */
+export function dailyPRCVsTCDDistributionForWeek(prcs = [], tcds = [], weekStartTs = 0, weekEndTs = 0) {
   if (!weekStartTs || !weekEndTs) return [];
   const startDt = new Date(weekStartTs);
   const endDt = new Date(weekEndTs);
@@ -624,6 +640,7 @@ export function dailyPRCVsPODistributionForWeek(prcs = [], pods = [], weekStartT
       start: dStart.getTime(),
       end: dEnd.getTime(),
       prcCount: 0,
+      tcdCount: 0,
       poCount: 0
     });
 
@@ -640,36 +657,39 @@ export function dailyPRCVsPODistributionForWeek(prcs = [], pods = [], weekStartT
     if (d) d.prcCount++;
   });
 
-  // 2. Tally POs (deduplicated by PO number per day)
-  const countedPoKeys = new Set();
+  // 2. Tally TCDs (deduplicated by TCD number per day)
+  const countedTcdKeys = new Set();
 
-  (pods || []).forEach(pod => {
-    const poNum = String(pod.poNumber || pod.id || '').trim();
-    const raw = pod.poDate || pod.createdAt || pod.updatedAt;
+  (tcds || []).forEach(t => {
+    const tcdNum = String(t.tcdNumber || t.id || '').trim();
+    const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
     const dt = parseDateObj(raw);
-    if (!dt || !poNum) return;
+    if (!dt || !tcdNum) return;
     const ts = dt.getTime();
     const d = days.find(day => ts >= day.start && ts <= day.end);
     if (d) {
-      const dedupeKey = `${poNum}::${d.dayKey}`;
-      if (!countedPoKeys.has(dedupeKey)) {
-        countedPoKeys.add(dedupeKey);
+      const dedupeKey = `${tcdNum}::${d.dayKey}`;
+      if (!countedTcdKeys.has(dedupeKey)) {
+        countedTcdKeys.add(dedupeKey);
+        d.tcdCount++;
         d.poCount++;
       }
     }
   });
 
   prcs.forEach(p => {
-    const pPoNum = String(p.poNumber || '').trim();
-    if (pPoNum && p.poDate) {
-      const dt = parseDateObj(p.poDate);
+    const pTcdNum = String(p.tcdNumber || '').trim();
+    const pRaw = p.tcdDate || p.tcdApprovedDate;
+    if (pTcdNum && pRaw) {
+      const dt = parseDateObj(pRaw);
       if (dt) {
         const ts = dt.getTime();
         const d = days.find(day => ts >= day.start && ts <= day.end);
         if (d) {
-          const dedupeKey = `${pPoNum}::${d.dayKey}`;
-          if (!countedPoKeys.has(dedupeKey)) {
-            countedPoKeys.add(dedupeKey);
+          const dedupeKey = `${pTcdNum}::${d.dayKey}`;
+          if (!countedTcdKeys.has(dedupeKey)) {
+            countedTcdKeys.add(dedupeKey);
+            d.tcdCount++;
             d.poCount++;
           }
         }
@@ -677,16 +697,18 @@ export function dailyPRCVsPODistributionForWeek(prcs = [], pods = [], weekStartT
     }
 
     (p.materials || []).forEach(m => {
-      const mPoNum = String(m.poNumber || '').trim();
-      if (mPoNum && m.poDate) {
-        const dt = parseDateObj(m.poDate);
+      const mTcdNum = String(m.tcdNumber || '').trim();
+      const mRaw = m.tcdDate || m.tcdApprovedDate;
+      if (mTcdNum && mRaw) {
+        const dt = parseDateObj(mRaw);
         if (dt) {
           const ts = dt.getTime();
           const d = days.find(day => ts >= day.start && ts <= day.end);
           if (d) {
-            const dedupeKey = `${mPoNum}::${d.dayKey}`;
-            if (!countedPoKeys.has(dedupeKey)) {
-              countedPoKeys.add(dedupeKey);
+            const dedupeKey = `${mTcdNum}::${d.dayKey}`;
+            if (!countedTcdKeys.has(dedupeKey)) {
+              countedTcdKeys.add(dedupeKey);
+              d.tcdCount++;
               d.poCount++;
             }
           }
@@ -698,6 +720,12 @@ export function dailyPRCVsPODistributionForWeek(prcs = [], pods = [], weekStartT
   // Hide periods where PRC count is 0
   return days.filter(d => d.prcCount > 0);
 }
+
+// Backwards compatibility aliases
+export const monthlyPRCVsPODistribution = monthlyPRCVsTCDDistribution;
+export const weeklyPRCVsPODistribution = weeklyPRCVsTCDDistribution;
+export const weeklyPRCVsPODistributionForMonth = weeklyPRCVsTCDDistributionForMonth;
+export const dailyPRCVsPODistributionForWeek = dailyPRCVsTCDDistributionForWeek;
 
 /** Enable mouse wheel horizontal scrolling when holding Shift on scrollable tables & containers */
 export function enableTableHorizontalScroll() {
