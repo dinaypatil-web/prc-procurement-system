@@ -599,6 +599,106 @@ export function weeklyPRCVsPODistributionForMonth(prcs = [], pods = [], monthKey
   return weeks.filter(w => w.prcCount > 0);
 }
 
+/** Compute daily distribution for a specific week window */
+export function dailyPRCVsPODistributionForWeek(prcs = [], pods = [], weekStartTs = 0, weekEndTs = 0) {
+  if (!weekStartTs || !weekEndTs) return [];
+  const startDt = new Date(weekStartTs);
+  const endDt = new Date(weekEndTs);
+
+  const days = [];
+  let cur = new Date(startDt.getFullYear(), startDt.getMonth(), startDt.getDate(), 0, 0, 0, 0);
+  const maxEnd = new Date(endDt.getFullYear(), endDt.getMonth(), endDt.getDate(), 23, 59, 59, 999);
+
+  while (cur.getTime() <= maxEnd.getTime()) {
+    const dStart = new Date(cur.getTime());
+    const dEnd = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate(), 23, 59, 59, 999);
+
+    const dayName = dStart.toLocaleDateString('en-GB', { weekday: 'short' });
+    const dayDate = dStart.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    const fullDate = dStart.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' });
+
+    days.push({
+      dayKey: `${dStart.getFullYear()}-${String(dStart.getMonth() + 1).padStart(2, '0')}-${String(dStart.getDate()).padStart(2, '0')}`,
+      label: `${dayName}, ${dayDate}`,
+      fullLabel: fullDate,
+      start: dStart.getTime(),
+      end: dEnd.getTime(),
+      prcCount: 0,
+      poCount: 0
+    });
+
+    cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1, 0, 0, 0, 0);
+  }
+
+  // 1. Tally PRCs
+  prcs.forEach(p => {
+    const raw = p.createdAt || p.prDate || p.allocationDate || p.updatedAt;
+    const dt = parseDateObj(raw);
+    if (!dt) return;
+    const ts = dt.getTime();
+    const d = days.find(day => ts >= day.start && ts <= day.end);
+    if (d) d.prcCount++;
+  });
+
+  // 2. Tally POs (deduplicated by PO number per day)
+  const countedPoKeys = new Set();
+
+  (pods || []).forEach(pod => {
+    const poNum = String(pod.poNumber || pod.id || '').trim();
+    const raw = pod.poDate || pod.createdAt || pod.updatedAt;
+    const dt = parseDateObj(raw);
+    if (!dt || !poNum) return;
+    const ts = dt.getTime();
+    const d = days.find(day => ts >= day.start && ts <= day.end);
+    if (d) {
+      const dedupeKey = `${poNum}::${d.dayKey}`;
+      if (!countedPoKeys.has(dedupeKey)) {
+        countedPoKeys.add(dedupeKey);
+        d.poCount++;
+      }
+    }
+  });
+
+  prcs.forEach(p => {
+    const pPoNum = String(p.poNumber || '').trim();
+    if (pPoNum && p.poDate) {
+      const dt = parseDateObj(p.poDate);
+      if (dt) {
+        const ts = dt.getTime();
+        const d = days.find(day => ts >= day.start && ts <= day.end);
+        if (d) {
+          const dedupeKey = `${pPoNum}::${d.dayKey}`;
+          if (!countedPoKeys.has(dedupeKey)) {
+            countedPoKeys.add(dedupeKey);
+            d.poCount++;
+          }
+        }
+      }
+    }
+
+    (p.materials || []).forEach(m => {
+      const mPoNum = String(m.poNumber || '').trim();
+      if (mPoNum && m.poDate) {
+        const dt = parseDateObj(m.poDate);
+        if (dt) {
+          const ts = dt.getTime();
+          const d = days.find(day => ts >= day.start && ts <= day.end);
+          if (d) {
+            const dedupeKey = `${mPoNum}::${d.dayKey}`;
+            if (!countedPoKeys.has(dedupeKey)) {
+              countedPoKeys.add(dedupeKey);
+              d.poCount++;
+            }
+          }
+        }
+      }
+    });
+  });
+
+  // Hide periods where PRC count is 0
+  return days.filter(d => d.prcCount > 0);
+}
+
 /** Enable mouse wheel horizontal scrolling when holding Shift on scrollable tables & containers */
 export function enableTableHorizontalScroll() {
   document.addEventListener('wheel', (e) => {

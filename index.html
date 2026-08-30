@@ -348,7 +348,7 @@
 // =========================================================
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, getFilteredVendors, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getTableColumnFilters, setTableColumnFilter, clearTableColumnFilter, clearAllTableColumnFilters, getTableActiveFilterCount, getDistinctTableColumnValues, matchCellFilter, getPODItems, getUndoHistory, undoRecordUpdate, undoLastRecordUpdate, undoMultipleRecordUpdates, clearUndoHistory } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus, getProcurementFunnelBreakdown } from './js/status-engine.js';
-import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, monthlyPRCVsPODistribution, weeklyPRCVsPODistribution, weeklyPRCVsPODistributionForMonth, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
+import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, monthlyPRCVsPODistribution, weeklyPRCVsPODistribution, weeklyPRCVsPODistributionForMonth, dailyPRCVsPODistributionForWeek, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment, rollbackImportSnapshot, getImportHistory, renderImportHistoryTable, getLastImportSnapshotId, clearImportHistory, detectExcelImportCategory, verifyExcelImportCategory, renderCategoricalCheckBanner, IMPORT_CATEGORIES } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
 import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } from './js/turso-db.js';
@@ -717,6 +717,9 @@ function renderDashboard(container) {
         <div class="card-subtitle" id="prc-po-trend-subtitle">PRCs created vs Purchase Orders issued per month · 💡 Click any month for weekly breakdown (±2 Wks)</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
+        <button type="button" id="btn-trend-back-weekly" class="btn btn-secondary btn-xs" style="display:none;padding:3px 9px;font-size:11px;font-weight:600;align-items:center;gap:4px" onclick="returnToWeeklyDrilldown()">
+          <span>←</span> <span>Back to Weekly</span>
+        </button>
         <button type="button" id="btn-trend-back-monthly" class="btn btn-secondary btn-xs" style="display:none;padding:3px 9px;font-size:11px;font-weight:600;align-items:center;gap:4px" onclick="setDashboardTrendView('monthly')">
           <span>←</span> <span>Back to Monthly Overview</span>
         </button>
@@ -971,10 +974,13 @@ function initDashboardCharts(prcs, s) {
   }
 }
 
-// ── DASHBOARD TREND CHART (MONTHLY / DRILLDOWN / WEEKLY) ───
-let dashboardTrendView = 'monthly';
+// ── DASHBOARD TREND CHART (MONTHLY / WEEKLY DRILLDOWN / DAILY DRILLDOWN) ───
+let dashboardTrendView = 'monthly'; // 'monthly' | 'weekly_drilldown' | 'daily_drilldown' | 'weekly'
 let selectedDrilldownMonthKey = null;
 let selectedDrilldownMonthLabel = '';
+let selectedDrilldownWeekStart = null;
+let selectedDrilldownWeekEnd = null;
+let selectedDrilldownWeekLabel = '';
 
 function renderTrendChart(prcs) {
   if (charts['monthly']) {
@@ -988,26 +994,32 @@ function renderTrendChart(prcs) {
   const trendEl = document.getElementById('chart-monthly-trend');
   if (!trendEl) return;
 
-  const isDrilldown = dashboardTrendView === 'drilldown' && selectedDrilldownMonthKey;
-  const isWeekly = dashboardTrendView === 'weekly';
-  const isMonthly = !isDrilldown && !isWeekly;
+  const isDailyDrilldown = dashboardTrendView === 'daily_drilldown' && selectedDrilldownWeekStart;
+  const isWeeklyDrilldown = dashboardTrendView === 'weekly_drilldown' && selectedDrilldownMonthKey;
+  const isWeekly10 = dashboardTrendView === 'weekly';
+  const isMonthly = dashboardTrendView === 'monthly';
 
   let trendItems = [];
-  if (isDrilldown) {
+  let prcDatasetLabel = 'Monthly PRCs';
+  let poDatasetLabel = 'Monthly POs';
+
+  if (isDailyDrilldown) {
+    trendItems = dailyPRCVsPODistributionForWeek(prcs, getState().pods || [], selectedDrilldownWeekStart, selectedDrilldownWeekEnd);
+    prcDatasetLabel = `Daily PRCs (${selectedDrilldownWeekLabel})`;
+    poDatasetLabel = `Daily POs (${selectedDrilldownWeekLabel})`;
+  } else if (isWeeklyDrilldown) {
     trendItems = weeklyPRCVsPODistributionForMonth(prcs, getState().pods || [], selectedDrilldownMonthKey);
-  } else if (isWeekly) {
+    prcDatasetLabel = `Weekly PRCs (${selectedDrilldownMonthLabel} ±2 Wks)`;
+    poDatasetLabel = `Weekly POs (${selectedDrilldownMonthLabel} ±2 Wks)`;
+  } else if (isWeekly10) {
     trendItems = weeklyPRCVsPODistribution(prcs, getState().pods || [], 10);
+    prcDatasetLabel = 'Weekly PRCs (Last 10 Wks)';
+    poDatasetLabel = 'Weekly POs (Last 10 Wks)';
   } else {
     trendItems = monthlyPRCVsPODistribution(prcs, getState().pods || []);
+    prcDatasetLabel = 'Monthly PRCs';
+    poDatasetLabel = 'Monthly POs';
   }
-
-  const prcDatasetLabel = isDrilldown
-    ? `Weekly PRCs (${selectedDrilldownMonthLabel} ±2 Wks)`
-    : (isWeekly ? 'Weekly PRCs' : 'Monthly PRCs');
-
-  const poDatasetLabel = isDrilldown
-    ? `Weekly POs (${selectedDrilldownMonthLabel} ±2 Wks)`
-    : (isWeekly ? 'Weekly POs' : 'Monthly POs');
 
   charts['monthly'] = new Chart(trendEl, {
     type: 'line',
@@ -1021,9 +1033,9 @@ function renderTrendChart(prcs) {
           backgroundColor: 'rgba(59,130,246,0.12)',
           borderColor: '#3b82f6',
           borderWidth: 2.5,
-          pointBackgroundColor: isDrilldown ? trendItems.map(d => d.isTargetMonth ? '#2563eb' : '#93c5fd') : '#3b82f6',
-          pointBorderColor: isDrilldown ? trendItems.map(d => d.isTargetMonth ? '#1d4ed8' : '#60a5fa') : '#3b82f6',
-          pointRadius: isDrilldown ? trendItems.map(d => d.isTargetMonth ? 5.5 : 4) : 4,
+          pointBackgroundColor: isWeeklyDrilldown ? trendItems.map(d => d.isTargetMonth ? '#2563eb' : '#93c5fd') : '#3b82f6',
+          pointBorderColor: isWeeklyDrilldown ? trendItems.map(d => d.isTargetMonth ? '#1d4ed8' : '#60a5fa') : '#3b82f6',
+          pointRadius: (isWeeklyDrilldown || isDailyDrilldown) ? 5 : 4,
           pointHoverRadius: 7,
           tension: 0.35
         },
@@ -1034,9 +1046,9 @@ function renderTrendChart(prcs) {
           backgroundColor: 'rgba(16,185,129,0.12)',
           borderColor: '#10b981',
           borderWidth: 2.5,
-          pointBackgroundColor: isDrilldown ? trendItems.map(d => d.isTargetMonth ? '#059669' : '#a7f3d0') : '#10b981',
-          pointBorderColor: isDrilldown ? trendItems.map(d => d.isTargetMonth ? '#047857' : '#6ee7b7') : '#10b981',
-          pointRadius: isDrilldown ? trendItems.map(d => d.isTargetMonth ? 5.5 : 4) : 4,
+          pointBackgroundColor: isWeeklyDrilldown ? trendItems.map(d => d.isTargetMonth ? '#059669' : '#a7f3d0') : '#10b981',
+          pointBorderColor: isWeeklyDrilldown ? trendItems.map(d => d.isTargetMonth ? '#047857' : '#6ee7b7') : '#10b981',
+          pointRadius: (isWeeklyDrilldown || isDailyDrilldown) ? 5 : 4,
           pointHoverRadius: 7,
           tension: 0.35
         }
@@ -1047,17 +1059,22 @@ function renderTrendChart(prcs) {
       maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       onClick: (event, elements) => {
-        if (isMonthly && elements && elements.length) {
-          const idx = elements[0].index;
-          const clickedItem = trendItems[idx];
-          if (clickedItem && clickedItem.monthKey) {
-            setDashboardTrendDrilldown(clickedItem.monthKey, clickedItem.label);
-          }
+        if (!elements || !elements.length) return;
+        const idx = elements[0].index;
+        const clickedItem = trendItems[idx];
+        if (!clickedItem) return;
+
+        if (isMonthly && clickedItem.monthKey) {
+          // Drill down from Monthly to Weekly (±2 weeks)
+          setDashboardTrendWeeklyDrilldown(clickedItem.monthKey, clickedItem.label);
+        } else if ((isWeeklyDrilldown || isWeekly10) && clickedItem.start && clickedItem.end) {
+          // Drill down from Weekly to Daily
+          setDashboardTrendDailyDrilldown(clickedItem.start, clickedItem.end, clickedItem.fullLabel || clickedItem.label);
         }
       },
       onHover: (event, elements) => {
         if (trendEl) {
-          trendEl.style.cursor = (isMonthly && elements.length) ? 'pointer' : 'default';
+          trendEl.style.cursor = ((isMonthly || isWeeklyDrilldown || isWeekly10) && elements.length) ? 'pointer' : 'default';
         }
       },
       plugins: {
@@ -1074,8 +1091,11 @@ function renderTrendChart(prcs) {
               const idx = items[0].dataIndex;
               const item = trendItems[idx];
               if (!item) return '';
+              if (isDailyDrilldown) {
+                return item.fullLabel || item.label || '';
+              }
               if (item.fullLabel) {
-                return isDrilldown
+                return isWeeklyDrilldown
                   ? `${item.fullLabel} ${item.isTargetMonth ? '★ (Target Month)' : '(Surrounding Window)'}`
                   : item.fullLabel;
               }
@@ -1085,6 +1105,9 @@ function renderTrendChart(prcs) {
             afterBody: () => {
               if (isMonthly) {
                 return ['\n💡 Click on this month to view weekly breakdown (±2 weeks)'];
+              }
+              if (isWeeklyDrilldown || isWeekly10) {
+                return ['\n💡 Click on this week to view daily breakdown'];
               }
               return [];
             }
@@ -1099,48 +1122,89 @@ function renderTrendChart(prcs) {
   });
 }
 
-window.setDashboardTrendDrilldown = function(monthKey, monthLabel) {
-  dashboardTrendView = 'drilldown';
+window.setDashboardTrendWeeklyDrilldown = function(monthKey, monthLabel) {
+  dashboardTrendView = 'weekly_drilldown';
   selectedDrilldownMonthKey = monthKey;
   selectedDrilldownMonthLabel = monthLabel;
+  selectedDrilldownWeekStart = null;
+  selectedDrilldownWeekEnd = null;
 
   const prcs = typeof getFilteredPRCs === 'function' ? getFilteredPRCs() : (getState().prcs || []);
   renderTrendChart(prcs);
 
-  const btnBack = document.getElementById('btn-trend-back-monthly');
+  const btnBackMonthly = document.getElementById('btn-trend-back-monthly');
+  const btnBackWeekly = document.getElementById('btn-trend-back-weekly');
   const btnWeekly = document.getElementById('btn-trend-weekly');
   const btnMonthly = document.getElementById('btn-trend-monthly');
   const titleEl = document.getElementById('prc-po-trend-title');
   const subEl = document.getElementById('prc-po-trend-subtitle');
 
-  if (btnBack) btnBack.style.display = 'inline-flex';
+  if (btnBackMonthly) btnBackMonthly.style.display = 'inline-flex';
+  if (btnBackWeekly) btnBackWeekly.style.display = 'none';
   if (btnWeekly) btnWeekly.className = 'btn btn-ghost btn-xs';
   if (btnMonthly) btnMonthly.className = 'btn btn-ghost btn-xs';
-  if (titleEl) titleEl.textContent = `Weekly Drilldown: ${monthLabel} (±2 Weeks)`;
-  if (subEl) subEl.textContent = `Showing weekly PRC vs PO breakdown for ${monthLabel} with 2 weeks prior & 2 weeks later data`;
+  if (titleEl) titleEl.textContent = `Weekly Breakdown: ${monthLabel} (±2 Weeks)`;
+  if (subEl) subEl.textContent = `Showing weekly PRC vs PO breakdown for ${monthLabel} · 💡 Click any week point to view daily breakdown`;
+};
+
+window.setDashboardTrendDailyDrilldown = function(weekStartTs, weekEndTs, weekLabel) {
+  dashboardTrendView = 'daily_drilldown';
+  selectedDrilldownWeekStart = weekStartTs;
+  selectedDrilldownWeekEnd = weekEndTs;
+  selectedDrilldownWeekLabel = weekLabel;
+
+  const prcs = typeof getFilteredPRCs === 'function' ? getFilteredPRCs() : (getState().prcs || []);
+  renderTrendChart(prcs);
+
+  const btnBackMonthly = document.getElementById('btn-trend-back-monthly');
+  const btnBackWeekly = document.getElementById('btn-trend-back-weekly');
+  const btnWeekly = document.getElementById('btn-trend-weekly');
+  const btnMonthly = document.getElementById('btn-trend-monthly');
+  const titleEl = document.getElementById('prc-po-trend-title');
+  const subEl = document.getElementById('prc-po-trend-subtitle');
+
+  if (btnBackMonthly) btnBackMonthly.style.display = 'inline-flex';
+  if (btnBackWeekly) btnBackWeekly.style.display = selectedDrilldownMonthKey ? 'inline-flex' : 'none';
+  if (btnWeekly) btnWeekly.className = 'btn btn-ghost btn-xs';
+  if (btnMonthly) btnMonthly.className = 'btn btn-ghost btn-xs';
+  if (titleEl) titleEl.textContent = `Daily Breakdown: ${weekLabel}`;
+  if (subEl) subEl.textContent = `Showing day-by-day PRC vs PO activity for ${weekLabel} (Active days)`;
+};
+
+window.returnToWeeklyDrilldown = function() {
+  if (selectedDrilldownMonthKey) {
+    setDashboardTrendWeeklyDrilldown(selectedDrilldownMonthKey, selectedDrilldownMonthLabel);
+  } else {
+    setDashboardTrendView('weekly');
+  }
 };
 
 window.setDashboardTrendView = function(view) {
   dashboardTrendView = view;
   selectedDrilldownMonthKey = null;
   selectedDrilldownMonthLabel = '';
+  selectedDrilldownWeekStart = null;
+  selectedDrilldownWeekEnd = null;
+  selectedDrilldownWeekLabel = '';
 
   const prcs = typeof getFilteredPRCs === 'function' ? getFilteredPRCs() : (getState().prcs || []);
   renderTrendChart(prcs);
 
-  const btnBack = document.getElementById('btn-trend-back-monthly');
+  const btnBackMonthly = document.getElementById('btn-trend-back-monthly');
+  const btnBackWeekly = document.getElementById('btn-trend-back-weekly');
   const btnWeekly = document.getElementById('btn-trend-weekly');
   const btnMonthly = document.getElementById('btn-trend-monthly');
   const titleEl = document.getElementById('prc-po-trend-title');
   const subEl = document.getElementById('prc-po-trend-subtitle');
 
-  if (btnBack) btnBack.style.display = 'none';
+  if (btnBackMonthly) btnBackMonthly.style.display = 'none';
+  if (btnBackWeekly) btnBackWeekly.style.display = 'none';
   if (btnWeekly) btnWeekly.className = view === 'weekly' ? 'btn btn-primary btn-xs' : 'btn btn-ghost btn-xs';
   if (btnMonthly) btnMonthly.className = view === 'monthly' ? 'btn btn-primary btn-xs' : 'btn btn-ghost btn-xs';
   if (titleEl) titleEl.textContent = view === 'weekly' ? 'Weekly PRC Vs Weekly PO' : 'Monthly PRC Vs Monthly PO';
   if (subEl) {
     subEl.textContent = view === 'weekly'
-      ? 'PRCs created vs Purchase Orders issued (Last 10 Weeks)'
+      ? 'PRCs created vs Purchase Orders issued (Last 10 Weeks) · 💡 Click any week for daily breakdown'
       : 'PRCs created vs Purchase Orders issued per month · 💡 Click any month for weekly breakdown (±2 Wks)';
   }
 };
