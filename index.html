@@ -354,7 +354,7 @@ import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, si
 import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } from './js/turso-db.js';
 import { getActiveDbProvider, setActiveDbProvider } from './js/db-adapter.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
-import { exportCSV, exportExcel, exportPDF, getAgeingReport } from './js/reports.js';
+import { exportCSV, exportExcel, exportPDF, getAgeingReport, REPORT_COLUMNS } from './js/reports.js';
 
 // ── CHARTS REGISTRY ───────────────────────────────────────
 const charts = {};
@@ -1202,6 +1202,9 @@ function renderPRCList(container) {
   <!-- ACTIVE COLUMN FILTERS BAR -->
   <div id="prc-active-filters-container"></div>
 
+  <!-- BULK ACTIONS FLOATING TOOLBAR -->
+  <div id="prc-bulk-toolbar-container"></div>
+
   <!-- TABLE CONTAINER (FIT TO VIEWPORT WITH VERTICAL & HORIZONTAL SCROLLING) -->
   <div class="card" style="padding:0;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden">
     <div class="table-wrapper" id="prc-table-wrapper" style="flex:1;min-height:0;overflow:auto">
@@ -1767,6 +1770,7 @@ function renderPRCTable() {
   const savedScrollLeft = tableWrapper ? tableWrapper.scrollLeft : 0;
 
   renderActiveFiltersBar();
+  renderPRCBulkToolbar();
 
   if (state.viewLevel === 'material') {
     const { total, items, pages, page } = getPaginatedMaterials();
@@ -1775,6 +1779,9 @@ function renderPRCTable() {
     const thead = document.querySelector('#prc-table thead');
     if (thead) {
       thead.innerHTML = `<tr>
+        <th style="width:40px;text-align:center">
+          <input type="checkbox" id="mat-select-all" onchange="toggleSelectAllMaterialPRCs(this.checked)" title="Select / Deselect all visible items" style="cursor:pointer;accent-color:var(--color-primary);width:16px;height:16px;margin:0" />
+        </th>
         ${renderFilterableTh('prNumber', 'PR Number', true)}
         <th>Sl</th>
         ${renderFilterableTh('matCode', 'Mat Code', true)}
@@ -1797,7 +1804,7 @@ function renderPRCTable() {
     if (!tbody) return;
 
     if (!items.length) {
-      tbody.innerHTML = `<tr><td colspan="15"><div class="empty-state" style="padding:48px">
+      tbody.innerHTML = `<tr><td colspan="16"><div class="empty-state" style="padding:48px">
         <div class="empty-state-icon">🔍</div>
         <div class="empty-state-title">No material items found</div>
         <div class="empty-state-text">Try adjusting your filters or search query.</div>
@@ -1810,8 +1817,12 @@ function renderPRCTable() {
         const cls = parseFloat(m.closedQty) || 0;
         const pend = Math.max(0, tot - proc - cls);
         const isCompleted = m.status === 'Process Completed' || m.status === STATUS.COMPLETED;
+        const isSelected = selectedPRCIds.has(m.prcId);
 
-        return `<tr onclick="openPRCDetail('${m.prcId}')" class="${isCompleted ? 'row-process-completed' : ''}" style="cursor:pointer">
+        return `<tr onclick="openPRCDetail('${m.prcId}')" class="${isCompleted ? 'row-process-completed' : ''} ${isSelected ? 'selected-row' : ''}" style="cursor:pointer">
+          <td onclick="event.stopPropagation()" style="text-align:center;width:40px">
+            <input type="checkbox" class="prc-row-checkbox" value="${m.prcId}" ${isSelected ? 'checked' : ''} onchange="togglePRCSelection('${m.prcId}', this.checked, event)" title="Select PRC ${m.prNumber}" style="cursor:pointer;accent-color:var(--color-primary);width:16px;height:16px;margin:0" />
+          </td>
           <td><span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(m.prNumber,q)}</span><span class="copy-icon">📋</span></span><br>${renderProgressStars(m, false)}</td>
           <td>${m.serialNumber||'—'}</td>
           <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono text-sm font-semibold">${highlight(m.matCode,q)}</span><span class="copy-icon">📋</span></span></td>
@@ -1869,7 +1880,11 @@ function renderPRCTable() {
     const thead = document.querySelector('#prc-table thead');
     if (thead) {
       thead.innerHTML = `<tr>
-        <th style="width:40px;text-align:center"></th>
+        <th style="width:68px;text-align:center;padding:8px 4px">
+          <div style="display:flex;align-items:center;justify-content:center">
+            <input type="checkbox" id="prc-select-all" onchange="toggleSelectAllPRCs(this.checked)" title="Select / Deselect all visible PRCs" style="cursor:pointer;accent-color:var(--color-primary);width:16px;height:16px;margin:0" />
+          </div>
+        </th>
         ${renderFilterableTh('prNumber', 'PR Number', false)}
         ${renderFilterableTh('department', 'Department', false)}
         ${renderFilterableTh('priority', 'Priority', false)}
@@ -1997,13 +2012,15 @@ function renderPRCTable() {
         const computedStatus = calculateStatus(p);
         const isPrcCompleted = computedStatus === 'Process Completed' || computedStatus === STATUS.COMPLETED || p.status === 'Process Completed';
 
-        const parentRowHtml = `<tr class="parent-row ${isExpanded ? 'is-expanded' : ''} ${isPrcCompleted ? 'row-process-completed' : ''}" onclick="togglePRCTreeRow('${p.id}', event)" style="cursor:pointer">
-          <td onclick="event.stopPropagation(); togglePRCTreeRow('${p.id}', event)" style="text-align:center;width:52px;padding:6px 4px;vertical-align:middle">
-            <div style="display:inline-flex;align-items:center;gap:4px">
-              <button class="tree-node-btn ${isExpanded ? 'is-expanded' : ''}" title="${isExpanded ? 'Collapse Material Child Items' : 'Expand Material Child Items'}">
+        const isPrcSelected = selectedPRCIds.has(p.id);
+        const parentRowHtml = `<tr class="parent-row ${isExpanded ? 'is-expanded' : ''} ${isPrcCompleted ? 'row-process-completed' : ''} ${isPrcSelected ? 'selected-row' : ''}" onclick="togglePRCTreeRow('${p.id}', event)" style="cursor:pointer">
+          <td onclick="event.stopPropagation()" style="text-align:center;width:68px;padding:6px 4px;vertical-align:middle">
+            <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px">
+              <input type="checkbox" class="prc-row-checkbox" value="${p.id}" ${isPrcSelected ? 'checked' : ''} onchange="togglePRCSelection('${p.id}', this.checked, event)" title="Select PRC ${p.prNumber}" style="cursor:pointer;accent-color:var(--color-primary);width:16px;height:16px;margin:0" />
+              <button class="tree-node-btn ${isExpanded ? 'is-expanded' : ''}" onclick="event.stopPropagation(); togglePRCTreeRow('${p.id}', event)" title="${isExpanded ? 'Collapse Material Child Items' : 'Expand Material Child Items'}">
                 <span class="tree-node-symbol">${isExpanded ? '−' : '+'}</span>
               </button>
-              <span class="tree-folder-icon">${isExpanded ? '📂' : '📁'}</span>
+              <span class="tree-folder-icon" onclick="event.stopPropagation(); togglePRCTreeRow('${p.id}', event)">${isExpanded ? '📂' : '📁'}</span>
             </div>
           </td>
           <td>
@@ -2164,6 +2181,9 @@ function renderPRCTable() {
     }
   }
 
+  // Update Select All Checkbox state (checked, indeterminate, unchecked)
+  updatePRCSelectAllCheckboxState();
+
   // Restore scroll positions so table and window don't jump to top
   const restorePRCScroll = () => {
     window.scrollTo({ left: winX, top: winY, behavior: 'instant' });
@@ -2179,6 +2199,457 @@ function renderPRCTable() {
   setTimeout(restorePRCScroll, 0);
   setTimeout(restorePRCScroll, 40);
 }
+
+// ── PRC CHECKBOX MULTI-SELECT & BULK OPERATIONS ───────────
+let selectedPRCIds = new Set();
+let lastCheckedPRCId = null;
+
+function renderPRCBulkToolbar() {
+  const container = document.getElementById('prc-bulk-toolbar-container');
+  if (!container) return;
+
+  if (selectedPRCIds.size === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const state = getState();
+  const allFiltered = typeof getFilteredPRCs === 'function' ? getFilteredPRCs() : (state.prcs || []);
+  const count = selectedPRCIds.size;
+  const isAllFilteredSelected = allFiltered.length > 0 && count >= allFiltered.length;
+
+  container.innerHTML = `
+    <div class="prc-bulk-floating-bar">
+      <div class="bulk-info">
+        <span class="bulk-count-badge">
+          <span>☑️</span> <strong>${fmtNum(count)}</strong> PRC${count > 1 ? 's' : ''} Selected
+        </span>
+        ${!isAllFilteredSelected && allFiltered.length > count ? `
+          <button type="button" class="btn btn-ghost btn-xs" onclick="selectAllFilteredPRCs()" style="text-decoration:underline;color:var(--color-primary);font-weight:600;font-size:11.5px">
+            Select all ${fmtNum(allFiltered.length)} PRCs in current view
+          </button>
+        ` : ''}
+      </div>
+      <div class="bulk-actions-group">
+        <button type="button" class="btn btn-primary btn-sm" onclick="openBulkAllocateSelectedModal()" title="Allocate selected PRCs together">
+          <span>📦</span> <span>Bulk Allocate</span>
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="openBulkStatusSelectedModal()" title="Update status for selected PRCs">
+          <span>🏷️</span> <span>Update Status</span>
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="exportSelectedPRCsExcel()" title="Export selected PRCs to Excel">
+          <span>📊</span> <span>Export Excel</span>
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="exportSelectedPRCsCSV()" title="Export selected PRCs to CSV">
+          <span>📄</span> <span>Export CSV</span>
+        </button>
+        ${isSuperAdmin() ? `
+          <button type="button" class="btn btn-danger btn-sm" onclick="handleBulkDeleteSelectedPRCs()" title="Delete selected PRCs (Super Admin)">
+            <span>🗑️</span> <span>Delete (${count})</span>
+          </button>
+        ` : ''}
+        <button type="button" class="btn btn-ghost btn-sm" onclick="clearPRCSelection()" title="Deselect all">
+          ✕ Clear
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function updatePRCSelectAllCheckboxState() {
+  const chk = document.getElementById('prc-select-all') || document.getElementById('mat-select-all');
+  if (!chk) return;
+
+  const state = getState();
+  let visibleIds = [];
+  if (state.viewLevel === 'material') {
+    const { items } = getPaginatedMaterials();
+    visibleIds = items.map(m => m.prcId).filter(Boolean);
+  } else {
+    const { items } = getPaginatedPRCs();
+    visibleIds = items.map(p => p.id).filter(Boolean);
+  }
+
+  if (visibleIds.length === 0) {
+    chk.checked = false;
+    chk.indeterminate = false;
+    return;
+  }
+
+  const selectedInPage = visibleIds.filter(id => selectedPRCIds.has(id));
+  if (selectedInPage.length === 0) {
+    chk.checked = false;
+    chk.indeterminate = false;
+  } else if (selectedInPage.length === visibleIds.length) {
+    chk.checked = true;
+    chk.indeterminate = false;
+  } else {
+    chk.checked = false;
+    chk.indeterminate = true;
+  }
+}
+
+window.togglePRCSelection = function(prcId, isChecked, evt) {
+  if (evt && evt.stopPropagation) evt.stopPropagation();
+
+  const state = getState();
+  const { items } = (state.viewLevel === 'material' ? getPaginatedMaterials() : getPaginatedPRCs());
+  const itemIds = items.map(i => state.viewLevel === 'material' ? i.prcId : i.id);
+
+  // Shift + click range selection
+  if (evt && evt.shiftKey && lastCheckedPRCId && lastCheckedPRCId !== prcId) {
+    const fromIdx = itemIds.indexOf(lastCheckedPRCId);
+    const toIdx = itemIds.indexOf(prcId);
+    if (fromIdx !== -1 && toIdx !== -1) {
+      const min = Math.min(fromIdx, toIdx);
+      const max = Math.max(fromIdx, toIdx);
+      for (let i = min; i <= max; i++) {
+        const id = itemIds[i];
+        if (id) {
+          if (isChecked) selectedPRCIds.add(id);
+          else selectedPRCIds.delete(id);
+        }
+      }
+    }
+  } else {
+    if (isChecked) {
+      selectedPRCIds.add(prcId);
+    } else {
+      selectedPRCIds.delete(prcId);
+    }
+  }
+
+  lastCheckedPRCId = prcId;
+  preserveScroll(() => renderPRCTable());
+};
+
+window.toggleSelectAllPRCs = function(isChecked) {
+  const { items } = getPaginatedPRCs();
+  items.forEach(p => {
+    if (isChecked) selectedPRCIds.add(p.id);
+    else selectedPRCIds.delete(p.id);
+  });
+  preserveScroll(() => renderPRCTable());
+};
+
+window.toggleSelectAllMaterialPRCs = function(isChecked) {
+  const { items } = getPaginatedMaterials();
+  items.forEach(m => {
+    if (m.prcId) {
+      if (isChecked) selectedPRCIds.add(m.prcId);
+      else selectedPRCIds.delete(m.prcId);
+    }
+  });
+  preserveScroll(() => renderPRCTable());
+};
+
+window.selectAllFilteredPRCs = function() {
+  const allFiltered = typeof getFilteredPRCs === 'function' ? getFilteredPRCs() : (getState().prcs || []);
+  allFiltered.forEach(p => selectedPRCIds.add(p.id));
+  toast(`Selected all ${allFiltered.length} PRCs`, 'info', 1800);
+  preserveScroll(() => renderPRCTable());
+};
+
+window.clearPRCSelection = function() {
+  selectedPRCIds.clear();
+  lastCheckedPRCId = null;
+  preserveScroll(() => renderPRCTable());
+};
+
+window.openBulkAllocateSelectedModal = function() {
+  if (selectedPRCIds.size === 0) {
+    toast('No PRCs selected', 'warning');
+    return;
+  }
+
+  const state = getState();
+  const selectedPrcList = state.prcs.filter(p => selectedPRCIds.has(p.id));
+  if (selectedPrcList.length === 0) {
+    toast('Selected PRCs no longer found', 'error');
+    return;
+  }
+
+  let totalMats = 0;
+  selectedPrcList.forEach(p => { totalMats += (p.materials || []).length; });
+
+  const modalEl = document.getElementById('prc-detail-modal');
+  if (!modalEl) return;
+
+  const users = state.users || [];
+  const buyers = Array.from(new Set(users.filter(u => u.role === 'buyer' || u.role === 'admin' || u.role === 'superadmin').map(u => u.name || u.email).filter(Boolean)));
+  if (!buyers.includes('Daxesh')) buyers.unshift('Daxesh');
+
+  const defaultAllocNum = `AL-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`;
+  const todayStr = toInputDateVal(new Date());
+
+  modalEl.innerHTML = `
+    <div class="modal-card" style="max-width:680px">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">📦 Bulk Allocate ${selectedPrcList.length} PRCs</h2>
+          <p class="modal-subtitle">Assign Allocation Number, Date & Buyer across all selected PRCs (${totalMats} total material items)</p>
+        </div>
+        <button class="modal-close" onclick="closePRCDetail()">✕</button>
+      </div>
+      <form id="bulk-alloc-form" onsubmit="event.preventDefault(); submitBulkAllocateSelected()">
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:16px">
+          <div style="background:var(--color-surface-2);border:1px solid var(--color-border);border-radius:8px;padding:12px;max-height:140px;overflow-y:auto">
+            <div style="font-size:11px;font-weight:700;color:var(--color-text-secondary);text-transform:uppercase;margin-bottom:6px">Selected PRCs (${selectedPrcList.length}):</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${selectedPrcList.map(p => `
+                <span class="chip" style="font-family:monospace;font-weight:600;font-size:11px;background:var(--color-surface);border:1px solid var(--color-border)">
+                  ${p.prNumber} (${(p.materials||[]).length} items)
+                </span>
+              `).join('')}
+            </div>
+          </div>
+
+          <div class="grid grid-2" style="gap:12px">
+            <div class="form-group">
+              <label class="form-label required">Allocation Number</label>
+              <input type="text" id="bulk-alloc-num" class="form-control" value="${defaultAllocNum}" required placeholder="e.g. AL-2026-001"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label required">Allocation Date</label>
+              <input type="date" id="bulk-alloc-date" class="form-control" value="${todayStr}" required/>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label required">Assign Buyer</label>
+            <div style="display:flex;gap:8px">
+              <select id="bulk-alloc-buyer-select" class="form-control" onchange="document.getElementById('bulk-alloc-buyer-custom').value=this.value">
+                <option value="">-- Choose Buyer --</option>
+                ${buyers.map(b => `<option value="${b}">${b}</option>`).join('')}
+              </select>
+              <input type="text" id="bulk-alloc-buyer-custom" class="form-control" placeholder="Or enter buyer name" style="flex:1"/>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Allocation Remarks / Notes</label>
+            <input type="text" id="bulk-alloc-remarks" class="form-control" placeholder="Optional notes for this bulk allocation batch"/>
+          </div>
+        </div>
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px">
+          <button type="button" class="btn btn-ghost" onclick="closePRCDetail()">Cancel</button>
+          <button type="submit" class="btn btn-primary">💾 Apply Allocation to ${selectedPrcList.length} PRCs</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  modalEl.className = 'modal-overlay open';
+};
+
+window.submitBulkAllocateSelected = function() {
+  const allocNum = document.getElementById('bulk-alloc-num')?.value?.trim();
+  const allocDate = document.getElementById('bulk-alloc-date')?.value?.trim();
+  const buyerName = document.getElementById('bulk-alloc-buyer-custom')?.value?.trim() || document.getElementById('bulk-alloc-buyer-select')?.value?.trim();
+  const remarks = document.getElementById('bulk-alloc-remarks')?.value?.trim();
+
+  if (!allocNum) { toast('Please enter an Allocation Number', 'warning'); return; }
+  if (!allocDate) { toast('Please enter an Allocation Date', 'warning'); return; }
+  if (!buyerName) { toast('Please assign a Buyer Name', 'warning'); return; }
+
+  const state = getState();
+  const prcs = [...state.prcs];
+  let updatedCount = 0;
+
+  selectedPRCIds.forEach(id => {
+    const idx = prcs.findIndex(p => p.id === id || p.prNumber === id);
+    if (idx !== -1) {
+      const p = prcs[idx];
+      const updatedMaterials = (p.materials || []).map(m => ({
+        ...m,
+        allocationNumber: allocNum,
+        allocationDate: allocDate,
+        buyerName: buyerName,
+        allocatedBy: buyerName,
+        status: calculateMaterialStatus({ ...m, allocationNumber: allocNum, allocationDate: allocDate, buyerName })
+      }));
+
+      const updatedPRC = {
+        ...p,
+        allocationNumber: allocNum,
+        allocationDate: allocDate,
+        buyerName: buyerName,
+        allocatedBy: buyerName,
+        allocationRemarks: remarks || p.allocationRemarks,
+        materials: updatedMaterials
+      };
+      updatedPRC.status = calculateStatus(updatedPRC, updatedMaterials);
+      prcs[idx] = updatedPRC;
+      updatedCount++;
+    }
+  });
+
+  setState({ prcs, statusSummary: buildStatusSummary(prcs) });
+  closePRCDetail();
+  toast(`✅ Successfully allocated ${updatedCount} PRCs to ${buyerName}!`, 'success', 3000);
+  preserveScroll(() => renderPRCList(document.getElementById('page-content')));
+};
+
+window.openBulkStatusSelectedModal = function() {
+  if (selectedPRCIds.size === 0) {
+    toast('No PRCs selected', 'warning');
+    return;
+  }
+
+  const state = getState();
+  const selectedPrcList = state.prcs.filter(p => selectedPRCIds.has(p.id));
+  const modalEl = document.getElementById('prc-detail-modal');
+  if (!modalEl) return;
+
+  const statusOpts = [
+    { value: 'Authorised', label: '✅ Authorised (Approved for Procurement)' },
+    { value: 'Pending', label: '🕐 Pending' },
+    { value: 'In Review', label: '🔍 In Review' },
+    { value: 'Draft', label: '📝 Draft' },
+    { value: 'Short-Close', label: '🔒 Short-Close' },
+    { value: 'PR Not Approved', label: '🚫 PR Not Approved' },
+    { value: 'Wrong PRC', label: '❌ Wrong PRC' },
+    { value: 'Future PRC', label: '🔮 Future PRC' },
+    { value: 'System Issue', label: '⚙️ System Issue' }
+  ];
+
+  modalEl.innerHTML = `
+    <div class="modal-card" style="max-width:600px">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">🏷️ Update Status for ${selectedPrcList.length} PRCs</h2>
+          <p class="modal-subtitle">Change the PR status across all selected records</p>
+        </div>
+        <button class="modal-close" onclick="closePRCDetail()">✕</button>
+      </div>
+      <form id="bulk-status-form" onsubmit="event.preventDefault(); submitBulkStatusSelected()">
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:16px">
+          <div class="form-group">
+            <label class="form-label required">Select New Status</label>
+            <select id="bulk-status-select" class="form-control" required style="font-weight:600">
+              ${statusOpts.map(s => `<option value="${s.value}">${s.label}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Status Update Reason / Remarks</label>
+            <input type="text" id="bulk-status-remarks" class="form-control" placeholder="e.g. Approved in management review / vendor discontinued"/>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer">
+            <input type="checkbox" id="bulk-status-cascade" checked style="accent-color:var(--color-primary)"/>
+            <span>Cascade status to all material items under selected PRCs</span>
+          </label>
+        </div>
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px">
+          <button type="button" class="btn btn-ghost" onclick="closePRCDetail()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Update ${selectedPrcList.length} PRCs</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  modalEl.className = 'modal-overlay open';
+};
+
+window.submitBulkStatusSelected = function() {
+  const newStatus = document.getElementById('bulk-status-select')?.value;
+  const remarks = document.getElementById('bulk-status-remarks')?.value?.trim();
+  const cascade = document.getElementById('bulk-status-cascade')?.checked;
+
+  if (!newStatus) return;
+
+  const state = getState();
+  const prcs = [...state.prcs];
+  let updatedCount = 0;
+
+  selectedPRCIds.forEach(id => {
+    const idx = prcs.findIndex(p => p.id === id || p.prNumber === id);
+    if (idx !== -1) {
+      const p = prcs[idx];
+      const isAuth = newStatus === 'Authorised' || newStatus === 'Approved';
+      const isShort = newStatus === 'Short-Close' || newStatus === 'Short Closed';
+      const isNotApp = newStatus === 'PR Not Approved';
+      const isWrong = newStatus === 'Wrong PRC';
+      const isFut = newStatus === 'Future PRC';
+      const isSys = newStatus === 'System Issue';
+
+      let updatedMaterials = p.materials || [];
+      if (cascade) {
+        updatedMaterials = updatedMaterials.map(m => ({
+          ...m,
+          prStatus: newStatus,
+          isShortClosed: isShort,
+          isPRNotApproved: isNotApp,
+          isWrongPRC: isWrong,
+          isFuturePRC: isFut,
+          isSystemIssue: isSys,
+          status: isShort ? 'Short-Close' : (isNotApp ? 'PR Not Approved' : (isWrong ? 'Wrong PRC' : (isFut ? 'Future PRC' : (isSys ? 'System Issue' : calculateMaterialStatus(m)))))
+        }));
+      }
+
+      const updatedPRC = {
+        ...p,
+        prStatus: newStatus,
+        statusOverride: newStatus,
+        isAuthorised: isAuth,
+        isShortClosed: isShort,
+        isPRNotApproved: isNotApp,
+        isWrongPRC: isWrong,
+        isFuturePRC: isFut,
+        isSystemIssue: isSys,
+        remarks: remarks ? `${p.remarks ? p.remarks + ' | ' : ''}${remarks}` : p.remarks,
+        materials: updatedMaterials
+      };
+      updatedPRC.status = isShort ? 'Short-Close' : (isNotApp ? 'PR Not Approved' : (isWrong ? 'Wrong PRC' : (isFut ? 'Future PRC' : (isSys ? 'System Issue' : calculateStatus(updatedPRC, updatedMaterials)))));
+      prcs[idx] = updatedPRC;
+      updatedCount++;
+    }
+  });
+
+  setState({ prcs, statusSummary: buildStatusSummary(prcs) });
+  closePRCDetail();
+  toast(`Updated status to "${newStatus}" for ${updatedCount} PRCs`, 'success', 2500);
+  preserveScroll(() => renderPRCList(document.getElementById('page-content')));
+};
+
+window.exportSelectedPRCsExcel = function() {
+  if (selectedPRCIds.size === 0) { toast('No PRCs selected', 'warning'); return; }
+  const state = getState();
+  const selectedList = state.prcs.filter(p => selectedPRCIds.has(p.id));
+  const prcCols = REPORT_COLUMNS.prc;
+  const prcHeaders = prcCols.map(c => c.label);
+  const prcRows = selectedList.map(p =>
+    prcCols.map(c => c.accessor ? c.accessor(p) : (p[c.key] ?? ''))
+  );
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([prcHeaders, ...prcRows]);
+  XLSX.utils.book_append_sheet(wb, ws, 'Selected PRCs');
+  XLSX.writeFile(wb, `Selected_PRCs_${selectedList.length}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  toast(`Exported ${selectedList.length} selected PRCs to Excel`, 'success');
+};
+
+window.exportSelectedPRCsCSV = function() {
+  if (selectedPRCIds.size === 0) { toast('No PRCs selected', 'warning'); return; }
+  const state = getState();
+  const selectedList = state.prcs.filter(p => selectedPRCIds.has(p.id));
+  const cols = REPORT_COLUMNS.prc;
+  const csv = toCSV(selectedList, cols);
+  downloadText(csv, `Selected_PRCs_${selectedList.length}_${new Date().toISOString().split('T')[0]}.csv`, 'text/csv');
+  toast(`Exported ${selectedList.length} selected PRCs to CSV`, 'success');
+};
+
+window.handleBulkDeleteSelectedPRCs = function() {
+  if (selectedPRCIds.size === 0) return;
+  const count = selectedPRCIds.size;
+  confirmDialog(`Are you sure you want to delete ${count} selected PRCs and all their linked materials and audit history? This action cannot be undone.`, () => {
+    const state = getState();
+    const prcs = state.prcs.filter(p => !selectedPRCIds.has(p.id));
+    setState({ prcs, statusSummary: buildStatusSummary(prcs) });
+    selectedPRCIds.clear();
+    toast(`Deleted ${count} PRCs`, 'info');
+    preserveScroll(() => renderPRCList(document.getElementById('page-content')));
+  });
+};
 
 window.goPage = function(p) {
   const state = getState();
