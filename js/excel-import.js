@@ -303,6 +303,253 @@ function stripKey(k) {
   return String(k || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 }
 
+// ═══════════════════════════════════════════════════════════
+// CATEGORICAL EXCEL IMPORT CLASSIFIER & VERIFIER
+// ═══════════════════════════════════════════════════════════
+export const IMPORT_CATEGORIES = {
+  PRC_RECORD: {
+    id: 'PRC_RECORD',
+    name: 'PRC Record Import',
+    fullName: 'PRC Master Record Import (Requisitions & Materials)',
+    badgeColor: 'primary',
+    icon: '📦',
+    description: 'Enterprise 45-column master requisitions import defining PRCs, Material Items, Quantities, and Requisition Attributes.'
+  },
+  BULK_ALLOCATION: {
+    id: 'BULK_ALLOCATION',
+    name: 'Allocation Data Import',
+    fullName: 'Allocation Data Import (Bulk Buyer & Allocation Number Assignment)',
+    badgeColor: 'warning',
+    icon: '📑',
+    description: '7-column spreadsheet for bulk-assigning Allocation Numbers, Dates, and Buyers to PRCs.'
+  },
+  PO_REPORT: {
+    id: 'PO_REPORT',
+    name: 'PO Report Import',
+    fullName: 'PO Report Import (Purchase Order Line-Items & Vendor Details)',
+    badgeColor: 'success',
+    icon: '🛒',
+    description: '14-column spreadsheet for updating Purchase Orders, PO Dates, and Vendors matching (PRC Number + Material Code).'
+  }
+};
+
+/** Categorically detect the Excel file type based on column header signature */
+export function detectExcelImportCategory(rawRows) {
+  if (!rawRows || !rawRows.length) {
+    return {
+      category: 'UNKNOWN',
+      categoryInfo: null,
+      confidence: 0,
+      matchedColumns: [],
+      rawHeaders: [],
+      explanation: 'Empty or invalid Excel data.'
+    };
+  }
+
+  const rawHeaders = Object.keys(rawRows[0] || {});
+  const strippedHeaders = rawHeaders.map(stripKey);
+
+  const matchesHeader = (aliasList) => {
+    return aliasList.some(alias => strippedHeaders.includes(stripKey(alias)));
+  };
+
+  // PO Report indicators
+  const hasPONumber = matchesHeader(['PO NUMBER', 'PO NO', 'PO_NUMBER', 'PO NO.', 'PO', 'PURCHASE ORDER NUMBER', 'PURCHASE ORDER', 'ORDER NO', 'PO_NO', 'PO #', 'PO#']);
+  const hasVendorName = matchesHeader(['VENDOR NAME', 'VENDOR', 'SUPPLIER', 'SUPPLIER NAME', 'VENDOR_NAME', 'PARTY NAME', 'SUPPLIER_NAME', 'VENDOR DESC']);
+  const hasPOAmendment = matchesHeader(['PO AMENDMENT NUMBER', 'PO AMENDMENT NO', 'PO AMD NO', 'AMENDMENT NUMBER', 'AMENDMENT NO', 'PO AMD', 'AMD NO', 'AMD NUMBER', 'PO AMENDMENT', 'AMD']);
+  const hasPOQty = matchesHeader(['PO QUANTITY', 'PO QTY', 'PO_QUANTITY', 'PO_QTY', 'ORDERED QTY', 'ORDER QUANTITY', 'PURCHASE ORDER QTY']);
+  const hasPODate = matchesHeader(['PO DATE', 'PO_DATE', 'PO DATE.', 'ORDER DATE', 'PURCHASE ORDER DATE', 'PO ISSUED DATE']);
+  const hasTCDNumber = matchesHeader(['TCD NUMBER', 'TCD NO', 'TCD_NUMBER', 'TCD NO.', 'TCD', 'TCD CODE', 'TCD_NO']);
+  const hasRFQNumber = matchesHeader(['RFQ NUMBER', 'RFQ NO', 'RFQ_NUMBER', 'RFQ NO.', 'RFQ', 'RFQ CODE', 'RFQ_NO', 'ENQUIRY NUMBER', 'ENQUIRY NO', 'TENDER NUMBER']);
+
+  // Allocation indicators
+  const hasAllocNo = matchesHeader(['ALLOCATION NO', 'ALLOCATION NUMBER', 'ALLOCATION NO.', 'ALLOCATION CODE', 'ALLOC NO', 'ALLOCATION_NO', 'ALLOCATION_NUMBER', 'ALLOCATION', 'ALLOC #', 'ALLOC#']);
+  const hasBuyerName = matchesHeader(['BUYER NAME', 'BUYER', 'PURCHASER', 'ALLOCATED TO', 'BUYER_NAME', 'ASSIGNED BUYER', 'ALLOCATED BY', 'BUYER PERSON']);
+  const hasAllocDate = matchesHeader(['ALLOCATION DATE', 'ALLOCATED ON', 'ALLOCATED DATE', 'ALLOC_DATE', 'DATE', 'ALLOC DATE', 'ALLOCATION ON']);
+
+  // Master PRC Record indicators
+  const hasPRNumber = matchesHeader(['PR NUMBER', 'PR NO', 'PR_NUMBER', 'PRNUMBER', 'REQUISITION NUMBER', 'PR', 'PRC NUMBER', 'PRC NO', 'PRC_NUMBER']);
+  const hasMaterialCode = matchesHeader(['MATERIAL CODE', 'MAT CODE', 'ITEM CODE', 'MATERIAL_CODE', 'MAT_CODE', 'ITEM NO', 'MATERIAL']);
+  const hasMaterialDesc = matchesHeader(['MATERIAL DESC', 'MATERIAL DESCRIPTION', 'DESCRIPTION', 'MAT DESC', 'MATERIAL_DESC', 'ITEM DESC']);
+  const hasUOM = matchesHeader(['UOM', 'UNIT', 'UNIT OF MEASURE']);
+  const hasQty = matchesHeader(['QUANTITY', 'QTY', 'REQ QTY', 'REQUESTED QTY']);
+  const has45ColIndicators = matchesHeader(['JOB CODE', 'FROM JOB CODE', 'WAREHOUSE CODE', 'CP CODE', 'WBS CODE', 'SUGGESTED RATE', 'BUDGET REFERENCE', 'DELIVERY START DATE', 'DELIVERY END DATE', 'PR STATUS', 'CLOSED QTY', 'AUTHORIZED BY', 'MATERIAL GROUP CODE', 'IC DESC', 'BU', 'SBU']);
+
+  let category = 'UNKNOWN';
+  let confidence = 0;
+  let matchedColumns = [];
+  let explanation = '';
+
+  // 1. PO Report detection (Strongest specific signature: PO Number + Vendor Name or Amendment/PO Qty)
+  if (hasPONumber && (hasVendorName || hasPOAmendment || hasPOQty || hasPODate || (hasTCDNumber && hasMaterialCode))) {
+    category = 'PO_REPORT';
+    matchedColumns = rawHeaders.filter(h => {
+      const s = stripKey(h);
+      return ['PRC NUMBER', 'PRC DATE', 'MATERIAL CODE', 'ALLOCATION NUMBER', 'ALLOCATION DATE', 'BUYER NAME', 'RFQ NUMBER', 'TCD NUMBER', 'TCD DATE', 'PO NUMBER', 'PO AMENDMENT NUMBER', 'PO QUANTITY', 'PO DATE', 'VENDOR NAME'].some(col => stripKey(col) === s || (PO_REPORT_ALIAS_MAP[col] && PO_REPORT_ALIAS_MAP[col].some(a => stripKey(a) === s)));
+    });
+    confidence = Math.min(100, Math.round((matchedColumns.length / 8) * 100));
+    explanation = `Contains Purchase Order columns (${hasPONumber ? 'PO Number' : ''}${hasVendorName ? ', Vendor Name' : ''}${hasPOAmendment ? ', Amendment No' : ''}${hasPODate ? ', PO Date' : ''}).`;
+  }
+  // 2. Bulk Allocation detection (Has Allocation No & Buyer, but NOT PO Number/Vendor and without full master item attributes)
+  else if (hasAllocNo && hasBuyerName && !hasPONumber && !hasVendorName && !has45ColIndicators && !hasMaterialDesc && !hasUOM) {
+    category = 'BULK_ALLOCATION';
+    matchedColumns = rawHeaders.filter(h => {
+      const s = stripKey(h);
+      return ['PR NUMBER', 'STATUS', 'DEPARTMENT', 'JOB', 'ALLOCATION NO', 'ALLOCATION DATE', 'BUYER NAME'].some(col => stripKey(col) === s || (BULK_ALLOCATION_ALIAS_MAP[col] && BULK_ALLOCATION_ALIAS_MAP[col].some(a => stripKey(a) === s)));
+    });
+    confidence = Math.min(100, Math.round((matchedColumns.length / 5) * 100));
+    explanation = `Contains Bulk Allocation columns (Allocation No, Buyer Name, Allocation Date).`;
+  }
+  // 3. PRC Record Master detection (Contains core requisition fields: PR Number, Material Desc, UOM, Quantity, or 45 enterprise attributes)
+  else if (hasPRNumber && (hasMaterialDesc || hasUOM || hasQty || has45ColIndicators || hasMaterialCode) && !hasPONumber && !hasVendorName) {
+    category = 'PRC_RECORD';
+    matchedColumns = rawHeaders.filter(h => {
+      const s = stripKey(h);
+      return ALL_IMPORT_COLUMNS.some(col => stripKey(col) === s || (ALIAS_MAP[col] && ALIAS_MAP[col].some(a => stripKey(a) === s)));
+    });
+    confidence = Math.min(100, Math.round((matchedColumns.length / 6) * 100));
+    explanation = `Contains Master Requisition columns (PR Number, Material Description, UOM, Quantity, Line Items).`;
+  }
+  // Fallback check if Allocation columns present
+  else if (hasAllocNo && (hasBuyerName || hasAllocDate)) {
+    category = 'BULK_ALLOCATION';
+    matchedColumns = rawHeaders.filter(h => {
+      const s = stripKey(h);
+      return ['PR NUMBER', 'STATUS', 'DEPARTMENT', 'JOB', 'ALLOCATION NO', 'ALLOCATION DATE', 'BUYER NAME'].some(col => stripKey(col) === s || (BULK_ALLOCATION_ALIAS_MAP[col] && BULK_ALLOCATION_ALIAS_MAP[col].some(a => stripKey(a) === s)));
+    });
+    confidence = 65;
+    explanation = `Contains Allocation reference columns.`;
+  }
+  // Fallback check if PO Number present
+  else if (hasPONumber) {
+    category = 'PO_REPORT';
+    matchedColumns = rawHeaders.filter(h => {
+      const s = stripKey(h);
+      return ['PO NUMBER', 'PO DATE', 'VENDOR NAME', 'PRC NUMBER', 'MATERIAL CODE'].some(col => stripKey(col) === s || (PO_REPORT_ALIAS_MAP[col] && PO_REPORT_ALIAS_MAP[col].some(a => stripKey(a) === s)));
+    });
+    confidence = 70;
+    explanation = `Contains Purchase Order reference columns.`;
+  }
+
+  return {
+    category,
+    categoryInfo: IMPORT_CATEGORIES[category] || null,
+    confidence,
+    matchedColumns,
+    rawHeaders,
+    explanation
+  };
+}
+
+/** Verify whether an uploaded file categorically matches the expected import workflow */
+export function verifyExcelImportCategory(rawRows, expectedCategory) {
+  const detected = detectExcelImportCategory(rawRows);
+  const expectedInfo = IMPORT_CATEGORIES[expectedCategory] || { name: expectedCategory, fullName: expectedCategory };
+
+  const isMatch = detected.category === expectedCategory;
+  let status = 'MATCHED';
+  let message = '';
+  let recommendation = null;
+
+  if (isMatch) {
+    status = 'MATCHED';
+    message = `✓ Categorical Check Passed: Valid ${expectedInfo.name} spreadsheet verified (${detected.matchedColumns.length} matching columns).`;
+  } else if (detected.category !== 'UNKNOWN') {
+    status = 'MISMATCH';
+    message = `⚠️ Categorical Mismatch Alert: The uploaded file is detected as "${detected.categoryInfo?.name || detected.category}", but you are currently in the "${expectedInfo.name}" workflow.`;
+    recommendation = {
+      targetCategory: detected.category,
+      targetCategoryInfo: detected.categoryInfo,
+      actionText: `Switch to ${detected.categoryInfo?.name || detected.category}`
+    };
+  } else {
+    status = 'UNKNOWN';
+    message = `⚠️ Unverified Format: The uploaded file could not be conclusively verified as a standard ${expectedInfo.name} template.`;
+  }
+
+  return {
+    isMatch,
+    status,
+    detected,
+    expectedCategory,
+    expectedInfo,
+    message,
+    recommendation
+  };
+}
+
+/** Render visual Categorical Check Banner for import modals / preview pages */
+export function renderCategoricalCheckBanner(verificationResult, options = {}) {
+  const { isMatch, status, detected, expectedInfo, message, recommendation } = verificationResult;
+  const { switchCallbackName = 'handleSwitchImportCategory' } = options;
+
+  if (status === 'MATCHED') {
+    return `
+      <div class="import-category-banner matched" style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.28);border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:22px">${detected.categoryInfo?.icon || '✅'}</span>
+          <div>
+            <div style="font-weight:700;font-size:12.5px;color:var(--color-success);display:flex;align-items:center;gap:6px">
+              <span>Categorical Check: Verified ${detected.categoryInfo?.name || 'Import File'}</span>
+              <span class="chip chip-completed" style="font-size:10px;padding:1px 6px">✓ Verified</span>
+            </div>
+            <div style="font-size:11.5px;color:var(--color-text-secondary);margin-top:2px">
+              ${detected.explanation} (${detected.matchedColumns.length} matching columns, ${detected.confidence}% confidence)
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (status === 'MISMATCH' && recommendation) {
+    return `
+      <div class="import-category-banner mismatch" style="background:rgba(245,158,11,0.09);border:1.5px solid rgba(245,158,11,0.4);border-radius:8px;padding:12px 16px;margin-bottom:14px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:260px">
+            <span style="font-size:24px;line-height:1">⚠️</span>
+            <div>
+              <div style="font-weight:800;font-size:13px;color:var(--color-warning);display:flex;align-items:center;gap:6px">
+                <span>Category Mismatch Detected!</span>
+                <span class="chip chip-wrong" style="font-size:10px;padding:1px 6px">Wrong Workflow</span>
+              </div>
+              <div style="font-size:12px;color:var(--color-text-primary);margin-top:3px;line-height:1.4">
+                You uploaded a <strong>${recommendation.targetCategoryInfo?.fullName || recommendation.targetCategory}</strong> spreadsheet into the <strong>${expectedInfo.name}</strong> screen.
+              </div>
+              <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">
+                ${detected.explanation}
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <button type="button" class="btn btn-primary btn-sm" onclick="${switchCallbackName}('${recommendation.targetCategory}')" style="font-weight:700;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 8px rgba(59,130,246,0.3)">
+              <span>🔀</span> ${recommendation.actionText} →
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // UNKNOWN
+  return `
+    <div class="import-category-banner unknown" style="background:rgba(100,116,139,0.08);border:1px solid rgba(100,116,139,0.25);border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:20px">❓</span>
+        <div>
+          <div style="font-weight:700;font-size:12px;color:var(--color-text-primary)">
+            Categorical Check: Unverified Excel Structure
+          </div>
+          <div style="font-size:11px;color:var(--color-text-secondary)">
+            Ensure your spreadsheet contains the standard column headers for ${expectedInfo.name}.
+          </div>
+        </div>
+      </div>
+      <span class="chip chip-awaiting" style="font-size:11px">Review Headers</span>
+    </div>
+  `;
+}
+
 /** Normalize row keys to canonical column names */
 export function normalizeRow(rawRow) {
   const norm = {};

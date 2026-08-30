@@ -349,7 +349,7 @@
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, getFilteredVendors, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getTableColumnFilters, setTableColumnFilter, clearTableColumnFilter, clearAllTableColumnFilters, getTableActiveFilterCount, getDistinctTableColumnValues, matchCellFilter, getPODItems, getUndoHistory, undoRecordUpdate, undoLastRecordUpdate, undoMultipleRecordUpdates, clearUndoHistory } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus, getProcurementFunnelBreakdown } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, monthlyPRCVsPODistribution, weeklyPRCVsPODistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
-import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment, rollbackImportSnapshot, getImportHistory, renderImportHistoryTable, getLastImportSnapshotId, clearImportHistory } from './js/excel-import.js';
+import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment, rollbackImportSnapshot, getImportHistory, renderImportHistoryTable, getLastImportSnapshotId, clearImportHistory, detectExcelImportCategory, verifyExcelImportCategory, renderCategoricalCheckBanner, IMPORT_CATEGORIES } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
 import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } from './js/turso-db.js';
 import { getActiveDbProvider, setActiveDbProvider } from './js/db-adapter.js';
@@ -3589,6 +3589,8 @@ function renderImport(container) {
         <button class="btn btn-primary" id="import-confirm-btn" onclick="confirmImport()">Confirm Import →</button>
       </div>
     </div>
+    <!-- Categorical Pre-Import Verification Banner Target -->
+    <div id="import-category-banner-container" style="flex-shrink:0"></div>
     <div id="import-preview-table" style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column"></div>
   </div>
 </div>
@@ -3621,20 +3623,52 @@ function renderImport(container) {
   }
 }
 
+let _lastUploadedImportRawRows = null;
+let _lastUploadedImportFileName = '';
+
+window.handleSwitchImportCategory = function(targetCategory) {
+  if (!_lastUploadedImportRawRows || !_lastUploadedImportRawRows.length) {
+    toast('No spreadsheet data available to switch', 'warning');
+    return;
+  }
+
+  const rawRows = _lastUploadedImportRawRows;
+  const fileName = _lastUploadedImportFileName;
+
+  if (targetCategory === 'BULK_ALLOCATION') {
+    document.getElementById('po-report-modal')?.remove();
+    openBulkAllocationModal(rawRows, fileName);
+    toast('Switched to Allocation Data Import workflow', 'info');
+  } else if (targetCategory === 'PO_REPORT') {
+    document.getElementById('bulk-alloc-modal')?.remove();
+    openPOReportImportModal(rawRows, fileName);
+    toast('Switched to PO Report Import workflow', 'info');
+  } else if (targetCategory === 'PRC_RECORD') {
+    document.getElementById('bulk-alloc-modal')?.remove();
+    document.getElementById('po-report-modal')?.remove();
+    navigate('import');
+    setTimeout(() => {
+      processImportParsedRows(rawRows, fileName);
+    }, 60);
+    toast('Switched to PRC Master Record Import workflow', 'info');
+  }
+};
+
 window.handleFileSelect = function(input) {
   if(input.files[0]) processImportFile(input.files[0]);
 };
 
-window.loadSampleRequisitionData = function() {
-  toast('Loading sample requisition data…', 'info', 1500);
-  parsedRows = SAMPLE_IMPORT_DATA;
+window.processImportParsedRows = function(rows, fileName = 'Import_Data.xlsx') {
+  parsedRows = rows;
+  _lastUploadedImportRawRows = rows;
+  _lastUploadedImportFileName = fileName;
   validationResult = validateRows(parsedRows);
 
   document.getElementById('import-step-1').style.display = 'none';
   document.getElementById('import-step-2').style.display = 'block';
-  document.getElementById('step-1').classList.remove('active');
-  document.getElementById('step-1').classList.add('done');
-  document.getElementById('step-2').classList.add('active');
+  document.getElementById('step-1')?.classList.remove('active');
+  document.getElementById('step-1')?.classList.add('done');
+  document.getElementById('step-2')?.classList.add('active');
 
   const { valid, errors, cleanRows } = validationResult;
   const existingSet = new Set((getState().prcs || []).map(p => String(p.prNumber || '').trim().toUpperCase()));
@@ -3643,13 +3677,32 @@ window.loadSampleRequisitionData = function() {
   uniquePRsInFile.forEach(pr => { if (existingSet.has(pr)) existingPRCCount++; });
   const newPRCCount = uniquePRsInFile.size - existingPRCCount;
 
+  // Categorical Check
+  const categoryCheck = verifyExcelImportCategory(parsedRows, 'PRC_RECORD');
+  const catBannerContainer = document.getElementById('import-category-banner-container');
+  if (catBannerContainer) {
+    catBannerContainer.innerHTML = renderCategoricalCheckBanner(categoryCheck);
+  }
+
   document.getElementById('import-summary').innerHTML =
     `<strong>${parsedRows.length}</strong> row(s) · <strong>${uniquePRsInFile.size}</strong> PRC(s) in file · <span class="text-success font-semibold">${newPRCCount} new to import</span> · <span class="text-warning font-semibold">${existingPRCCount} already in database (will skip)</span> · <span class="text-danger">${errors.length} errors</span>`;
 
   document.getElementById('import-preview-table').innerHTML = renderPreviewTable(parsedRows, errors);
 
   const confirmBtn = document.getElementById('import-confirm-btn');
-  if (confirmBtn) confirmBtn.disabled = false;
+  if (confirmBtn) {
+    confirmBtn.disabled = (!cleanRows.length && !parsedRows.length);
+    if (categoryCheck.status === 'MISMATCH') {
+      confirmBtn.textContent = `⚠️ Proceed as Master PRC Anyway`;
+    } else {
+      confirmBtn.textContent = `Confirm Import →`;
+    }
+  }
+};
+
+window.loadSampleRequisitionData = function() {
+  toast('Loading sample requisition data…', 'info', 1500);
+  processImportParsedRows(SAMPLE_IMPORT_DATA, 'Sample_Requisition_Data.xlsx');
 };
 
 async function processImportFile(file) {
@@ -3658,32 +3711,8 @@ async function processImportFile(file) {
     const confirmBtn = document.getElementById('import-confirm-btn');
     if (confirmBtn) confirmBtn.disabled = false;
 
-    parsedRows = await parseExcelFile(file);
-    validationResult = validateRows(parsedRows);
-
-    // Show step 2
-    document.getElementById('import-step-1').style.display = 'none';
-    document.getElementById('import-step-2').style.display = 'block';
-    document.getElementById('step-1').classList.remove('active');
-    document.getElementById('step-1').classList.add('done');
-    document.getElementById('step-2').classList.add('active');
-
-    const { valid, errors, cleanRows } = validationResult;
-    const existingSet = new Set((getState().prcs || []).map(p => String(p.prNumber || '').trim().toUpperCase()));
-    const uniquePRsInFile = new Set(parsedRows.map(r => String(r['PR NUMBER'] || '').trim().toUpperCase()));
-    let existingPRCCount = 0;
-    uniquePRsInFile.forEach(pr => { if (existingSet.has(pr)) existingPRCCount++; });
-    const newPRCCount = uniquePRsInFile.size - existingPRCCount;
-
-    document.getElementById('import-summary').innerHTML =
-      `<strong>${parsedRows.length}</strong> row(s) · <strong>${uniquePRsInFile.size}</strong> PRC(s) in file · <span class="text-success font-semibold">${newPRCCount} new to import</span> · <span class="text-warning font-semibold">${existingPRCCount} already in database (will skip)</span> · <span class="text-danger">${errors.length} errors</span>`;
-
-    document.getElementById('import-preview-table').innerHTML = renderPreviewTable(parsedRows, errors);
-
-    if(!cleanRows.length && !parsedRows.length) {
-      if (confirmBtn) confirmBtn.disabled = true;
-      toast('No rows found in the uploaded file.', 'error');
-    }
+    const rows = await parseExcelFile(file);
+    processImportParsedRows(rows, file.name);
   } catch(err) {
     toast('Failed to parse file: ' + err.message, 'error');
   }
@@ -6292,7 +6321,7 @@ window.handleDeleteAllocation = async function(id) {
 // ═══════════════════════════════════════════════════════════
 let _currentBulkAllocParsedRows = null;
 
-window.openBulkAllocationModal = function() {
+window.openBulkAllocationModal = function(preloadedRows = null, preloadedFileName = '') {
   const modalId = 'bulk-alloc-modal';
   let el = document.getElementById(modalId);
   if (el) el.remove();
@@ -6338,6 +6367,9 @@ window.openBulkAllocationModal = function() {
           <div style="font-weight:700;font-size:14px;color:var(--color-text-primary)">Click to select or drag & drop Excel file here</div>
           <div style="font-size:12px;color:var(--color-text-secondary);margin-top:4px">Supports .xlsx and .xls formats</div>
         </div>
+
+        <!-- Categorical Check Banner Container -->
+        <div id="bulk-alloc-category-banner"></div>
 
         <!-- Preview Area Container (hidden initially, shown once parsed) -->
         <div id="bulk-alloc-preview-container" style="display:none;flex-direction:column;gap:12px">
@@ -6388,6 +6420,70 @@ window.openBulkAllocationModal = function() {
       }
     });
   }
+
+  // Preloaded data if switched from another import screen
+  if (preloadedRows && preloadedRows.length) {
+    processBulkAllocRows(preloadedRows, preloadedFileName || 'Switched_Spreadsheet.xlsx');
+  }
+};
+
+window.processBulkAllocRows = function(rawRows, fileName = 'Bulk_Allocation.xlsx') {
+  _lastUploadedImportRawRows = rawRows;
+  _lastUploadedImportFileName = fileName;
+
+  const validation = validateBulkAllocationRows(rawRows);
+  _currentBulkAllocParsedRows = validation.rows;
+
+  const previewContainer = document.getElementById('bulk-alloc-preview-container');
+  const tableTarget = document.getElementById('bulk-alloc-table-target');
+  const summaryBar = document.getElementById('bulk-alloc-summary-bar');
+  const applyBtn = document.getElementById('btn-apply-bulk-alloc');
+  const footerHint = document.getElementById('bulk-alloc-footer-hint');
+  const bannerContainer = document.getElementById('bulk-alloc-category-banner');
+
+  // Categorical Check
+  const categoryCheck = verifyExcelImportCategory(rawRows, 'BULK_ALLOCATION');
+  if (bannerContainer) {
+    bannerContainer.innerHTML = renderCategoricalCheckBanner(categoryCheck);
+  }
+
+  if (previewContainer) previewContainer.style.display = 'flex';
+
+  if (summaryBar) {
+    summaryBar.innerHTML = `
+      <div class="flex gap-2 flex-wrap align-center">
+        <span class="badge badge-primary">Total: ${validation.summary.total} row(s)</span>
+        <span class="badge" style="background:rgba(16,185,129,0.15);color:var(--color-success)">✓ ${validation.summary.valid} Valid</span>
+        ${validation.summary.errors > 0 ? `<span class="badge badge-danger">❌ ${validation.summary.errors} Error(s)</span>` : ''}
+        <span class="badge badge-secondary">Matching DB PRCs: ${validation.summary.matchedPRs}</span>
+        ${validation.summary.newPRs > 0 ? `<span class="badge badge-warning">New PRCs: ${validation.summary.newPRs}</span>` : ''}
+      </div>
+      <div style="font-size:12px;color:var(--color-text-secondary)">
+        File: <strong>${fileName}</strong>
+      </div>
+    `;
+  }
+
+  if (tableTarget) {
+    tableTarget.innerHTML = renderBulkAllocationPreviewTable(validation.rows);
+  }
+
+  if (applyBtn) {
+    applyBtn.disabled = validation.summary.valid === 0;
+    if (categoryCheck.status === 'MISMATCH') {
+      applyBtn.textContent = `⚠️ Apply Allocation Anyway (${validation.summary.valid} PRs)`;
+    } else {
+      applyBtn.textContent = `💾 Apply Allocation (${validation.summary.valid} PRs)`;
+    }
+  }
+
+  if (footerHint) {
+    if (validation.summary.errors > 0) {
+      footerHint.innerHTML = `<span style="color:var(--color-danger)">⚠️ ${validation.summary.errors} row(s) have errors and will be skipped. ${validation.summary.valid} valid row(s) ready.</span>`;
+    } else {
+      footerHint.innerHTML = `<span style="color:var(--color-success)">✅ All ${validation.summary.valid} row(s) are valid and ready to apply.</span>`;
+    }
+  }
 };
 
 window.handleBulkAllocFile = async function(input) {
@@ -6401,49 +6497,7 @@ window.handleBulkAllocFile = async function(input) {
       return;
     }
 
-    const validation = validateBulkAllocationRows(rawRows);
-    _currentBulkAllocParsedRows = validation.rows;
-
-    const previewContainer = document.getElementById('bulk-alloc-preview-container');
-    const tableTarget = document.getElementById('bulk-alloc-table-target');
-    const summaryBar = document.getElementById('bulk-alloc-summary-bar');
-    const applyBtn = document.getElementById('btn-apply-bulk-alloc');
-    const footerHint = document.getElementById('bulk-alloc-footer-hint');
-
-    if (previewContainer) previewContainer.style.display = 'flex';
-
-    if (summaryBar) {
-      summaryBar.innerHTML = `
-        <div class="flex gap-2 flex-wrap align-center">
-          <span class="badge badge-primary">Total: ${validation.summary.total} row(s)</span>
-          <span class="badge" style="background:rgba(16,185,129,0.15);color:var(--color-success)">✓ ${validation.summary.valid} Valid</span>
-          ${validation.summary.errors > 0 ? `<span class="badge badge-danger">❌ ${validation.summary.errors} Error(s)</span>` : ''}
-          <span class="badge badge-secondary">Matching DB PRCs: ${validation.summary.matchedPRs}</span>
-          ${validation.summary.newPRs > 0 ? `<span class="badge badge-warning">New PRCs: ${validation.summary.newPRs}</span>` : ''}
-        </div>
-        <div style="font-size:12px;color:var(--color-text-secondary)">
-          File: <strong>${file.name}</strong>
-        </div>
-      `;
-    }
-
-    if (tableTarget) {
-      tableTarget.innerHTML = renderBulkAllocationPreviewTable(validation.rows);
-    }
-
-    if (applyBtn) {
-      applyBtn.disabled = validation.summary.valid === 0;
-      applyBtn.textContent = `💾 Apply Allocation (${validation.summary.valid} PRs)`;
-    }
-
-    if (footerHint) {
-      if (validation.summary.errors > 0) {
-        footerHint.innerHTML = `<span style="color:var(--color-danger)">⚠️ ${validation.summary.errors} row(s) have errors and will be skipped. ${validation.summary.valid} valid row(s) ready.</span>`;
-      } else {
-        footerHint.innerHTML = `<span style="color:var(--color-success)">✅ All ${validation.summary.valid} row(s) are valid and ready to apply.</span>`;
-      }
-    }
-
+    processBulkAllocRows(rawRows, file.name);
     toast(`Parsed ${rawRows.length} rows from ${file.name}`, 'info');
   } catch (err) {
     console.error('Error reading Bulk Allocation file:', err);
@@ -9098,7 +9152,7 @@ window.filterPODDocs = function(query) {
 // ═══════════════════════════════════════════════════════════
 let _currentPOReportParsedGroups = null;
 
-window.openPOReportImportModal = function() {
+window.openPOReportImportModal = function(preloadedRows = null, preloadedFileName = '') {
   const modalId = 'po-report-modal';
   let el = document.getElementById(modalId);
   if (el) el.remove();
@@ -9147,6 +9201,9 @@ window.openPOReportImportModal = function() {
           <div style="font-weight:700;font-size:14px;color:var(--color-text-primary)">Click to select or drag & drop PO Report Excel file here</div>
           <div style="font-size:12px;color:var(--color-text-secondary);margin-top:4px">Supports .xlsx and .xls formats</div>
         </div>
+
+        <!-- Categorical Check Banner Container -->
+        <div id="po-report-category-banner"></div>
 
         <!-- Preview Area Container -->
         <div id="po-report-preview-container" style="display:none;flex-direction:column;gap:12px">
@@ -9197,6 +9254,71 @@ window.openPOReportImportModal = function() {
       }
     });
   }
+
+  // Preloaded data if switched from another import screen
+  if (preloadedRows && preloadedRows.length) {
+    processPOReportRows(preloadedRows, preloadedFileName || 'Switched_Spreadsheet.xlsx');
+  }
+};
+
+window.processPOReportRows = function(rawRows, fileName = 'PO_Report.xlsx') {
+  _lastUploadedImportRawRows = rawRows;
+  _lastUploadedImportFileName = fileName;
+
+  const validation = validatePOReportRows(rawRows);
+  _currentPOReportParsedGroups = validation.groups;
+
+  const previewContainer = document.getElementById('po-report-preview-container');
+  const tableTarget = document.getElementById('po-report-table-target');
+  const summaryBar = document.getElementById('po-report-summary-bar');
+  const applyBtn = document.getElementById('btn-apply-po-report');
+  const footerHint = document.getElementById('po-report-footer-hint');
+  const bannerContainer = document.getElementById('po-report-category-banner');
+
+  // Categorical Check
+  const categoryCheck = verifyExcelImportCategory(rawRows, 'PO_REPORT');
+  if (bannerContainer) {
+    bannerContainer.innerHTML = renderCategoricalCheckBanner(categoryCheck);
+  }
+
+  if (previewContainer) previewContainer.style.display = 'flex';
+
+  if (summaryBar) {
+    summaryBar.innerHTML = `
+      <div class="flex gap-2 flex-wrap align-center">
+        <span class="badge badge-primary">Rows: ${validation.summary.totalRows}</span>
+        <span class="badge badge-secondary">Unique Items: ${validation.summary.uniqueLineItems}</span>
+        <span class="badge" style="background:rgba(16,185,129,0.15);color:var(--color-success)">✓ ${validation.summary.validItems} Matched (PRC + Material)</span>
+        ${validation.summary.skippedNotInApp > 0 ? `<span class="badge" style="background:rgba(239,68,68,0.12);color:var(--color-danger)">⚠️ ${validation.summary.skippedNotInApp} Skipped (Not in App)</span>` : ''}
+        ${validation.summary.errorItems > 0 ? `<span class="badge badge-danger">❌ ${validation.summary.errorItems} Error(s)</span>` : ''}
+        <span class="badge badge-primary">Matched PRCs: ${validation.summary.matchedPRCs}</span>
+      </div>
+      <div style="font-size:12px;color:var(--color-text-secondary)">
+        File: <strong>${fileName}</strong>
+      </div>
+    `;
+  }
+
+  if (tableTarget) {
+    tableTarget.innerHTML = renderPOReportPreviewTable(validation.groups);
+  }
+
+  if (applyBtn) {
+    applyBtn.disabled = validation.summary.validItems === 0;
+    if (categoryCheck.status === 'MISMATCH') {
+      applyBtn.textContent = `⚠️ Apply Updates Anyway (${validation.summary.validItems} Items)`;
+    } else {
+      applyBtn.textContent = `💾 Apply Updates (${validation.summary.validItems} Line Items)`;
+    }
+  }
+
+  if (footerHint) {
+    if (validation.summary.skippedNotInApp > 0) {
+      footerHint.innerHTML = `<span style="color:var(--color-warning)">ℹ️ ${validation.summary.validItems} line item(s) matched existing PRCs & Material Codes and will be updated. ${validation.summary.skippedNotInApp} item(s) for PRCs or Material Codes not in App records will be skipped.</span>`;
+    } else {
+      footerHint.innerHTML = `<span style="color:var(--color-success)">✅ All ${validation.summary.validItems} line item(s) matched existing PRCs & Material Codes and are ready to update.</span>`;
+    }
+  }
 };
 
 window.handlePOReportFile = async function(input) {
@@ -9210,51 +9332,8 @@ window.handlePOReportFile = async function(input) {
       return;
     }
 
-    const validation = validatePOReportRows(rawRows);
-    _currentPOReportParsedGroups = validation.groups;
-
-    const previewContainer = document.getElementById('po-report-preview-container');
-    const tableTarget = document.getElementById('po-report-table-target');
-    const summaryBar = document.getElementById('po-report-summary-bar');
-    const applyBtn = document.getElementById('btn-apply-po-report');
-    const footerHint = document.getElementById('po-report-footer-hint');
-
-    if (previewContainer) previewContainer.style.display = 'flex';
-
-    if (summaryBar) {
-      summaryBar.innerHTML = `
-        <div class="flex gap-2 flex-wrap align-center">
-          <span class="badge badge-primary">Rows: ${validation.summary.totalRows}</span>
-          <span class="badge badge-secondary">Unique Items: ${validation.summary.uniqueLineItems}</span>
-          <span class="badge" style="background:rgba(16,185,129,0.15);color:var(--color-success)">✓ ${validation.summary.validItems} Matched (PRC + Material)</span>
-          ${validation.summary.skippedNotInApp > 0 ? `<span class="badge" style="background:rgba(239,68,68,0.12);color:var(--color-danger)">⚠️ ${validation.summary.skippedNotInApp} Skipped (Not in App)</span>` : ''}
-          ${validation.summary.errorItems > 0 ? `<span class="badge badge-danger">❌ ${validation.summary.errorItems} Error(s)</span>` : ''}
-          <span class="badge badge-primary">Matched PRCs: ${validation.summary.matchedPRCs}</span>
-        </div>
-        <div style="font-size:12px;color:var(--color-text-secondary)">
-          File: <strong>${file.name}</strong>
-        </div>
-      `;
-    }
-
-    if (tableTarget) {
-      tableTarget.innerHTML = renderPOReportPreviewTable(validation.groups);
-    }
-
-    if (applyBtn) {
-      applyBtn.disabled = validation.summary.validItems === 0;
-      applyBtn.textContent = `💾 Apply Updates (${validation.summary.validItems} Line Items)`;
-    }
-
-    if (footerHint) {
-      if (validation.summary.skippedNotInApp > 0) {
-        footerHint.innerHTML = `<span style="color:var(--color-warning)">ℹ️ ${validation.summary.validItems} line item(s) matched existing PRCs & Material Codes and will be updated. ${validation.summary.skippedNotInApp} item(s) for PRCs or Material Codes not in App records will be skipped.</span>`;
-      } else {
-        footerHint.innerHTML = `<span style="color:var(--color-success)">✅ All ${validation.summary.validItems} line item(s) matched existing PRCs & Material Codes and are ready to update.</span>`;
-      }
-    }
-
-    toast(`Parsed ${rawRows.length} rows (${validation.groups.length} line items) from ${file.name}`, 'info');
+    processPOReportRows(rawRows, file.name);
+    toast(`Parsed ${rawRows.length} rows (${_currentPOReportParsedGroups?.length || 0} line items) from ${file.name}`, 'info');
   } catch (err) {
     console.error('Error reading PO Report file:', err);
     toast(`Failed to parse file: ${err.message}`, 'error');
