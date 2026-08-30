@@ -348,7 +348,7 @@
 // =========================================================
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getPODItems, getUndoHistory, undoRecordUpdate, undoLastRecordUpdate, undoMultipleRecordUpdates, clearUndoHistory } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus } from './js/status-engine.js';
-import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
+import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, monthlyPRCVsPODistribution, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment, rollbackImportSnapshot, getImportHistory, renderImportHistoryTable, getLastImportSnapshotId, clearImportHistory } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
 import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } from './js/turso-db.js';
@@ -713,8 +713,8 @@ function renderDashboard(container) {
   <div class="card chart-card">
     <div class="card-header">
       <div>
-        <div class="card-title">Monthly PRC Trend</div>
-        <div class="card-subtitle">PRCs created per month</div>
+        <div class="card-title">Monthly PRC Vs Monthly PO</div>
+        <div class="card-subtitle">PRCs created vs Purchase Orders issued per month</div>
       </div>
     </div>
     <div class="chart-canvas-wrap" style="height:280px">
@@ -825,26 +825,63 @@ function initDashboardCharts(prcs, s) {
     });
   }
 
-  // Monthly Trend
-  const monthly = monthlyDistribution(prcs);
+  // Monthly PRC Vs Monthly PO Trend
+  const trendItems = monthlyPRCVsPODistribution(prcs, getState().pods || []);
   const monthlyEl = document.getElementById('chart-monthly-trend');
   if (monthlyEl) {
     charts['monthly'] = new Chart(monthlyEl, {
       type: 'line',
       data: {
-        labels: monthly.map(([m]) => {
-          const [y, mm] = m.split('-');
-          const dt = new Date(parseInt(y, 10), parseInt(mm, 10) - 1, 1);
-          return !isNaN(dt.getTime())
-            ? dt.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
-            : m;
-        }),
-        datasets: [{ label:'PRCs Created', data: monthly.map(([,c])=>c), fill:true,
-          backgroundColor:'rgba(59,130,246,0.12)', borderColor:'#3b82f6', borderWidth:2,
-          pointBackgroundColor:'#3b82f6', pointRadius:4, tension:0.4 }]
+        labels: trendItems.map(d => d.label),
+        datasets: [
+          {
+            label: 'Monthly PRCs',
+            data: trendItems.map(d => d.prcCount),
+            fill: true,
+            backgroundColor: 'rgba(59,130,246,0.12)',
+            borderColor: '#3b82f6',
+            borderWidth: 2.5,
+            pointBackgroundColor: '#3b82f6',
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            tension: 0.4
+          },
+          {
+            label: 'Monthly POs',
+            data: trendItems.map(d => d.poCount),
+            fill: true,
+            backgroundColor: 'rgba(16,185,129,0.12)',
+            borderColor: '#10b981',
+            borderWidth: 2.5,
+            pointBackgroundColor: '#10b981',
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            tension: 0.4
+          }
+        ]
       },
-      options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
-        scales: { x:{grid:{color:grid}}, y:{grid:{color:grid},beginAtZero:true} } }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            align: 'end',
+            labels: { boxWidth: 12, boxHeight: 12, padding: 12, font: { size: 11, weight: '600' } }
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.dataset.label}: ${ctx.raw} ${ctx.dataset.label.includes('PRC') ? 'PRCs' : 'POs'}`
+            }
+          }
+        },
+        scales: {
+          x: { grid: { color: grid } },
+          y: { grid: { color: grid }, beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
     });
   }
 

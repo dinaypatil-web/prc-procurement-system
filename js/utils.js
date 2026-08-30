@@ -260,6 +260,92 @@ export function monthlyDistribution(prcs, dateField = 'createdAt') {
   return Object.entries(months).sort(([a],[b]) => a.localeCompare(b));
 }
 
+/** Compute monthly distribution comparing PRCs created vs POs issued */
+export function monthlyPRCVsPODistribution(prcs = [], pods = []) {
+  const prcMonths = {};
+  const poMonths = {};
+  const allMonths = new Set();
+
+  // 1. Tally Monthly PRCs
+  prcs.forEach(p => {
+    const raw = p.createdAt || p.prDate || p.allocationDate || p.updatedAt;
+    const dt = parseDateObj(raw);
+    if (!dt) return;
+    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+    prcMonths[key] = (prcMonths[key] || 0) + 1;
+    allMonths.add(key);
+  });
+
+  // 2. Tally Monthly POs (from PODs and PRC/material records with poNumber & poDate)
+  const countedPoKeys = new Set();
+
+  // A. From PODs collection
+  (pods || []).forEach(pod => {
+    const poNum = String(pod.poNumber || pod.id || '').trim();
+    const raw = pod.poDate || pod.createdAt || pod.updatedAt;
+    const dt = parseDateObj(raw);
+    if (!dt || !poNum) return;
+    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+    const dedupeKey = `${poNum}::${key}`;
+    if (!countedPoKeys.has(dedupeKey)) {
+      countedPoKeys.add(dedupeKey);
+      poMonths[key] = (poMonths[key] || 0) + 1;
+      allMonths.add(key);
+    }
+  });
+
+  // B. Also include any POs recorded on PRCs/materials not already counted
+  prcs.forEach(p => {
+    const pPoNum = String(p.poNumber || '').trim();
+    if (pPoNum && p.poDate) {
+      const dt = parseDateObj(p.poDate);
+      if (dt) {
+        const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+        const dedupeKey = `${pPoNum}::${key}`;
+        if (!countedPoKeys.has(dedupeKey)) {
+          countedPoKeys.add(dedupeKey);
+          poMonths[key] = (poMonths[key] || 0) + 1;
+          allMonths.add(key);
+        }
+      }
+    }
+
+    (p.materials || []).forEach(m => {
+      const mPoNum = String(m.poNumber || '').trim();
+      if (mPoNum && m.poDate) {
+        const dt = parseDateObj(m.poDate);
+        if (dt) {
+          const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+          const dedupeKey = `${mPoNum}::${key}`;
+          if (!countedPoKeys.has(dedupeKey)) {
+            countedPoKeys.add(dedupeKey);
+            poMonths[key] = (poMonths[key] || 0) + 1;
+            allMonths.add(key);
+          }
+        }
+      }
+    });
+  });
+
+  // Sorted chronological month keys
+  const sortedMonthKeys = Array.from(allMonths).sort((a, b) => a.localeCompare(b));
+
+  return sortedMonthKeys.map(m => {
+    const [y, mm] = m.split('-');
+    const dt = new Date(parseInt(y, 10), parseInt(mm, 10) - 1, 1);
+    const label = !isNaN(dt.getTime())
+      ? dt.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+      : m;
+
+    return {
+      monthKey: m,
+      label,
+      prcCount: prcMonths[m] || 0,
+      poCount: poMonths[m] || 0
+    };
+  });
+}
+
 /** Enable mouse wheel horizontal scrolling when holding Shift on scrollable tables & containers */
 export function enableTableHorizontalScroll() {
   document.addEventListener('wheel', (e) => {
