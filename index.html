@@ -753,9 +753,12 @@ function renderDashboard(container) {
   </div>
   <div class="card chart-card">
     <div class="card-header">
-      <div class="card-title">Vendor Distribution</div>
+      <div>
+        <div class="card-title">Vendor Distribution (Top 10)</div>
+        <div class="card-subtitle">PRCs and materials by awarded vendor</div>
+      </div>
     </div>
-    <div class="chart-canvas-wrap" style="height:240px">
+    <div class="chart-canvas-wrap" style="height:250px">
       <canvas id="chart-vendor"></canvas>
     </div>
   </div>
@@ -909,7 +912,7 @@ function initDashboardCharts(prcs, s) {
     });
   }
 
-  // Vendor Distribution
+  // Vendor Distribution (Top 10 Vendors)
   const vendorDist = {};
   prcs.forEach(p => {
     const vSet = new Set();
@@ -925,15 +928,40 @@ function initDashboardCharts(prcs, s) {
       }
     });
   });
-  const vendorEntries = Object.entries(vendorDist).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const vendorEntries = Object.entries(vendorDist).sort((a,b)=>b[1]-a[1]).slice(0, 10);
   const vendorEl = document.getElementById('chart-vendor');
   if (vendorEl) {
+    const vendorColors = [
+      '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444',
+      '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6'
+    ];
     charts['vendor'] = new Chart(vendorEl, {
-      type:'doughnut',
-      data: { labels:vendorEntries.map(([v])=>v), datasets:[{ data:vendorEntries.map(([,c])=>c),
-        backgroundColor:['#3b82f6','#8b5cf6','#10b981','#f59e0b','#ef4444'],
-        borderWidth:2, borderColor:isDark?'#111827':'#fff' }] },
-      options:{ responsive:true,maintainAspectRatio:false, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}} }
+      type: 'doughnut',
+      data: {
+        labels: vendorEntries.map(([v]) => v),
+        datasets: [{
+          data: vendorEntries.map(([,c]) => c),
+          backgroundColor: vendorColors.slice(0, vendorEntries.length),
+          borderWidth: 2,
+          borderColor: isDark ? '#111827' : '#fff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: { boxWidth: 10, boxHeight: 10, padding: 6, font: { size: 10 } }
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.label}: ${ctx.raw} records (${prcs.length ? Math.round(ctx.raw / prcs.length * 100) : 0}%)`
+            }
+          }
+        },
+        cutout: '55%'
+      }
     });
   }
 
