@@ -343,7 +343,7 @@ export function monthlyPRCVsPODistribution(prcs = [], pods = []) {
       prcCount: prcMonths[m] || 0,
       poCount: poMonths[m] || 0
     };
-  });
+  }).filter(item => item.prcCount > 0); // Hide periods where PRC count is 0
 }
 
 /** Compute weekly distribution for the last N weeks (default 10) comparing PRCs created vs POs issued */
@@ -474,7 +474,129 @@ export function weeklyPRCVsPODistribution(prcs = [], pods = [], numWeeks = 10) {
     });
   });
 
-  return weeks;
+  // Hide periods where PRC count is 0
+  return weeks.filter(w => w.prcCount > 0);
+}
+
+/** Compute weekly distribution for a specific month (including 2 weeks prior & 2 weeks later) */
+export function weeklyPRCVsPODistributionForMonth(prcs = [], pods = [], monthKey = '') {
+  if (!monthKey) return [];
+  const [yStr, mStr] = monthKey.split('-');
+  const year = parseInt(yStr, 10);
+  const month = parseInt(mStr, 10); // 1-indexed (1 to 12)
+
+  if (isNaN(year) || isNaN(month)) return [];
+
+  const firstDayOfMonth = new Date(year, month - 1, 1, 0, 0, 0, 0);
+  const lastDayOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
+
+  // 2 weeks (14 days) prior to 1st of month
+  const windowStart = new Date(year, month - 1, 1 - 14, 0, 0, 0, 0);
+  // 2 weeks (14 days) after last day of month
+  const windowEnd = new Date(lastDayOfMonth.getFullYear(), lastDayOfMonth.getMonth(), lastDayOfMonth.getDate() + 14, 23, 59, 59, 999);
+
+  // Determine Monday of the start week
+  const day = windowStart.getDay();
+  const diffToMon = windowStart.getDate() - day + (day === 0 ? -6 : 1);
+  let curMon = new Date(windowStart.getFullYear(), windowStart.getMonth(), diffToMon, 0, 0, 0, 0);
+
+  const weeks = [];
+  let weekIndex = 1;
+
+  while (curMon.getTime() <= windowEnd.getTime()) {
+    const wStart = new Date(curMon.getTime());
+    const wEnd = new Date(curMon.getFullYear(), curMon.getMonth(), curMon.getDate() + 6, 23, 59, 59, 999);
+
+    const startStr = wStart.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    const endStr = wEnd.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+    const endYearStr = wEnd.toLocaleDateString('en-GB', { year: '2-digit' });
+
+    // Check if this week falls inside the target month
+    const isTargetMonth = (wStart.getMonth() === month - 1 && wStart.getFullYear() === year) ||
+                          (wEnd.getMonth() === month - 1 && wEnd.getFullYear() === year);
+
+    weeks.push({
+      weekIndex: weekIndex++,
+      label: startStr,
+      fullLabel: `${startStr} – ${endStr} '${endYearStr}`,
+      isTargetMonth,
+      start: wStart.getTime(),
+      end: wEnd.getTime(),
+      prcCount: 0,
+      poCount: 0
+    });
+
+    // Advance to next Monday
+    curMon = new Date(curMon.getFullYear(), curMon.getMonth(), curMon.getDate() + 7, 0, 0, 0, 0);
+  }
+
+  // 1. Tally PRCs
+  prcs.forEach(p => {
+    const raw = p.createdAt || p.prDate || p.allocationDate || p.updatedAt;
+    const dt = parseDateObj(raw);
+    if (!dt) return;
+    const ts = dt.getTime();
+    const w = weeks.find(wk => ts >= wk.start && ts <= wk.end);
+    if (w) w.prcCount++;
+  });
+
+  // 2. Tally POs (deduplicated by PO number per week)
+  const countedPoKeys = new Set();
+
+  (pods || []).forEach(pod => {
+    const poNum = String(pod.poNumber || pod.id || '').trim();
+    const raw = pod.poDate || pod.createdAt || pod.updatedAt;
+    const dt = parseDateObj(raw);
+    if (!dt || !poNum) return;
+    const ts = dt.getTime();
+    const w = weeks.find(wk => ts >= wk.start && ts <= wk.end);
+    if (w) {
+      const dedupeKey = `${poNum}::${w.start}`;
+      if (!countedPoKeys.has(dedupeKey)) {
+        countedPoKeys.add(dedupeKey);
+        w.poCount++;
+      }
+    }
+  });
+
+  prcs.forEach(p => {
+    const pPoNum = String(p.poNumber || '').trim();
+    if (pPoNum && p.poDate) {
+      const dt = parseDateObj(p.poDate);
+      if (dt) {
+        const ts = dt.getTime();
+        const w = weeks.find(wk => ts >= wk.start && ts <= wk.end);
+        if (w) {
+          const dedupeKey = `${pPoNum}::${w.start}`;
+          if (!countedPoKeys.has(dedupeKey)) {
+            countedPoKeys.add(dedupeKey);
+            w.poCount++;
+          }
+        }
+      }
+    }
+
+    (p.materials || []).forEach(m => {
+      const mPoNum = String(m.poNumber || '').trim();
+      if (mPoNum && m.poDate) {
+        const dt = parseDateObj(m.poDate);
+        if (dt) {
+          const ts = dt.getTime();
+          const w = weeks.find(wk => ts >= wk.start && ts <= wk.end);
+          if (w) {
+            const dedupeKey = `${mPoNum}::${w.start}`;
+            if (!countedPoKeys.has(dedupeKey)) {
+              countedPoKeys.add(dedupeKey);
+              w.poCount++;
+            }
+          }
+        }
+      }
+    });
+  });
+
+  // Hide periods where PRC count is 0
+  return weeks.filter(w => w.prcCount > 0);
 }
 
 /** Enable mouse wheel horizontal scrolling when holding Shift on scrollable tables & containers */
