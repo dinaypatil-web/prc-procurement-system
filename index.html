@@ -777,7 +777,7 @@ function renderDashboard(container) {
   <div class="card-header">
     <div>
       <div class="card-title">Ageing Analysis — Pending PRCs</div>
-      <div class="card-subtitle">Days since allocation for unresolved PRCs</div>
+      <div class="card-subtitle">Days since allocation for unresolved PRCs (0-5, 6-10, 11-15, >15 days)</div>
     </div>
   </div>
   <div class="chart-canvas-wrap" style="height:220px">
@@ -980,24 +980,49 @@ function initDashboardCharts(prcs, s) {
     });
   }
 
-  // Ageing
-  const ageBuckets = {'0-3 days':0,'4-7 days':0,'8-14 days':0,'15-30 days':0,'>30 days':0};
+  // Ageing Analysis (0-5 days, 6-10 days, 11-15 days, >15 days)
+  const ageBuckets = {
+    '0-5 days': 0,
+    '6-10 days': 0,
+    '11-15 days': 0,
+    'More than 15 days': 0
+  };
   prcs.filter(p => !['Process Completed', 'Wrong PRC', 'PR Not Approved', 'Future PRC', 'System Issue', 'Short-Close'].includes(p.status)).forEach(p => {
     const age = getPRCAge(p);
-    if(age<=3) ageBuckets['0-3 days']++;
-    else if(age<=7) ageBuckets['4-7 days']++;
-    else if(age<=14) ageBuckets['8-14 days']++;
-    else if(age<=30) ageBuckets['15-30 days']++;
-    else ageBuckets['>30 days']++;
+    if (age <= 5) ageBuckets['0-5 days']++;
+    else if (age <= 10) ageBuckets['6-10 days']++;
+    else if (age <= 15) ageBuckets['11-15 days']++;
+    else ageBuckets['More than 15 days']++;
   });
   const ageingEl = document.getElementById('chart-ageing');
   if (ageingEl) {
     charts['ageing'] = new Chart(ageingEl, {
-      type:'bar',
-      data:{ labels:Object.keys(ageBuckets), datasets:[{ data:Object.values(ageBuckets),
-        backgroundColor:['#10b981','#f59e0b','#ea580c','#ef4444','#991b1b'], borderRadius:4 }] },
-      options:{ responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false}},
-        scales:{ x:{grid:{display:false}}, y:{grid:{color:grid},beginAtZero:true} } }
+      type: 'bar',
+      data: {
+        labels: Object.keys(ageBuckets),
+        datasets: [{
+          label: 'Pending PRCs',
+          data: Object.values(ageBuckets),
+          backgroundColor: ['#10b981', '#f59e0b', '#ea580c', '#ef4444'],
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.dataset.label || 'PRCs'}: ${ctx.raw} pending`
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { grid: { color: grid }, beginAtZero: true, ticks: { precision: 0 } }
+        }
+      }
     });
   }
 }
