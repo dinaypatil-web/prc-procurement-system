@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>ProcureTrack — Enterprise Procurement Management System</title>
-  <meta name="description" content="AI-powered enterprise procurement tracking and workflow management system for tracking PRCs from allocation to PO issuance."/>
-  <meta name="theme-color" content="#f8fafc"/>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232563eb'/><text y='.9em' font-size='70' x='50%' text-anchor='middle'>📦</text></svg>"/>
+  <title>L&T Construction EIP 4.0 — PRC Procurement System</title>
+  <meta name="description" content="L&T Construction EIP 4.0 Enterprise Information Portal — PRC procurement tracking and workflow management system."/>
+  <meta name="theme-color" content="#003366"/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%23003366'/><path d='M10 88 L90 88' stroke='%23ffb800' stroke-width='8'/><text y='.68em' font-size='42' x='50%' text-anchor='middle' fill='%23ffb800' font-weight='900' font-family='sans-serif'>L&amp;T</text></svg>"/>
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -38,10 +38,10 @@
   <!-- ── SIDEBAR ──────────────────────────────────────── -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
-      <div class="sidebar-logo-icon">P</div>
+      <div class="sidebar-logo-icon">L&T</div>
       <div class="sidebar-logo-text">
-        <div class="sidebar-logo-title">ProcureTrack</div>
-        <div class="sidebar-logo-sub">Enterprise Procurement</div>
+        <div class="sidebar-logo-title">L&T EIP 4.0</div>
+        <div class="sidebar-logo-sub">PRC Procurement Portal</div>
       </div>
     </div>
 
@@ -188,7 +188,7 @@
       <!-- Pages are rendered here by the router -->
       <div class="empty-state">
         <div class="loading-spinner"></div>
-        <p style="margin-top:16px;color:var(--color-text-secondary)">Loading ProcureTrack…</p>
+        <p style="margin-top:16px;color:var(--color-text-secondary)">Loading L&T EIP 4.0…</p>
       </div>
     </main>
   </div>
@@ -213,19 +213,23 @@
 </div>
 
 <!-- ═══════════ MANDATORY AUTH / LOGIN & SIGNUP PORTAL ═════ -->
-<div class="modal-overlay hidden" id="auth-modal" style="z-index:9999;backdrop-filter:blur(16px);background:rgba(15,23,42,0.88);display:flex;align-items:center;justify-content:center">
-  <div class="modal" style="max-width:460px;padding:30px;box-shadow:0 25px 50px -12px rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.1);position:relative">
+<div class="modal-overlay hidden" id="auth-modal" style="z-index:9999;backdrop-filter:blur(16px);background:rgba(0,31,68,0.92);display:flex;align-items:center;justify-content:center">
+  <div class="modal" style="max-width:480px;padding:32px;box-shadow:0 25px 60px -12px rgba(0,0,0,0.6);border:2px solid #ffb800;border-radius:12px;position:relative;background:var(--color-surface)">
     <button class="modal-close-btn" style="position:absolute;top:16px;right:16px" onclick="closeAuthModal()">✕</button>
     <div style="text-align:center;margin-bottom:20px">
-      <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--brand-600),var(--accent-600));display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800;color:#fff;margin:0 auto 12px;box-shadow:0 8px 20px rgba(37,99,235,0.35)">P</div>
-      <h2 style="font-size:22px;font-weight:800;letter-spacing:-0.02em" id="auth-modal-title">ProcureTrack</h2>
-      <p style="font-size:12.5px;color:var(--color-text-secondary);margin-top:4px" id="auth-modal-sub">Enterprise Procurement System — Authenticate to Enter</p>
+      <div style="display:inline-flex;align-items:center;gap:8px;background:#003366;padding:8px 18px;border-radius:8px;border:1.5px solid #ffb800;margin-bottom:12px;box-shadow:0 4px 14px rgba(0,35,71,0.35)">
+        <span style="font-size:18px;font-weight:900;color:#ffb800;letter-spacing:-0.5px">L&amp;T</span>
+        <span style="height:14px;width:1.5px;background:rgba(255,184,0,0.4)"></span>
+        <span style="font-size:14px;font-weight:800;color:#ffffff;letter-spacing:0.5px">EIP 4.0</span>
+      </div>
+      <h2 style="font-size:20px;font-weight:800;color:#003366;letter-spacing:-0.01em" id="auth-modal-title">L&amp;T Construction</h2>
+      <p style="font-size:12.5px;color:var(--color-text-secondary);margin-top:4px" id="auth-modal-sub">Enterprise Information Portal (eip4.lntecc.com) · PRC Procurement</p>
     </div>
 
     <!-- Tab switch -->
-    <div style="display:flex;background:var(--color-surface-2);border-radius:10px;padding:4px;margin-bottom:18px">
-      <button id="auth-tab-signin" class="btn btn-primary btn-sm" style="flex:1;border-radius:8px" onclick="toggleAuthTab('signin')">Sign In</button>
-      <button id="auth-tab-signup" class="btn btn-ghost btn-sm" style="flex:1;border-radius:8px" onclick="toggleAuthTab('signup')">Create User</button>
+    <div style="display:flex;background:var(--color-surface-2);border-radius:8px;padding:4px;margin-bottom:18px;border:1px solid var(--color-border)">
+      <button id="auth-tab-signin" class="btn btn-primary btn-sm" style="flex:1;border-radius:6px" onclick="toggleAuthTab('signin')">Employee Sign In</button>
+      <button id="auth-tab-signup" class="btn btn-ghost btn-sm" style="flex:1;border-radius:6px" onclick="toggleAuthTab('signup')">Register User</button>
     </div>
 
     <!-- Alert Box -->
@@ -1001,12 +1005,12 @@ function initDashboardCharts(prcs, s) {
     const tcdDt = p.tcdDate || p.tcdApprovedDate || p.tcdCreationDate || mats.find(m => m.tcdDate)?.tcdDate;
     const hasTCD = !!(p.tcdNumber || tcdDt || mats.some(m => m.tcdNumber || m.tcdDate));
 
-    const start = p.allocationDate || p.allocatedDate || mats.find(m => m.allocationDate)?.allocationDate || p.prDate || p.createdAt;
+    const start = p.allocationDate || p.allocatedDate || mats.find(m => m.allocationDate)?.allocationDate;
     if (!start) return;
 
-    if (hasTCD && tcdDt) {
+    if (hasTCD) {
       // 1. TCD Creation (Turnaround time from Allocation to TCD Creation)
-      const tcdAge = Math.max(0, calcAgeDays(start, tcdDt));
+      const tcdAge = Math.max(0, calcAgeDays(start, tcdDt || p.updatedAt || new Date()));
       if (tcdAge <= 5) tcdCreationBuckets['0-5 days']++;
       else if (tcdAge <= 10) tcdCreationBuckets['6-10 days']++;
       else if (tcdAge <= 15) tcdCreationBuckets['11-15 days']++;
@@ -4580,7 +4584,7 @@ function renderReports(container) {
     {icon:'📊', title:'PRC Status Report', desc:'Complete list of all PRCs with current status, engineer, and timeline.', action:"exportExcel('prc','PRC Status Report')", label:'Excel'},
     {icon:'📄', title:'Pending PRCs Report', desc:'All PRCs that are not yet completed — for follow-up.', action:"exportCSV()", label:'CSV'},
     {icon:'🏢', title:'Vendor Performance', desc:'Vendor-wise PO distribution and response statistics.', action:"exportPDF('Vendor Performance Report')", label:'PDF'},
-    {icon:'📅', title:'PRC Ageing Report', desc:'PRC aging calculated up to Process Completed or Partly Completed milestones.', action:"exportExcel('prc','Ageing Report')", label:'Excel'},
+    {icon:'📅', title:'PRC Ageing Report', desc:'PRC aging calculated from Allocation date to TCD Creation date.', action:"exportExcel('prc','Ageing Report')", label:'Excel'},
     {icon:'📦', title:'Material Item Report', desc:'All material items with requested, processed, and pending quantities.', action:"exportExcel('prc','Material Report')", label:'Excel'},
     {icon:'📈', title:'Monthly Summary', desc:'Monthly procurement activity and trend analysis.', action:"exportPDF('Monthly Summary')", label:'PDF'}
   ].map(r=>`
@@ -4599,7 +4603,7 @@ function renderReports(container) {
 <div class="card" style="margin-top:24px">
   <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
     <div>
-      <div class="card-title" style="font-size:16px;font-weight:700">📅 PRC Ageing Report (Calculated till Process Completed / Partly Completed)</div>
+      <div class="card-title" style="font-size:16px;font-weight:700">📅 PRC Ageing Report (Calculated from Allocation date to TCD Creation)</div>
       <div style="font-size:12px;color:var(--color-text-secondary);margin-top:2px">
         Avg Cycle Time for Completed: <strong>${avgCompletedAge} days</strong> · Avg Days for Partly Completed: <strong>${avgPartlyAge} days</strong>
       </div>
@@ -4614,7 +4618,7 @@ function renderReports(container) {
         ${renderFilterableTh('status', 'Status', 'reports')}
         ${renderFilterableTh('department', 'Department', 'reports')}
         ${renderFilterableTh('allocationDate', 'Allocation Date', 'reports')}
-        <th>Completion / PO Date</th>
+        <th>TCD / Completion Date</th>
         ${renderFilterableTh('ageDays', 'Total Age (days)', 'reports')}
         <th>Alert</th>
       </tr></thead>
@@ -4625,7 +4629,7 @@ function renderReports(container) {
             <td><span class="chip ${getStatusChipClass(p.status)}">${p.status}</span></td>
             <td>${p.department}</td>
             <td>${fmtDate(p.allocationDate)}</td>
-            <td>${fmtDate(p.poDate || p.tcdDate || p.updatedAt)}</td>
+            <td>${fmtDate(p.tcdDate || p.poDate || p.updatedAt)}</td>
             <td><span class="${getAgeBadgeClass(p.ageDays||0,7)} font-semibold">${p.ageDays||0} days</span></td>
             <td>${p.ageDays>30?'🔴':p.ageDays>14?'🟠':p.ageDays>7?'🟡':'🟢'}</td>
           </tr>`).join('')}
@@ -5118,9 +5122,9 @@ function renderSettings(container) {
 
     <!-- About -->
     <div id="settings-about" class="card hidden">
-      <h3 style="font-weight:700;margin-bottom:20px">About ProcureTrack</h3>
+      <h3 style="font-weight:700;margin-bottom:20px">About L&T EIP 4.0 PRC Procurement System</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        ${[['Version','1.0.0'],['Build','2026-08'],['Platform','Enterprise Web Application'],['AI Engine','Google Gemini'],['License','Enterprise']].map(([k,v])=>`
+        ${[['Version','EIP 4.0.2'],['Portal','eip4.lntecc.com'],['Organization','Larsen & Toubro Construction'],['Module','PRC Procurement & Materials'],['License','Enterprise Intra-Portal']].map(([k,v])=>`
           <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
             <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">${k}</div>
             <div style="font-weight:700">${v}</div>
@@ -10020,7 +10024,7 @@ async function init() {
 
     // Ensure loading screen is cleared if still present
     const content = document.getElementById('page-content');
-    if (content && content.innerHTML.includes('Loading ProcureTrack')) {
+    if (content && content.innerHTML.includes('Loading L&T EIP 4.0')) {
       const page = getState().currentPage || 'dashboard';
       if (PAGES[page]) PAGES[page].render(content);
     }

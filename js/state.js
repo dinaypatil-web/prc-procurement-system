@@ -2521,7 +2521,7 @@ export function getDistinctTableColumnValues(tableKey, field, isMaterialView = f
       } else if (field === 'priority') {
         vals = [item.priority || '(Blanks)'];
       } else if (field === 'age' || field === 'createdAt') {
-        const ageDays = isMaterialView ? getPRCAge({ createdAt: item.prcCreatedAt || item.createdAt }) : getPRCAge(item);
+        const ageDays = getPRCAge(item);
         vals = [`${ageDays}d`];
       } else {
         const raw = item[field];

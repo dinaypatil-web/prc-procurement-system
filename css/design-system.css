@@ -1,68 +1,78 @@
 /* =========================================================
-   PRC PROCUREMENT SYSTEM — DESIGN SYSTEM
-   Material Design 3 inspired token system — Executive Edition
+   L&T EIP 4.0 (Enterprise Information Portal) — DESIGN SYSTEM
+   Larsen & Toubro Corporate Theme & Brand Identity
    ========================================================= */
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-/* ── ROOT TOKENS – EXECUTIVE LIGHT THEME ────────────────── */
+/* ── ROOT TOKENS – L&T EIP 4.0 LIGHT THEME ────────────────── */
 :root {
-  /* Brand palette */
-  --brand-50:  #eff6ff;
-  --brand-100: #dbeafe;
-  --brand-200: #bfdbfe;
-  --brand-300: #93c5fd;
-  --brand-400: #60a5fa;
-  --brand-500: #3b82f6;
-  --brand-600: #2563eb;
-  --brand-700: #1d4ed8;
-  --brand-800: #1e40af;
-  --brand-900: #1e3a8a;
+  /* L&T Signature Corporate Brand Palette */
+  --brand-50:  #f0f5fa;
+  --brand-100: #dce7f5;
+  --brand-200: #bad0ed;
+  --brand-300: #8eb3df;
+  --brand-400: #558fc9;
+  --brand-500: #1b6cb2;
+  --brand-600: #003366; /* L&T Signature Blue */
+  --brand-700: #002752; /* L&T Deep Navy */
+  --brand-800: #001c3d;
+  --brand-900: #00132b;
 
-  /* Accent */
-  --accent-400: #818cf8;
-  --accent-500: #6366f1;
-  --accent-600: #4f46e5;
+  /* L&T Iconic Construction Gold / Yellow Accent */
+  --accent-100: #fff9db;
+  --accent-200: #fff3b3;
+  --accent-300: #ffe880;
+  --accent-400: #ffd833;
+  --accent-500: #ffb800; /* L&T Construction Gold */
+  --accent-600: #e6a100;
+  --accent-700: #bf8200;
 
-  /* Semantic colours – light & elegant baseline */
-  --color-bg:           #f8fafc;
+  --lnt-navy:       #003366;
+  --lnt-navy-dark:  #001f44;
+  --lnt-gold:       #ffb800;
+  --lnt-gold-hover: #f5a623;
+  --lnt-steel:      #475569;
+
+  /* Semantic colours – Crisp Corporate Portal Baseline */
+  --color-bg:           #f2f5f9;
   --color-surface:      #ffffff;
   --color-surface-2:    #f8fafc;
-  --color-surface-3:    #f1f5f9;
-  --color-border:       #e2e8f0;
-  --color-border-subtle:#edf2f7;
-  --color-border-focus: var(--brand-500);
+  --color-surface-3:    #edf2f7;
+  --color-border:       #d9e2ec;
+  --color-border-subtle:#e8eff5;
+  --color-border-focus: #003366;
 
-  --color-text-primary:   #0f172a;
-  --color-text-secondary: #475569;
-  --color-text-tertiary:  #94a3b8;
+  --color-text-primary:   #0b1a30;
+  --color-text-secondary: #334e68;
+  --color-text-tertiary:  #627d98;
   --color-text-inverse:   #ffffff;
 
-  --color-primary:      var(--brand-600);
-  --color-primary-hover:var(--brand-700);
-  --color-primary-light:rgba(37, 99, 235, 0.07);
+  --color-primary:      #003366;
+  --color-primary-hover:#002447;
+  --color-primary-light:rgba(0, 51, 102, 0.08);
 
   /* Status colors */
-  --color-success:    #10b981;
-  --color-success-bg: #ecfdf5;
-  --color-warning:    #f59e0b;
-  --color-warning-bg: #fffbeb;
-  --color-danger:     #ef4444;
-  --color-danger-bg:  #fef2f2;
-  --color-info:       #06b6d4;
-  --color-info-bg:    #ecfeff;
-  --color-purple:     #8b5cf6;
-  --color-purple-bg:  #f5f3ff;
+  --color-success:    #0e8345;
+  --color-success-bg: #e6f6ec;
+  --color-warning:    #d97706;
+  --color-warning-bg: #fef3c7;
+  --color-danger:     #d9383a;
+  --color-danger-bg:  #fdf0f0;
+  --color-info:       #0284c7;
+  --color-info-bg:    #e0f2fe;
+  --color-purple:     #6366f1;
+  --color-purple-bg:  #eef2ff;
 
-  /* Status chip palette - Crisp & Refined */
-  --status-completed:     #047857;
-  --status-completed-bg:  #d1fae5;
-  --status-partly:        #0e7490;
-  --status-partly-bg:     #cffafe;
+  /* Status chip palette - EIP 4.0 Corporate Refined */
+  --status-completed:     #0e8345;
+  --status-completed-bg:  #e6f6ec;
+  --status-partly:        #0284c7;
+  --status-partly-bg:     #e0f2fe;
   --status-pending:       #b45309;
   --status-pending-bg:    #fef3c7;
-  --status-awaiting:      #6d28d9;
-  --status-awaiting-bg:   #ede9fe;
+  --status-awaiting:      #5b21b6;
+  --status-awaiting-bg:   #f3e8ff;
   --status-inputs:        #c2410c;
   --status-inputs-bg:     #ffedd5;
   --status-wrong:         #b91c1c;
@@ -74,32 +84,39 @@
   --status-system:        #475569;
   --status-system-bg:     #f1f5f9;
 
-  /* Sidebar – Clean Executive Light Sidebar */
+  /* Sidebar – Clean EIP 4.0 Corporate Light Sidebar */
   --sidebar-bg:         #ffffff;
-  --sidebar-border:     #e2e8f0;
-  --sidebar-text:       #475569;
-  --sidebar-text-active:#2563eb;
-  --sidebar-hover:      #f8fafc;
-  --sidebar-active-bg:  #eff6ff;
-  --sidebar-active-border: var(--brand-600);
-  --sidebar-logo-title: #0f172a;
-  --sidebar-logo-sub:   #64748b;
-  --sidebar-user-name:  #0f172a;
+  --sidebar-border:     #d9e2ec;
+  --sidebar-text:       #334e68;
+  --sidebar-text-active:#003366;
+  --sidebar-hover:      #f0f5fa;
+  --sidebar-active-bg:  #e8f0fe;
+  --sidebar-active-border: #ffb800;
+  --sidebar-logo-title: #003366;
+  --sidebar-logo-sub:   #627d98;
+  --sidebar-user-name:  #003366;
   --sidebar-width:      260px;
   --sidebar-collapsed:  72px;
 
+  /* Topbar — L&T EIP 4.0 Deep Navy & Gold Accent Header */
+  --topbar-bg:            linear-gradient(90deg, #001f44 0%, #003366 40%, #004b8d 100%);
+  --topbar-border-bottom: 2.5px solid #ffb800;
+  --topbar-text:          #ffffff;
+  --topbar-text-sub:      #cbd5e1;
+
   /* Elevation / Shadows */
-  --shadow-xs:  0 1px 2px rgba(15,23,42,0.03);
-  --shadow-sm:  0 1px 3px rgba(15,23,42,0.05), 0 1px 2px rgba(15,23,42,0.03);
-  --shadow-md:  0 4px 16px -2px rgba(15,23,42,0.05), 0 2px 6px -1px rgba(15,23,42,0.03);
-  --shadow-lg:  0 12px 30px -4px rgba(15,23,42,0.07), 0 4px 12px -2px rgba(15,23,42,0.04);
-  --shadow-xl:  0 20px 40px -10px rgba(15,23,42,0.10);
-  --shadow-2xl: 0 25px 50px -12px rgba(15,23,42,0.15);
-  --shadow-glow:0 0 24px rgba(37,99,235,0.18);
+  --shadow-xs:  0 1px 2px rgba(0, 35, 71, 0.04);
+  --shadow-sm:  0 1px 3px rgba(0, 35, 71, 0.06), 0 1px 2px rgba(0, 35, 71, 0.04);
+  --shadow-md:  0 4px 16px -2px rgba(0, 35, 71, 0.08), 0 2px 6px -1px rgba(0, 35, 71, 0.04);
+  --shadow-lg:  0 12px 30px -4px rgba(0, 35, 71, 0.10), 0 4px 12px -2px rgba(0, 35, 71, 0.05);
+  --shadow-xl:  0 20px 40px -10px rgba(0, 35, 71, 0.14);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 35, 71, 0.20);
+  --shadow-glow:0 0 24px rgba(0, 51, 102, 0.22);
+  --shadow-gold:0 0 18px rgba(255, 184, 0, 0.35);
 
   /* Glassmorphism */
-  --glass-bg:     rgba(255, 255, 255, 0.84);
-  --glass-border: rgba(226, 232, 240, 0.80);
+  --glass-bg:     rgba(255, 255, 255, 0.88);
+  --glass-border: rgba(217, 226, 236, 0.80);
   --glass-blur:   blur(20px) saturate(180%);
 
   /* Spacing scale */
@@ -115,16 +132,16 @@
   --sp-16:64px;
 
   /* Border radii */
-  --radius-sm:  6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
-  --radius-2xl:22px;
+  --radius-sm:  5px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+  --radius-2xl: 20px;
   --radius-full:9999px;
 
   /* Typography */
-  --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Roboto Mono', 'Courier New', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Roboto Mono', 'Consolas', monospace;
 
   --text-xs:  11px;
   --text-sm:  13px;
@@ -153,69 +170,75 @@
   --topbar-height: 62px;
 }
 
-/* ── OBSIDIAN DARK THEME ────────────────────────────────── */
+/* ── L&T EIP 4.0 MIDNIGHT NAVY DARK THEME ───────────────── */
 [data-theme="dark"] {
-  --color-bg:           #090d16;
-  --color-surface:      #0f172a;
-  --color-surface-2:    #141e33;
-  --color-surface-3:    #1a2744;
-  --color-border:       rgba(255, 255, 255, 0.08);
-  --color-border-subtle:rgba(255, 255, 255, 0.04);
-  --color-border-focus: var(--brand-400);
+  --color-bg:           #07101e;
+  --color-surface:      #0d1a2d;
+  --color-surface-2:    #12233c;
+  --color-surface-3:    #182e4e;
+  --color-border:       rgba(217, 226, 236, 0.12);
+  --color-border-subtle:rgba(217, 226, 236, 0.06);
+  --color-border-focus: #ffb800;
 
-  --color-text-primary:   #f8fafc;
-  --color-text-secondary: #94a3b8;
-  --color-text-tertiary:  #64748b;
-  --color-text-inverse:   #0f172a;
+  --color-text-primary:   #f0f5fa;
+  --color-text-secondary: #9fb3c8;
+  --color-text-tertiary:  #627d98;
+  --color-text-inverse:   #07101e;
 
-  --color-primary:       var(--brand-500);
-  --color-primary-hover: var(--brand-400);
-  --color-primary-light: rgba(59,130,246,0.14);
+  --color-primary:       #3884d8;
+  --color-primary-hover: #559be6;
+  --color-primary-light: rgba(56, 132, 216, 0.16);
 
-  --color-success-bg: rgba(16,185,129,0.14);
-  --color-warning-bg: rgba(245,158,11,0.14);
-  --color-danger-bg:  rgba(239,68,68,0.14);
-  --color-info-bg:    rgba(6,182,212,0.14);
-  --color-purple-bg:  rgba(139,92,246,0.14);
+  --color-success-bg: rgba(14, 131, 69, 0.18);
+  --color-warning-bg: rgba(217, 119, 6, 0.18);
+  --color-danger-bg:  rgba(217, 56, 58, 0.18);
+  --color-info-bg:    rgba(2, 132, 199, 0.18);
+  --color-purple-bg:  rgba(99, 102, 241, 0.18);
 
   --status-completed:     #34d399;
-  --status-completed-bg:  rgba(16,185,129,0.18);
-  --status-partly:        #22d3ee;
-  --status-partly-bg:     rgba(6,182,212,0.18);
+  --status-completed-bg:  rgba(16, 185, 129, 0.18);
+  --status-partly:        #38bdf8;
+  --status-partly-bg:     rgba(56, 189, 248, 0.18);
   --status-pending:       #fbbf24;
-  --status-pending-bg:    rgba(245,158,11,0.18);
-  --status-awaiting:      #a78bfa;
-  --status-awaiting-bg:   rgba(139,92,246,0.18);
+  --status-pending-bg:    rgba(251, 191, 36, 0.18);
+  --status-awaiting:      #c084fc;
+  --status-awaiting-bg:   rgba(192, 132, 252, 0.18);
   --status-inputs:        #fb923c;
-  --status-inputs-bg:     rgba(249,115,22,0.18);
+  --status-inputs-bg:     rgba(251, 146, 60, 0.18);
   --status-wrong:         #f87171;
-  --status-wrong-bg:      rgba(239,68,68,0.18);
-  --status-future:        #38bdf8;
-  --status-future-bg:     rgba(14,165,233,0.18);
-  --status-pr-not:        #c084fc;
-  --status-pr-not-bg:     rgba(168,85,247,0.18);
+  --status-wrong-bg:      rgba(248, 113, 113, 0.18);
+  --status-future:        #60a5fa;
+  --status-future-bg:     rgba(96, 165, 250, 0.18);
+  --status-pr-not:        #d8b4fe;
+  --status-pr-not-bg:     rgba(216, 180, 254, 0.18);
   --status-system:        #94a3b8;
-  --status-system-bg:     rgba(100,116,139,0.18);
+  --status-system-bg:     rgba(148, 163, 184, 0.18);
 
-  --sidebar-bg:         #0f172a;
-  --sidebar-border:     rgba(255, 255, 255, 0.08);
-  --sidebar-text:       #94a3b8;
+  --sidebar-bg:         #091526;
+  --sidebar-border:     rgba(217, 226, 236, 0.10);
+  --sidebar-text:       #9fb3c8;
   --sidebar-text-active:#ffffff;
-  --sidebar-hover:      rgba(255,255,255,0.05);
-  --sidebar-active-bg:  rgba(59,130,246,0.16);
-  --sidebar-active-border: var(--brand-500);
+  --sidebar-hover:      rgba(255, 255, 255, 0.05);
+  --sidebar-active-bg:  rgba(255, 184, 0, 0.12);
+  --sidebar-active-border: #ffb800;
   --sidebar-logo-title: #ffffff;
-  --sidebar-logo-sub:   #94a3b8;
+  --sidebar-logo-sub:   #9fb3c8;
   --sidebar-user-name:  #ffffff;
 
-  --glass-bg:     rgba(15, 23, 42, 0.82);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  --topbar-bg:            linear-gradient(90deg, #050c17 0%, #091526 50%, #0e1e36 100%);
+  --topbar-border-bottom: 2.5px solid #ffb800;
+  --topbar-text:          #ffffff;
+  --topbar-text-sub:      #9fb3c8;
+
+  --glass-bg:     rgba(13, 26, 45, 0.88);
+  --glass-border: rgba(217, 226, 236, 0.10);
 
   --shadow-sm:  0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4);
   --shadow-md:  0 4px 16px rgba(0,0,0,0.45), 0 2px 4px rgba(0,0,0,0.3);
   --shadow-lg:  0 12px 30px rgba(0,0,0,0.5), 0 4px 8px rgba(0,0,0,0.35);
   --shadow-xl:  0 24px 48px rgba(0,0,0,0.6);
-  --shadow-glow:0 0 28px rgba(59,130,246,0.3);
+  --shadow-glow:0 0 28px rgba(0, 80, 157, 0.35);
+  --shadow-gold:0 0 20px rgba(255, 184, 0, 0.28);
 }
 
 /* ── GLOBAL RESET ───────────────────────────────────────── */
