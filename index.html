@@ -4,9 +4,9 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>PRC Procurement System</title>
-  <meta name="description" content="L&T Construction EIP 4.0 Enterprise Information Portal — PRC procurement tracking and workflow management system."/>
+  <meta name="description" content="PRC Procurement System — PRC procurement tracking and workflow management system."/>
   <meta name="theme-color" content="#003366"/>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%23003366'/><path d='M10 88 L90 88' stroke='%23ffb800' stroke-width='8'/><text y='.68em' font-size='42' x='50%' text-anchor='middle' fill='%23ffb800' font-weight='900' font-family='sans-serif'>L&amp;T</text></svg>"/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%23003366'/><path d='M10 88 L90 88' stroke='%23ffb800' stroke-width='8'/><text y='.68em' font-size='38' x='50%' text-anchor='middle' fill='%23ffb800' font-weight='900' font-family='sans-serif'>PRC</text></svg>"/>
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -38,10 +38,10 @@
   <!-- ── SIDEBAR ──────────────────────────────────────── -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
-      <div class="sidebar-logo-icon">L&T</div>
+      <div class="sidebar-logo-icon">PRC</div>
       <div class="sidebar-logo-text">
-        <div class="sidebar-logo-title">L&T EIP 4.0</div>
-        <div class="sidebar-logo-sub">PRC Procurement Portal</div>
+        <div class="sidebar-logo-title">PRC System</div>
+        <div class="sidebar-logo-sub">Procurement Portal</div>
       </div>
     </div>
 
@@ -188,7 +188,7 @@
       <!-- Pages are rendered here by the router -->
       <div class="empty-state">
         <div class="loading-spinner"></div>
-        <p style="margin-top:16px;color:var(--color-text-secondary)">Loading L&T EIP 4.0…</p>
+        <p style="margin-top:16px;color:var(--color-text-secondary)">Loading PRC System…</p>
       </div>
     </main>
   </div>
@@ -218,12 +218,12 @@
     <button class="modal-close-btn" style="position:absolute;top:16px;right:16px" onclick="closeAuthModal()">✕</button>
     <div style="text-align:center;margin-bottom:20px">
       <div style="display:inline-flex;align-items:center;gap:8px;background:#003366;padding:8px 18px;border-radius:8px;border:1.5px solid #ffb800;margin-bottom:12px;box-shadow:0 4px 14px rgba(0,35,71,0.35)">
-        <span style="font-size:18px;font-weight:900;color:#ffb800;letter-spacing:-0.5px">L&amp;T</span>
+        <span style="font-size:18px;font-weight:900;color:#ffb800;letter-spacing:-0.5px">PRC</span>
         <span style="height:14px;width:1.5px;background:rgba(255,184,0,0.4)"></span>
-        <span style="font-size:14px;font-weight:800;color:#ffffff;letter-spacing:0.5px">EIP 4.0</span>
+        <span style="font-size:14px;font-weight:800;color:#ffffff;letter-spacing:0.5px">PORTAL</span>
       </div>
-      <h2 style="font-size:20px;font-weight:800;color:#003366;letter-spacing:-0.01em" id="auth-modal-title">L&amp;T Construction</h2>
-      <p style="font-size:12.5px;color:var(--color-text-secondary);margin-top:4px" id="auth-modal-sub">Enterprise Information Portal (eip4.lntecc.com) · PRC Procurement</p>
+      <h2 style="font-size:20px;font-weight:800;color:#003366;letter-spacing:-0.01em" id="auth-modal-title">Procurement System</h2>
+      <p style="font-size:12.5px;color:var(--color-text-secondary);margin-top:4px" id="auth-modal-sub">PRC Procurement Management Portal</p>
     </div>
 
     <!-- Tab switch -->
@@ -5122,9 +5122,9 @@ function renderSettings(container) {
 
     <!-- About -->
     <div id="settings-about" class="card hidden">
-      <h3 style="font-weight:700;margin-bottom:20px">About L&T EIP 4.0 PRC Procurement System</h3>
+      <h3 style="font-weight:700;margin-bottom:20px">About PRC Procurement System</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        ${[['Version','EIP 4.0.2'],['Portal','eip4.lntecc.com'],['Organization','Larsen & Toubro Construction'],['Module','PRC Procurement & Materials'],['License','Enterprise Intra-Portal']].map(([k,v])=>`
+        ${[['Version','v4.0.2'],['Portal','PRC Procurement Portal'],['Organization','Procurement Management'],['Module','PRC Procurement & Materials'],['License','Enterprise Portal']].map(([k,v])=>`
           <div style="background:var(--color-surface-3);border-radius:8px;padding:12px">
             <div style="font-size:11px;color:var(--color-text-tertiary);font-weight:600;margin-bottom:4px">${k}</div>
             <div style="font-weight:700">${v}</div>
@@ -10024,7 +10024,7 @@ async function init() {
 
     // Ensure loading screen is cleared if still present
     const content = document.getElementById('page-content');
-    if (content && content.innerHTML.includes('Loading L&T EIP 4.0')) {
+    if (content && content.innerHTML.includes('Loading PRC System')) {
       const page = getState().currentPage || 'dashboard';
       if (PAGES[page]) PAGES[page].render(content);
     }

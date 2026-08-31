@@ -1,30 +1,30 @@
 /* =========================================================
-   L&T EIP 4.0 (Enterprise Information Portal) — DESIGN SYSTEM
-   Larsen & Toubro Corporate Theme & Brand Identity
+   PRC Procurement System — DESIGN SYSTEM
+   Corporate Theme & Brand Identity
    ========================================================= */
 
 @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-/* ── ROOT TOKENS – L&T EIP 4.0 LIGHT THEME ────────────────── */
+/* ── ROOT TOKENS – LIGHT THEME ────────────────────────── */
 :root {
-  /* L&T Signature Corporate Brand Palette */
+  /* Corporate Brand Palette */
   --brand-50:  #f0f5fa;
   --brand-100: #dce7f5;
   --brand-200: #bad0ed;
   --brand-300: #8eb3df;
   --brand-400: #558fc9;
   --brand-500: #1b6cb2;
-  --brand-600: #003366; /* L&T Signature Blue */
-  --brand-700: #002752; /* L&T Deep Navy */
+  --brand-600: #003366; /* Signature Blue */
+  --brand-700: #002752; /* Deep Navy */
   --brand-800: #001c3d;
   --brand-900: #00132b;
 
-  /* L&T Iconic Construction Gold / Yellow Accent */
+  /* Gold / Yellow Accent */
   --accent-100: #fff9db;
   --accent-200: #fff3b3;
   --accent-300: #ffe880;
   --accent-400: #ffd833;
-  --accent-500: #ffb800; /* L&T Construction Gold */
+  --accent-500: #ffb800; /* Accent Gold */
   --accent-600: #e6a100;
   --accent-700: #bf8200;
 
@@ -64,7 +64,7 @@
   --color-purple:     #6366f1;
   --color-purple-bg:  #eef2ff;
 
-  /* Status chip palette - EIP 4.0 Corporate Refined */
+  /* Status chip palette - Refined */
   --status-completed:     #0e8345;
   --status-completed-bg:  #e6f6ec;
   --status-partly:        #0284c7;
@@ -84,7 +84,7 @@
   --status-system:        #475569;
   --status-system-bg:     #f1f5f9;
 
-  /* Sidebar – Clean EIP 4.0 Corporate Light Sidebar */
+  /* Sidebar – Clean Corporate Light Sidebar */
   --sidebar-bg:         #ffffff;
   --sidebar-border:     #d9e2ec;
   --sidebar-text:       #334e68;
@@ -98,7 +98,7 @@
   --sidebar-width:      260px;
   --sidebar-collapsed:  72px;
 
-  /* Topbar — L&T EIP 4.0 Deep Navy & Gold Accent Header */
+  /* Topbar — Deep Navy & Gold Accent Header */
   --topbar-bg:            linear-gradient(90deg, #001f44 0%, #003366 40%, #004b8d 100%);
   --topbar-border-bottom: 2.5px solid #ffb800;
   --topbar-text:          #ffffff;
@@ -170,7 +170,7 @@
   --topbar-height: 62px;
 }
 
-/* ── L&T EIP 4.0 MIDNIGHT NAVY DARK THEME ───────────────── */
+/* ── MIDNIGHT NAVY DARK THEME ───────────────────────────── */
 [data-theme="dark"] {
   --color-bg:           #07101e;
   --color-surface:      #0d1a2d;
