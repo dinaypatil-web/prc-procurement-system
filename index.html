@@ -503,6 +503,11 @@ function preserveScroll(fn) {
   const winX = window.scrollX !== undefined ? window.scrollX : (window.pageXOffset || document.documentElement?.scrollLeft || document.body?.scrollLeft || 0);
   const winY = window.scrollY !== undefined ? window.scrollY : (window.pageYOffset || document.documentElement?.scrollTop || document.body?.scrollTop || 0);
 
+  const activeEl = document.activeElement;
+  const activeRow = activeEl?.closest('tr[data-prc-id], tr[data-mat-id], tr.parent-row, tr[id^="prc-row-"], tr[id^="mat-row-"]');
+  const focusedPrcId = window._lastInteractedRowId || activeRow?.getAttribute('data-prc-id') || activeRow?.id?.replace('prc-row-', '').replace('child-row-', '');
+  const focusedMatId = activeRow?.getAttribute('data-mat-id') || activeRow?.id?.replace('mat-row-', '');
+
   const scrollContainers = Array.from(document.querySelectorAll('.table-wrapper, #prc-table-wrapper, .prc-tree, .explorer-tree, .modal-body, #page-content')).map(el => ({
     el,
     left: el.scrollLeft,
@@ -529,6 +534,14 @@ function preserveScroll(fn) {
         item.el.scrollTop = item.top;
       }
     });
+
+    // If an interaction target row is known, maintain focus and visibility on that row
+    const targetRow = (focusedPrcId && document.getElementById(`prc-row-${focusedPrcId}`)) ||
+                      (focusedMatId && document.getElementById(`mat-row-${focusedMatId}`)) ||
+                      (focusedPrcId && document.querySelector(`tr[data-prc-id="${focusedPrcId}"]`));
+    if (targetRow && document.body.contains(targetRow)) {
+      targetRow.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
   };
 
   restore();
@@ -2755,7 +2768,7 @@ function renderPRCTable() {
         const isCompleted = m.status === 'Process Completed' || m.status === STATUS.COMPLETED;
         const isSelected = selectedPRCIds.has(m.prcId);
 
-        return `<tr onclick="openPRCDetail('${m.prcId}')" class="${isCompleted ? 'row-process-completed' : ''} ${isSelected ? 'selected-row' : ''}" style="cursor:pointer">
+        return `<tr id="mat-row-${m.id}" data-prc-id="${m.prcId}" data-mat-id="${m.id}" onclick="openPRCDetail('${m.prcId}')" class="${isCompleted ? 'row-process-completed' : ''} ${isSelected ? 'selected-row' : ''}" style="cursor:pointer">
           <td onclick="event.stopPropagation()" style="text-align:center;width:40px">
             <input type="checkbox" class="prc-row-checkbox" value="${m.prcId}" ${isSelected ? 'checked' : ''} onchange="togglePRCSelection('${m.prcId}', this.checked, event)" title="Select PRC ${m.prNumber}" style="cursor:pointer;accent-color:var(--color-primary);width:16px;height:16px;margin:0" />
           </td>
@@ -2953,7 +2966,7 @@ function renderPRCTable() {
         const isPrcCompleted = computedStatus === 'Process Completed' || computedStatus === STATUS.COMPLETED || p.status === 'Process Completed';
 
         const isPrcSelected = selectedPRCIds.has(p.id);
-        const parentRowHtml = `<tr class="parent-row ${isExpanded ? 'is-expanded' : ''} ${isPrcCompleted ? 'row-process-completed' : ''} ${isPrcSelected ? 'selected-row' : ''}" onclick="togglePRCTreeRow('${p.id}', event)" style="cursor:pointer">
+        const parentRowHtml = `<tr id="prc-row-${p.id}" data-prc-id="${p.id}" class="parent-row ${isExpanded ? 'is-expanded' : ''} ${isPrcCompleted ? 'row-process-completed' : ''} ${isPrcSelected ? 'selected-row' : ''}" onclick="togglePRCTreeRow('${p.id}', event)" style="cursor:pointer">
           <td onclick="event.stopPropagation()" style="text-align:center;width:68px;padding:6px 4px;vertical-align:middle">
             <div style="display:inline-flex;align-items:center;justify-content:center;gap:6px">
               <input type="checkbox" class="prc-row-checkbox" value="${p.id}" ${isPrcSelected ? 'checked' : ''} onchange="togglePRCSelection('${p.id}', this.checked, event)" title="Select PRC ${p.prNumber}" style="cursor:pointer;accent-color:var(--color-primary);width:16px;height:16px;margin:0" />
@@ -3232,6 +3245,7 @@ function updatePRCSelectAllCheckboxState() {
 
 window.togglePRCSelection = function(prcId, isChecked, evt) {
   if (evt && evt.stopPropagation) evt.stopPropagation();
+  window._lastInteractedRowId = prcId;
 
   const state = getState();
   const { items } = (state.viewLevel === 'material' ? getPaginatedMaterials() : getPaginatedPRCs());
@@ -3252,16 +3266,25 @@ window.togglePRCSelection = function(prcId, isChecked, evt) {
         }
       }
     }
+    preserveScroll(() => renderPRCTable());
   } else {
     if (isChecked) {
       selectedPRCIds.add(prcId);
     } else {
       selectedPRCIds.delete(prcId);
     }
+    // Update target checkbox and row class in place without resetting focus or destroying table DOM
+    const checkboxes = document.querySelectorAll(`.prc-row-checkbox[value="${prcId}"]`);
+    checkboxes.forEach(c => {
+      c.checked = isChecked;
+      const row = c.closest('tr');
+      if (row) row.classList.toggle('selected-row', isChecked);
+    });
+    updatePRCSelectAllCheckboxState();
+    renderPRCBulkToolbar();
   }
 
   lastCheckedPRCId = prcId;
-  preserveScroll(() => renderPRCTable());
 };
 
 window.toggleSelectAllPRCs = function(isChecked) {
@@ -4133,7 +4156,10 @@ window.setFlag = function(id, flag, value) {
   toast(`Flag updated`, 'success', 2000);
 };
 
-window.handlePRCStatusChange = function(id, newStatus) {
+window.handlePRCStatusChange = function(id, newStatus, evt) {
+  if (evt && evt.stopPropagation) evt.stopPropagation();
+  window._lastInteractedRowId = id;
+
   const prc = getPRCById(id);
   if (!prc) return;
 
