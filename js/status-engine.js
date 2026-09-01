@@ -227,18 +227,34 @@ export function getStatusIcon(status) {
 }
 
 /**
- * Calculates the procurement ageing in days.
+ * Calculates the procurement ageing / lead time in days, excluding Sundays.
  * @param {string|Date} startDate
  * @param {string|Date} [endDate] - Capped completion or milestone date
- * @returns {number}
+ * @returns {number} Number of elapsed days excluding Sundays
  */
 export function calcAgeDays(startDate, endDate = null) {
   if (!startDate) return 0;
   const start = parseDateObj(startDate);
   const end   = endDate ? parseDateObj(endDate) : new Date();
   if (!start || !end) return 0;
-  const diffDays = Math.floor((end - start) / (1000 * 60 * 60 * 24));
-  return Math.max(0, diffDays);
+
+  // Normalize dates to midnight to count full calendar day transitions
+  const dStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const dEnd   = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  if (dEnd.getTime() <= dStart.getTime()) return 0;
+
+  let count = 0;
+  const cur = new Date(dStart.getTime());
+  while (cur.getTime() < dEnd.getTime()) {
+    cur.setDate(cur.getDate() + 1);
+    // Exclude Sundays (getDay() === 0)
+    if (cur.getDay() !== 0) {
+      count++;
+    }
+  }
+
+  return Math.max(0, count);
 }
 
 /**
