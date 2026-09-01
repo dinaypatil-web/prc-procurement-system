@@ -720,7 +720,6 @@ function renderDashboard(container) {
   const tcdTurnaroundList = [];
   const countedTcdNumsForAge = new Set();
 
-  const userTCDs = typeof getFilteredTCDs === 'function' ? getFilteredTCDs() : (state.tcds || []);
   userTCDs.forEach(t => {
     const tcdNum = String(t.tcdNumber || t.id || '').trim();
     const tcdDate = t.tcdDate || t.createdAt || t.approvedDate || t.updatedAt;
