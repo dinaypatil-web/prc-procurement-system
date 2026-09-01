@@ -352,7 +352,7 @@
 // =========================================================
 import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, getFilteredVendors, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getTableColumnFilters, setTableColumnFilter, clearTableColumnFilter, clearAllTableColumnFilters, getTableActiveFilterCount, getDistinctTableColumnValues, matchCellFilter, getPODItems, getUndoHistory, undoRecordUpdate, undoLastRecordUpdate, undoMultipleRecordUpdates, clearUndoHistory } from './js/state.js';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus, getProcurementFunnelBreakdown } from './js/status-engine.js';
-import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, monthlyPRCVsTCDDistribution, weeklyPRCVsTCDDistribution, weeklyPRCVsTCDDistributionForMonth, dailyPRCVsTCDDistributionForWeek, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal } from './js/utils.js';
+import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, monthlyPRCVsTCDDistribution, weeklyPRCVsTCDDistribution, weeklyPRCVsTCDDistributionForMonth, dailyPRCVsTCDDistributionForWeek, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal, isTodayDate, getDatasetDateBounds } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment, rollbackImportSnapshot, getImportHistory, renderImportHistoryTable, getLastImportSnapshotId, clearImportHistory, detectExcelImportCategory, verifyExcelImportCategory, renderCategoricalCheckBanner, IMPORT_CATEGORIES } from './js/excel-import.js';
 import { FIREBASE_CONFIG, GEMINI_API_KEY, isFirebaseConfigured, initFirebase, signUp, signIn, signOutUser, onAuthChange, getCurrentUser, getFirebaseDiagnostics, testFirestoreConnection, saveCustomFirebaseConfig, resetCustomFirebaseConfig } from './js/firebase-config.js';
 import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } from './js/turso-db.js';
@@ -619,26 +619,50 @@ window.filterByDashboardTile = function(filterType, filterValue) {
     currentFilters.status = '';
     currentFilters.isOverdue = false;
     currentFilters.poToday = false;
+    currentFilters.allocatedToday = false;
+    currentFilters.tcdToday = false;
     setState({ filters: currentFilters, viewLevel: 'prc', currentPage_num: 1 });
   } else if (filterType === 'status') {
     currentFilters.status = filterValue;
     currentFilters.isOverdue = false;
     currentFilters.poToday = false;
+    currentFilters.allocatedToday = false;
+    currentFilters.tcdToday = false;
     setState({ filters: currentFilters, viewLevel: 'prc', currentPage_num: 1 });
   } else if (filterType === 'viewLevel') {
     currentFilters.status = '';
     currentFilters.isOverdue = false;
     currentFilters.poToday = false;
+    currentFilters.allocatedToday = false;
+    currentFilters.tcdToday = false;
     setState({ filters: currentFilters, viewLevel: filterValue, currentPage_num: 1 });
   } else if (filterType === 'overdue') {
     currentFilters.status = '';
     currentFilters.isOverdue = true;
     currentFilters.poToday = false;
+    currentFilters.allocatedToday = false;
+    currentFilters.tcdToday = false;
+    setState({ filters: currentFilters, viewLevel: 'prc', currentPage_num: 1 });
+  } else if (filterType === 'allocatedToday') {
+    currentFilters.status = '';
+    currentFilters.isOverdue = false;
+    currentFilters.poToday = false;
+    currentFilters.allocatedToday = true;
+    currentFilters.tcdToday = false;
+    setState({ filters: currentFilters, viewLevel: 'prc', currentPage_num: 1 });
+  } else if (filterType === 'tcdToday') {
+    currentFilters.status = '';
+    currentFilters.isOverdue = false;
+    currentFilters.poToday = false;
+    currentFilters.allocatedToday = false;
+    currentFilters.tcdToday = true;
     setState({ filters: currentFilters, viewLevel: 'prc', currentPage_num: 1 });
   } else if (filterType === 'poToday') {
     currentFilters.status = '';
     currentFilters.isOverdue = false;
     currentFilters.poToday = true;
+    currentFilters.allocatedToday = false;
+    currentFilters.tcdToday = false;
     setState({ filters: currentFilters, viewLevel: 'prc', currentPage_num: 1 });
   }
 
@@ -653,23 +677,61 @@ function renderDashboard(container) {
   const prcs  = getUserPRCs();
   const s     = buildStatusSummary(prcs);
   const totalMats = prcs.reduce((sum, p) => sum + (p.materials || []).length, 0);
-  const poToday = prcs.filter(p => p.poDate === new Date().toISOString().split('T')[0]).length;
+
+  // Count PRCs allocated today
+  const prcsAllocatedToday = prcs.filter(p => {
+    if (isTodayDate(p.allocationDate) || isTodayDate(p.allocatedDate)) return true;
+    if ((p.materials || []).some(m => isTodayDate(m.allocationDate))) return true;
+    return false;
+  }).length;
+
+  // Count TCDs created today (from TCDs collection and PRC/material records)
+  const countedTcdNums = new Set();
+  let tcdsCreatedToday = 0;
+  const userTCDs = typeof getFilteredTCDs === 'function' ? getFilteredTCDs() : (state.tcds || []);
+  userTCDs.forEach(t => {
+    const tcdNum = String(t.tcdNumber || t.id || '').trim();
+    const raw = t.tcdDate || t.createdAt || t.approvedDate || t.updatedAt;
+    if (isTodayDate(raw) && tcdNum) {
+      if (!countedTcdNums.has(tcdNum)) {
+        countedTcdNums.add(tcdNum);
+        tcdsCreatedToday++;
+      }
+    }
+  });
+  prcs.forEach(p => {
+    const pTcdNum = String(p.tcdNumber || '').trim();
+    const pRaw = p.tcdDate || p.tcdApprovedDate || p.tcdCreatedAt;
+    if (pTcdNum && isTodayDate(pRaw) && !countedTcdNums.has(pTcdNum)) {
+      countedTcdNums.add(pTcdNum);
+      tcdsCreatedToday++;
+    }
+    (p.materials || []).forEach(m => {
+      const mTcdNum = String(m.tcdNumber || '').trim();
+      const mRaw = m.tcdDate || m.tcdApprovedDate;
+      if (mTcdNum && isTodayDate(mRaw) && !countedTcdNums.has(mTcdNum)) {
+        countedTcdNums.add(mTcdNum);
+        tcdsCreatedToday++;
+      }
+    });
+  });
 
   const kpis = [
-    { label:'Total PRCs',        value: prcs.length,                       icon:'📦', style:'--kpi-accent:#3b82f6;--kpi-icon-bg:rgba(59,130,246,0.12)', onclick: "filterByDashboardTile('all')" },
-    { label:'Process Completed', value: s[STATUS.COMPLETED]||0,             icon:'✅', style:'--kpi-accent:#10b981;--kpi-icon-bg:rgba(16,185,129,0.12)', onclick: `filterByDashboardTile('status','${STATUS.COMPLETED}')` },
-    { label:'Pending',           value: s[STATUS.PENDING]||0,               icon:'🕐', style:'--kpi-accent:#f59e0b;--kpi-icon-bg:rgba(245,158,11,0.12)', onclick: `filterByDashboardTile('status','${STATUS.PENDING}')` },
-    { label:'Partly Completed',  value: s[STATUS.PARTLY_COMPLETED]||0,      icon:'🔶', style:'--kpi-accent:#06b6d4;--kpi-icon-bg:rgba(6,182,212,0.12)', onclick: `filterByDashboardTile('status','${STATUS.PARTLY_COMPLETED}')` },
-    { label:'Awaiting Offer',    value: s[STATUS.AWAITING_OFFER]||0,        icon:'⏳', style:'--kpi-accent:#8b5cf6;--kpi-icon-bg:rgba(139,92,246,0.12)', onclick: `filterByDashboardTile('status','${STATUS.AWAITING_OFFER}')` },
-    { label:'Inputs Required',   value: s[STATUS.INPUTS_REQUIRED]||0,       icon:'📋', style:'--kpi-accent:#ea580c;--kpi-icon-bg:rgba(234,88,12,0.12)', onclick: `filterByDashboardTile('status','${STATUS.INPUTS_REQUIRED}')` },
-    { label:'Wrong PRC',         value: s[STATUS.WRONG_PRC]||0,             icon:'❌', style:'--kpi-accent:#ef4444;--kpi-icon-bg:rgba(239,68,68,0.12)', onclick: `filterByDashboardTile('status','${STATUS.WRONG_PRC}')` },
-    { label:'PR Not Approved',   value: s[STATUS.PR_NOT_APPROVED]||0,       icon:'🚫', style:'--kpi-accent:#9333ea;--kpi-icon-bg:rgba(147,51,234,0.12)', onclick: `filterByDashboardTile('status','${STATUS.PR_NOT_APPROVED}')` },
-    { label:'Future PRC',        value: s[STATUS.FUTURE_PRC]||0,            icon:'🔮', style:'--kpi-accent:#0284c7;--kpi-icon-bg:rgba(2,132,199,0.12)', onclick: `filterByDashboardTile('status','${STATUS.FUTURE_PRC}')` },
-    { label:'System Issue',      value: s[STATUS.SYSTEM_ISSUE]||0,          icon:'⚙️', style:'--kpi-accent:#475569;--kpi-icon-bg:rgba(71,85,105,0.12)', onclick: `filterByDashboardTile('status','${STATUS.SYSTEM_ISSUE}')` },
-    { label:'Total Materials',   value: totalMats,                          icon:'🔩', style:'--kpi-accent:#3b82f6;--kpi-icon-bg:rgba(59,130,246,0.12)', onclick: "filterByDashboardTile('viewLevel','material')" },
-    { label:'Overdue PRCs',      value: state.overdueCount||0,              icon:'🚨', style:'--kpi-accent:#ef4444;--kpi-icon-bg:rgba(239,68,68,0.12)', onclick: "filterByDashboardTile('overdue')" },
-    { label:'Avg Days (PO)',     value: state.avgProcurementDays||0,        icon:'📅', style:'--kpi-accent:#f59e0b;--kpi-icon-bg:rgba(245,158,11,0.12)', suffix:' days', onclick: "filterByDashboardTile('all')" },
-    { label:'PO Issued Today',   value: poToday,                            icon:'🛒', style:'--kpi-accent:#10b981;--kpi-icon-bg:rgba(16,185,129,0.12)', onclick: "filterByDashboardTile('poToday')" }
+    { label:'Total PRCs',           value: prcs.length,                       icon:'📦', style:'--kpi-accent:#3b82f6;--kpi-icon-bg:rgba(59,130,246,0.12)', onclick: "filterByDashboardTile('all')" },
+    { label:'Process Completed',    value: s[STATUS.COMPLETED]||0,             icon:'✅', style:'--kpi-accent:#10b981;--kpi-icon-bg:rgba(16,185,129,0.12)', onclick: `filterByDashboardTile('status','${STATUS.COMPLETED}')` },
+    { label:'Pending',              value: s[STATUS.PENDING]||0,               icon:'🕐', style:'--kpi-accent:#f59e0b;--kpi-icon-bg:rgba(245,158,11,0.12)', onclick: `filterByDashboardTile('status','${STATUS.PENDING}')` },
+    { label:'Partly Completed',     value: s[STATUS.PARTLY_COMPLETED]||0,      icon:'🔶', style:'--kpi-accent:#06b6d4;--kpi-icon-bg:rgba(6,182,212,0.12)', onclick: `filterByDashboardTile('status','${STATUS.PARTLY_COMPLETED}')` },
+    { label:'Awaiting Offer',       value: s[STATUS.AWAITING_OFFER]||0,        icon:'⏳', style:'--kpi-accent:#8b5cf6;--kpi-icon-bg:rgba(139,92,246,0.12)', onclick: `filterByDashboardTile('status','${STATUS.AWAITING_OFFER}')` },
+    { label:'Inputs Required',      value: s[STATUS.INPUTS_REQUIRED]||0,       icon:'📋', style:'--kpi-accent:#ea580c;--kpi-icon-bg:rgba(234,88,12,0.12)', onclick: `filterByDashboardTile('status','${STATUS.INPUTS_REQUIRED}')` },
+    { label:'Wrong PRC',            value: s[STATUS.WRONG_PRC]||0,             icon:'❌', style:'--kpi-accent:#ef4444;--kpi-icon-bg:rgba(239,68,68,0.12)', onclick: `filterByDashboardTile('status','${STATUS.WRONG_PRC}')` },
+    { label:'PR Not Approved',      value: s[STATUS.PR_NOT_APPROVED]||0,       icon:'🚫', style:'--kpi-accent:#9333ea;--kpi-icon-bg:rgba(147,51,234,0.12)', onclick: `filterByDashboardTile('status','${STATUS.PR_NOT_APPROVED}')` },
+    { label:'Future PRC',           value: s[STATUS.FUTURE_PRC]||0,            icon:'🔮', style:'--kpi-accent:#0284c7;--kpi-icon-bg:rgba(2,132,199,0.12)', onclick: `filterByDashboardTile('status','${STATUS.FUTURE_PRC}')` },
+    { label:'System Issue',         value: s[STATUS.SYSTEM_ISSUE]||0,          icon:'⚙️', style:'--kpi-accent:#475569;--kpi-icon-bg:rgba(71,85,105,0.12)', onclick: `filterByDashboardTile('status','${STATUS.SYSTEM_ISSUE}')` },
+    { label:'Total Materials',      value: totalMats,                          icon:'🔩', style:'--kpi-accent:#3b82f6;--kpi-icon-bg:rgba(59,130,246,0.12)', onclick: "filterByDashboardTile('viewLevel','material')" },
+    { label:'Overdue PRCs',         value: state.overdueCount||0,              icon:'🚨', style:'--kpi-accent:#ef4444;--kpi-icon-bg:rgba(239,68,68,0.12)', onclick: "filterByDashboardTile('overdue')" },
+    { label:'Avg Days (PO)',        value: state.avgProcurementDays||0,        icon:'📅', style:'--kpi-accent:#f59e0b;--kpi-icon-bg:rgba(245,158,11,0.12)', suffix:' days', onclick: "filterByDashboardTile('all')" },
+    { label:'PRCs Allocated Today', value: prcsAllocatedToday,                 icon:'📌', style:'--kpi-accent:#06b6d4;--kpi-icon-bg:rgba(6,182,212,0.12)', onclick: "filterByDashboardTile('allocatedToday')" },
+    { label:'TCDs Created Today',   value: tcdsCreatedToday,                   icon:'📑', style:'--kpi-accent:#10b981;--kpi-icon-bg:rgba(16,185,129,0.12)', onclick: "filterByDashboardTile('tcdToday')" }
   ];
 
   container.innerHTML = `
@@ -736,6 +798,7 @@ function renderDashboard(container) {
     <div class="chart-canvas-wrap" style="height:280px">
       <canvas id="chart-monthly-trend"></canvas>
     </div>
+    <div id="trend-chart-date-scroller" class="trend-date-scroller-wrap"></div>
   </div>
 </div>
 
@@ -1082,6 +1145,7 @@ let selectedDrilldownMonthLabel = '';
 let selectedDrilldownWeekStart = null;
 let selectedDrilldownWeekEnd = null;
 let selectedDrilldownWeekLabel = '';
+let trendWeeklyOffset = 0;
 
 function renderTrendChart(prcs) {
   if (charts['monthly']) {
@@ -1115,7 +1179,7 @@ function renderTrendChart(prcs) {
     prcDatasetLabel = `Weekly PRCs (${selectedDrilldownMonthLabel} ±2 Wks)`;
     tcdDatasetLabel = `Weekly TCDs (${selectedDrilldownMonthLabel} ±2 Wks)`;
   } else if (isWeekly10) {
-    trendItems = weeklyPRCVsTCDDistribution(prcs, tcds, 10);
+    trendItems = weeklyPRCVsTCDDistribution(prcs, tcds, 10, trendWeeklyOffset);
     prcDatasetLabel = 'Weekly PRCs (Last 10 Wks)';
     tcdDatasetLabel = 'Weekly TCDs (Last 10 Wks)';
   } else {
@@ -1223,7 +1287,238 @@ function renderTrendChart(prcs) {
       }
     }
   });
+
+  // Render Date Scroller directly beneath the chart
+  renderTrendDateScroller(trendItems, prcs, tcds);
 }
+
+function renderTrendDateScroller(trendItems, prcs, tcds) {
+  const scrollerEl = document.getElementById('trend-chart-date-scroller');
+  if (!scrollerEl) return;
+
+  const isDaily = dashboardTrendView === 'daily_drilldown' && selectedDrilldownWeekStart;
+  const isWeekly10 = dashboardTrendView === 'weekly';
+  const isWeeklyDrill = dashboardTrendView === 'weekly_drilldown' && selectedDrilldownMonthKey;
+  const bounds = getDatasetDateBounds(prcs, tcds);
+
+  if (isDaily) {
+    const startDt = new Date(selectedDrilldownWeekStart);
+    const endDt = new Date(selectedDrilldownWeekEnd);
+    const dateRangeLabel = `${fmtDate(startDt)} – ${fmtDate(endDt)}`;
+    const todayStr = toInputDateVal(new Date());
+
+    const dayPillsHtml = (trendItems || []).map(d => {
+      const isToday = d.dayKey === todayStr;
+      const hasData = (d.prcCount > 0 || d.tcdCount > 0);
+      return `
+        <div class="trend-day-pill ${isToday ? 'today' : ''} ${hasData ? 'has-data' : ''}" title="${d.fullLabel || d.label}: ${d.prcCount} PRCs, ${d.tcdCount} TCDs">
+          <div class="trend-day-name">${d.shortLabel || d.label.split(',')[0]}</div>
+          <div class="trend-day-num">${d.dateLabel || d.label.split(',')[1] || ''}</div>
+          <div class="trend-day-counts">
+            <span class="trend-day-badge-prc" title="${d.prcCount} PRCs">${d.prcCount}</span>
+            <span class="trend-day-badge-tcd" title="${d.tcdCount} TCDs">${d.tcdCount}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    scrollerEl.innerHTML = `
+      <div class="trend-scroller-top">
+        <div class="trend-scroller-nav-group">
+          <button type="button" class="btn btn-secondary btn-xs" style="padding:4px 10px;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px" onclick="shiftTrendDailyWeek(-1)" title="Go to previous 7 days">
+            <span>◀</span> <span>Prev Week</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-xs" style="padding:4px 8px;font-size:11.5px;font-weight:600" onclick="shiftTrendDailyToToday()" title="Jump to current week">
+            <span>Today</span>
+          </button>
+        </div>
+        <div class="trend-scroller-date-info">
+          <span class="trend-scroller-date-badge" title="Current 7-Day Window">
+            <span>📅</span>
+            <span>${dateRangeLabel}</span>
+          </span>
+          <input type="date" class="form-control form-control-xs" style="width:130px;height:28px;font-size:11.5px;padding:2px 8px;font-weight:600" value="${toInputDateVal(startDt)}" onchange="jumpTrendToDate(this.value)" title="Jump to any specific date"/>
+        </div>
+        <div class="trend-scroller-nav-group">
+          <button type="button" class="btn btn-secondary btn-xs" style="padding:4px 10px;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px" onclick="shiftTrendDailyWeek(1)" title="Go to next 7 days">
+            <span>Next Week</span> <span>▶</span>
+          </button>
+        </div>
+      </div>
+      <div class="trend-days-strip">
+        ${dayPillsHtml}
+      </div>
+      <div class="trend-scroller-slider-wrap">
+        <span style="font-size:11px;color:var(--color-text-secondary);font-weight:600;white-space:nowrap">◀ Reverse</span>
+        <input type="range" class="trend-scroller-slider" min="${bounds.minTs}" max="${bounds.maxTs}" step="${7 * 86400000}" value="${selectedDrilldownWeekStart}" oninput="onTrendDailySliderChange(this.value)" title="Drag slider to scrub smoothly across dates">
+        <span style="font-size:11px;color:var(--color-text-secondary);font-weight:600;white-space:nowrap">Forward ▶</span>
+      </div>
+    `;
+  } else if (isWeekly10) {
+    scrollerEl.innerHTML = `
+      <div class="trend-scroller-top">
+        <div class="trend-scroller-nav-group">
+          <button type="button" class="btn btn-secondary btn-xs" style="padding:4px 10px;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px" onclick="shiftTrendWeeklyOffset(-10)" title="Previous 10 weeks">
+            <span>◀</span> <span>Prev 10 Wks</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-xs" style="padding:4px 8px;font-size:11.5px;font-weight:600" onclick="shiftTrendWeeklyOffset(0)" title="Reset to latest 10 weeks">
+            <span>Latest</span>
+          </button>
+        </div>
+        <div class="trend-scroller-date-info">
+          <span class="trend-scroller-date-badge">
+            <span>📊</span>
+            <span>${trendItems.length ? trendItems[0].label + ' – ' + (trendItems[trendItems.length-1].fullLabel || trendItems[trendItems.length-1].label) : 'Weekly Overview'}</span>
+          </span>
+          <input type="date" class="form-control form-control-xs" style="width:130px;height:28px;font-size:11.5px;padding:2px 8px;font-weight:600" onchange="jumpTrendToDate(this.value)" title="Jump to week by date"/>
+        </div>
+        <div class="trend-scroller-nav-group">
+          <button type="button" class="btn btn-secondary btn-xs" style="padding:4px 10px;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px" onclick="shiftTrendWeeklyOffset(10)" title="Next 10 weeks">
+            <span>Next 10 Wks</span> <span>▶</span>
+          </button>
+        </div>
+      </div>
+      <div class="trend-scroller-slider-wrap">
+        <span style="font-size:11px;color:var(--color-text-secondary);font-weight:600;white-space:nowrap">◀ Reverse</span>
+        <input type="range" class="trend-scroller-slider" min="-30" max="10" step="5" value="${trendWeeklyOffset}" oninput="onTrendWeeklySliderChange(this.value)" title="Drag slider to scrub across weeks">
+        <span style="font-size:11px;color:var(--color-text-secondary);font-weight:600;white-space:nowrap">Forward ▶</span>
+      </div>
+    `;
+  } else if (isWeeklyDrill) {
+    scrollerEl.innerHTML = `
+      <div class="trend-scroller-top">
+        <div class="trend-scroller-nav-group">
+          <button type="button" class="btn btn-secondary btn-xs" style="padding:4px 10px;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px" onclick="shiftTrendMonth(-1)" title="Previous month">
+            <span>◀</span> <span>Prev Month</span>
+          </button>
+        </div>
+        <div class="trend-scroller-date-info">
+          <span class="trend-scroller-date-badge">
+            <span>🗓️</span>
+            <span>${selectedDrilldownMonthLabel} (±2 Weeks Breakdown)</span>
+          </span>
+          <input type="date" class="form-control form-control-xs" style="width:130px;height:28px;font-size:11.5px;padding:2px 8px;font-weight:600" onchange="jumpTrendToDate(this.value)" title="Jump to date"/>
+        </div>
+        <div class="trend-scroller-nav-group">
+          <button type="button" class="btn btn-secondary btn-xs" style="padding:4px 10px;font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px" onclick="shiftTrendMonth(1)" title="Next month">
+            <span>Next Month</span> <span>▶</span>
+          </button>
+        </div>
+      </div>
+    `;
+  } else {
+    scrollerEl.innerHTML = `
+      <div class="trend-scroller-top" style="justify-content:space-between">
+        <div class="trend-scroller-date-info">
+          <span class="trend-scroller-date-badge">
+            <span>💡</span>
+            <span>Click any month point above or pick a date to open the Daily Breakdown with date scroller</span>
+          </span>
+        </div>
+        <div class="trend-scroller-nav-group">
+          <span style="font-size:11.5px;font-weight:600;color:var(--color-text-secondary)">Jump to Date:</span>
+          <input type="date" class="form-control form-control-xs" style="width:130px;height:28px;font-size:11.5px;padding:2px 8px;font-weight:600" onchange="jumpTrendToDate(this.value)" title="Jump directly to daily view"/>
+        </div>
+      </div>
+    `;
+  }
+}
+
+window.shiftTrendDailyWeek = function(delta) {
+  if (!selectedDrilldownWeekStart) {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMon = (day === 0 ? -6 : 1) - day;
+    const mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon, 0, 0, 0, 0);
+    selectedDrilldownWeekStart = mon.getTime();
+    selectedDrilldownWeekEnd = mon.getTime() + (6 * 86400000) + (23 * 3600000) + (59 * 60000) + 59000;
+  }
+  const newStart = selectedDrilldownWeekStart + (delta * 7 * 86400000);
+  const newEnd = selectedDrilldownWeekEnd + (delta * 7 * 86400000);
+  const startDt = new Date(newStart);
+  const endDt = new Date(newEnd);
+  const startStr = startDt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const endStr = endDt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const endYearStr = endDt.toLocaleDateString('en-GB', { year: '2-digit' });
+  const label = `${startStr} – ${endStr} '${endYearStr}`;
+
+  setDashboardTrendDailyDrilldown(newStart, newEnd, label);
+};
+
+window.shiftTrendDailyToToday = function() {
+  const now = new Date();
+  const day = now.getDay();
+  const diffToMon = (day === 0 ? -6 : 1) - day;
+  const mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMon, 0, 0, 0, 0);
+  const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6, 23, 59, 59, 999);
+  const startStr = mon.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const endStr = sun.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const endYearStr = sun.toLocaleDateString('en-GB', { year: '2-digit' });
+  const label = `${startStr} – ${endStr} '${endYearStr}`;
+
+  setDashboardTrendDailyDrilldown(mon.getTime(), sun.getTime(), label);
+};
+
+window.jumpTrendToDate = function(dateStr) {
+  if (!dateStr) return;
+  const picked = parseDateObj(dateStr);
+  if (!picked) return;
+  const day = picked.getDay();
+  const diffToMon = (day === 0 ? -6 : 1) - day;
+  const mon = new Date(picked.getFullYear(), picked.getMonth(), picked.getDate() + diffToMon, 0, 0, 0, 0);
+  const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6, 23, 59, 59, 999);
+  const startStr = mon.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const endStr = sun.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const endYearStr = sun.toLocaleDateString('en-GB', { year: '2-digit' });
+  const label = `${startStr} – ${endStr} '${endYearStr}`;
+
+  setDashboardTrendDailyDrilldown(mon.getTime(), sun.getTime(), label);
+};
+
+window.onTrendDailySliderChange = function(val) {
+  const rawTs = parseInt(val, 10);
+  if (isNaN(rawTs)) return;
+  const dt = new Date(rawTs);
+  const day = dt.getDay();
+  const diffToMon = (day === 0 ? -6 : 1) - day;
+  const mon = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + diffToMon, 0, 0, 0, 0);
+  const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6, 23, 59, 59, 999);
+  const startStr = mon.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const endStr = sun.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+  const endYearStr = sun.toLocaleDateString('en-GB', { year: '2-digit' });
+  const label = `${startStr} – ${endStr} '${endYearStr}`;
+
+  setDashboardTrendDailyDrilldown(mon.getTime(), sun.getTime(), label);
+};
+
+window.shiftTrendWeeklyOffset = function(delta) {
+  if (delta === 0) {
+    trendWeeklyOffset = 0;
+  } else {
+    trendWeeklyOffset += delta;
+  }
+  const prcs = typeof getFilteredPRCs === 'function' ? getFilteredPRCs() : (getState().prcs || []);
+  renderTrendChart(prcs);
+};
+
+window.onTrendWeeklySliderChange = function(val) {
+  trendWeeklyOffset = parseInt(val, 10) || 0;
+  const prcs = typeof getFilteredPRCs === 'function' ? getFilteredPRCs() : (getState().prcs || []);
+  renderTrendChart(prcs);
+};
+
+window.shiftTrendMonth = function(delta) {
+  if (!selectedDrilldownMonthKey) return;
+  const [yStr, mStr] = selectedDrilldownMonthKey.split('-');
+  let y = parseInt(yStr, 10);
+  let m = parseInt(mStr, 10) + delta;
+  if (m < 1) { m = 12; y--; }
+  else if (m > 12) { m = 1; y++; }
+  const newMonthKey = `${y}-${String(m).padStart(2, '0')}`;
+  const dt = new Date(y, m - 1, 1);
+  const newMonthLabel = dt.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+  setDashboardTrendWeeklyDrilldown(newMonthKey, newMonthLabel);
+};
 
 window.setDashboardTrendWeeklyDrilldown = function(monthKey, monthLabel) {
   dashboardTrendView = 'weekly_drilldown';
@@ -1271,7 +1566,7 @@ window.setDashboardTrendDailyDrilldown = function(weekStartTs, weekEndTs, weekLa
   if (btnWeekly) btnWeekly.className = 'btn btn-ghost btn-xs';
   if (btnMonthly) btnMonthly.className = 'btn btn-ghost btn-xs';
   if (titleEl) titleEl.textContent = `Daily Breakdown: ${weekLabel}`;
-  if (subEl) subEl.textContent = `Showing day-by-day PRC vs TCD activity for ${weekLabel} (Active days)`;
+  if (subEl) subEl.textContent = `Showing day-by-day PRC vs TCD activity for ${weekLabel} (Use date scroller below to navigate reverse or forward)`;
 };
 
 window.returnToWeeklyDrilldown = function() {
@@ -1289,6 +1584,7 @@ window.setDashboardTrendView = function(view) {
   selectedDrilldownWeekStart = null;
   selectedDrilldownWeekEnd = null;
   selectedDrilldownWeekLabel = '';
+  trendWeeklyOffset = 0;
 
   const prcs = typeof getFilteredPRCs === 'function' ? getFilteredPRCs() : (getState().prcs || []);
   renderTrendChart(prcs);
@@ -1402,6 +1698,8 @@ function renderPRCList(container) {
       <input type="date" class="form-control" style="width:150px" id="filter-date-from" value="${state.filters.dateFrom || ''}" onchange="applyFilters()" placeholder="From date"/>
       <input type="date" class="form-control" style="width:150px" id="filter-date-to" value="${state.filters.dateTo || ''}" onchange="applyFilters()" placeholder="To date"/>
       ${state.filters.isOverdue ? '<span class="chip chip-danger">🚨 Overdue PRCs</span>' : ''}
+      ${state.filters.allocatedToday ? '<span class="chip chip-info" style="background:rgba(6,182,212,0.15);color:#0891b2;border:1px solid rgba(6,182,212,0.3)">📌 PRCs Allocated Today</span>' : ''}
+      ${state.filters.tcdToday ? '<span class="chip chip-success" style="background:rgba(16,185,129,0.15);color:#059669;border:1px solid rgba(16,185,129,0.3)">📑 TCDs Created Today</span>' : ''}
       ${state.filters.poToday ? '<span class="chip chip-success">🛒 PO Issued Today</span>' : ''}
       <button class="btn btn-ghost btn-sm" onclick="clearFilters()">✕ Clear</button>
 
@@ -1483,6 +1781,8 @@ window.filterPRCByStatusTab = function(status) {
   currentFilters.status = status || '';
   currentFilters.isOverdue = false;
   currentFilters.poToday = false;
+  currentFilters.allocatedToday = false;
+  currentFilters.tcdToday = false;
   setState({
     filters: currentFilters,
     currentPage_num: 1
@@ -1544,6 +1844,8 @@ window.applyFilters = function() {
   if (currentFilters.status) {
     currentFilters.isOverdue = false;
     currentFilters.poToday = false;
+    currentFilters.allocatedToday = false;
+    currentFilters.tcdToday = false;
   }
 
   setState({

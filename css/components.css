@@ -2239,3 +2239,159 @@ tr.selected-row {
   0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.2); }
   50% { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.15); }
 }
+
+/* ── TREND CHART DATE SCROLLER ───────────────────────────── */
+.trend-date-scroller-wrap {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trend-scroller-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.trend-scroller-nav-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trend-scroller-date-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.trend-scroller-date-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.trend-days-strip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+@media (max-width: 640px) {
+  .trend-days-strip {
+    grid-template-columns: repeat(auto-fit, minmax(65px, 1fr));
+  }
+}
+
+.trend-day-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 4px;
+  border-radius: 8px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  transition: all 0.15s ease;
+  user-select: none;
+  text-align: center;
+}
+
+.trend-day-pill.today {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary);
+}
+
+.trend-day-pill.has-data {
+  background: var(--color-surface-3);
+}
+
+.trend-day-name {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}
+
+.trend-day-num {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  margin: 1px 0;
+}
+
+.trend-day-counts {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.trend-day-badge-prc {
+  font-size: 10px;
+  font-weight: 700;
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.12);
+  padding: 1px 4px;
+  border-radius: 4px;
+  min-width: 14px;
+}
+
+.trend-day-badge-tcd {
+  font-size: 10px;
+  font-weight: 700;
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.14);
+  padding: 1px 4px;
+  border-radius: 4px;
+  min-width: 14px;
+}
+
+.trend-scroller-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.trend-scroller-slider {
+  flex: 1;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--color-surface-3);
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+  accent-color: var(--color-primary);
+}
+
+.trend-scroller-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  transition: transform 0.1s;
+}
+
+.trend-scroller-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+

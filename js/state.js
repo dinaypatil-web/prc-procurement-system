@@ -28,7 +28,7 @@ import {
 import { isFirebaseConfigured } from './firebase-config.js';
 import { isTursoConfigured } from './turso-db.js';
 
-import { clone } from './utils.js';
+import { clone, parseDateObj, isTodayDate } from './utils.js';
 
 export const LOCAL_CACHE_KEY = 'PRC_PROCUREMENT_USER_CACHE';
 
@@ -95,6 +95,8 @@ const state = {
   statusSummary: {},
   totalMaterials: 0,
   poToday: 0,
+  allocatedToday: 0,
+  tcdToday: 0,
   overdueCount: 0,
   avgProcurementDays: 0
 };
@@ -1979,6 +1981,21 @@ export function getFilteredPRCs(bypassColumnField = null) {
     list = list.filter(p => {
       const st = calculateStatus(p);
       return getPRCAge(p) > 7 && !['Process Completed', 'Wrong PRC', 'PR Not Approved', 'Future PRC', 'System Issue', 'Short-Close'].includes(st);
+    });
+  }
+  if (f.allocatedToday) {
+    list = list.filter(p => {
+      if (isTodayDate(p.allocationDate) || isTodayDate(p.allocatedDate)) return true;
+      if ((p.materials || []).some(m => isTodayDate(m.allocationDate))) return true;
+      return false;
+    });
+  }
+  if (f.tcdToday) {
+    list = list.filter(p => {
+      const pTcdNum = String(p.tcdNumber || '').trim();
+      if (pTcdNum && isTodayDate(p.tcdDate || p.tcdApprovedDate || p.tcdCreatedAt)) return true;
+      if ((p.materials || []).some(m => String(m.tcdNumber || '').trim() && isTodayDate(m.tcdDate || m.tcdApprovedDate))) return true;
+      return false;
     });
   }
   if (f.poToday) {

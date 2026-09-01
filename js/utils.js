@@ -10,28 +10,49 @@ export function parseDateObj(d) {
   const s = String(d).trim();
   if (!s || s === '—' || s === 'undefined' || s === 'null') return null;
 
-  // 1. Try ISO / YYYY-MM-DD or standard parse first
-  let dt = new Date(s);
-  if (!isNaN(dt.getTime())) return dt;
+  // 1. Handle YYYY-MM-DD or YYYY/MM/DD or ISO 8601
+  const ymdMatch = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+  if (ymdMatch) {
+    const year = parseInt(ymdMatch[1], 10);
+    const month = parseInt(ymdMatch[2], 10) - 1;
+    const day = parseInt(ymdMatch[3], 10);
+    const dt = new Date(year, month, day);
+    if (!isNaN(dt.getTime())) return dt;
+  }
 
-  // 2. Handle DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  // 2. Handle DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY (en-GB format)
   const dmYMatch = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
   if (dmYMatch) {
     const day = parseInt(dmYMatch[1], 10);
     const month = parseInt(dmYMatch[2], 10) - 1;
     const year = parseInt(dmYMatch[3], 10);
-    dt = new Date(year, month, day);
+    const dt = new Date(year, month, day);
     if (!isNaN(dt.getTime())) return dt;
   }
 
   // 3. Handle DD MMM YYYY (e.g. "01 Aug 2026" or "1 Aug 2026")
   const dMmmYMatch = s.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})/);
   if (dMmmYMatch) {
-    dt = new Date(`${dMmmYMatch[2]} ${dMmmYMatch[1]}, ${dMmmYMatch[3]}`);
+    const dt = new Date(`${dMmmYMatch[2]} ${dMmmYMatch[1]}, ${dMmmYMatch[3]}`);
     if (!isNaN(dt.getTime())) return dt;
   }
 
+  // 4. Fallback to standard parse
+  const dt = new Date(s);
+  if (!isNaN(dt.getTime())) return dt;
+
   return null;
+}
+
+/** Check if a date string or Date object matches today (local time) */
+export function isTodayDate(d) {
+  if (!d) return false;
+  const dt = parseDateObj(d);
+  if (!dt) return false;
+  const now = new Date();
+  return dt.getFullYear() === now.getFullYear() &&
+         dt.getMonth() === now.getMonth() &&
+         dt.getDate() === now.getDate();
 }
 
 /** Format date as DD/MM/YYYY */
@@ -347,11 +368,11 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
       tcdCount,
       poCount: tcdCount // backward compatibility alias
     };
-  }).filter(item => item.prcCount > 0); // Hide periods where PRC count is 0
+  });
 }
 
 /** Compute weekly distribution for the last N weeks (default 10) comparing PRCs created vs TCDs finalized */
-export function weeklyPRCVsTCDDistribution(prcs = [], tcds = [], numWeeks = 10) {
+export function weeklyPRCVsTCDDistribution(prcs = [], tcds = [], numWeeks = 10, offsetWeeks = 0) {
   const allTimestamps = [];
 
   // Collect all valid dates from PRCs
@@ -382,10 +403,10 @@ export function weeklyPRCVsTCDDistribution(prcs = [], tcds = [], numWeeks = 10) 
     });
   });
 
-  // Anchor date: use max date in data if available, or today
+  // Anchor date: use max date in data if available, or today + offsetWeeks
   const now = new Date();
   const maxTs = allTimestamps.length ? Math.max(...allTimestamps) : now.getTime();
-  const anchorDate = new Date(maxTs);
+  const anchorDate = new Date(maxTs + (offsetWeeks * 7 * 86400000));
 
   // Determine Monday of the current/anchor week
   const day = anchorDate.getDay(); // 0 is Sunday
@@ -396,7 +417,7 @@ export function weeklyPRCVsTCDDistribution(prcs = [], tcds = [], numWeeks = 10) 
   const weeks = [];
   for (let i = numWeeks - 1; i >= 0; i--) {
     const start = new Date(currentWeekMon.getFullYear(), currentWeekMon.getMonth(), currentWeekMon.getDate() - i * 7, 0, 0, 0, 0);
-    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6, 23, 5, 59, 999);
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6, 23, 59, 59, 999);
 
     const startStr = start.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
     const endStr = end.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
@@ -484,8 +505,7 @@ export function weeklyPRCVsTCDDistribution(prcs = [], tcds = [], numWeeks = 10) 
     });
   });
 
-  // Hide periods where PRC count is 0
-  return weeks.filter(w => w.prcCount > 0);
+  return weeks;
 }
 
 /** Compute weekly distribution for a specific month (including 2 weeks prior & 2 weeks later) comparing PRCs vs TCDs */
@@ -497,48 +517,55 @@ export function weeklyPRCVsTCDDistributionForMonth(prcs = [], tcds = [], monthKe
 
   if (isNaN(year) || isNaN(month)) return [];
 
-  const firstDayOfMonth = new Date(year, month - 1, 1, 0, 0, 0, 0);
-  const lastDayOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
+  const firstDayOfMonth = new Date(year, month - 1, 1);
+  const lastDayOfMonth = new Date(year, month, 0);
 
-  // 2 weeks (14 days) prior to 1st of month
-  const windowStart = new Date(year, month - 1, 1 - 14, 0, 0, 0, 0);
-  // 2 weeks (14 days) after last day of month
-  const windowEnd = new Date(lastDayOfMonth.getFullYear(), lastDayOfMonth.getMonth(), lastDayOfMonth.getDate() + 14, 23, 59, 59, 999);
+  // Align start to the Monday of the week that contains the 1st of the month
+  const firstDayWeekday = firstDayOfMonth.getDay(); // 0 = Sun, 1 = Mon ...
+  const diffToFirstMon = firstDayWeekday === 0 ? -6 : 1 - firstDayWeekday;
+  const monthStartMon = new Date(year, month - 1, 1 + diffToFirstMon, 0, 0, 0, 0);
 
-  // Determine Monday of the start week
-  const day = windowStart.getDay();
-  const diffToMon = windowStart.getDate() - day + (day === 0 ? -6 : 1);
-  let curMon = new Date(windowStart.getFullYear(), windowStart.getMonth(), diffToMon, 0, 0, 0, 0);
+  // Start 2 weeks prior (14 days earlier)
+  const windowStartMon = new Date(monthStartMon.getTime() - 14 * 86400000);
 
+  // Align end to the Sunday of the week that contains the last day of the month
+  const lastDayWeekday = lastDayOfMonth.getDay();
+  const diffToLastSun = lastDayWeekday === 0 ? 0 : 7 - lastDayWeekday;
+  const monthEndSun = new Date(year, month - 1, lastDayOfMonth.getDate() + diffToLastSun, 23, 59, 59, 999);
+
+  // End 2 weeks later (14 days after)
+  const windowEndSun = new Date(monthEndSun.getTime() + 14 * 86400000);
+
+  // Generate weekly buckets (from windowStartMon to windowEndSun)
   const weeks = [];
-  let weekIndex = 1;
+  let cur = new Date(windowStartMon.getTime());
+  let wIndex = 1;
 
-  while (curMon.getTime() <= windowEnd.getTime()) {
-    const wStart = new Date(curMon.getTime());
-    const wEnd = new Date(curMon.getFullYear(), curMon.getMonth(), curMon.getDate() + 6, 23, 59, 59, 999);
+  while (cur.getTime() <= windowEndSun.getTime()) {
+    const wStart = new Date(cur.getTime());
+    const wEnd = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 6, 23, 59, 59, 999);
 
     const startStr = wStart.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
     const endStr = wEnd.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
     const endYearStr = wEnd.toLocaleDateString('en-GB', { year: '2-digit' });
 
-    // Check if this week falls inside the target month
+    // Check if this week overlaps with target month
     const isTargetMonth = (wStart.getMonth() === month - 1 && wStart.getFullYear() === year) ||
                           (wEnd.getMonth() === month - 1 && wEnd.getFullYear() === year);
 
     weeks.push({
-      weekIndex: weekIndex++,
+      weekIndex: wIndex++,
       label: startStr,
       fullLabel: `${startStr} – ${endStr} '${endYearStr}`,
-      isTargetMonth,
       start: wStart.getTime(),
       end: wEnd.getTime(),
+      isTargetMonth,
       prcCount: 0,
       tcdCount: 0,
       poCount: 0
     });
 
-    // Advance to next Monday
-    curMon = new Date(curMon.getFullYear(), curMon.getMonth(), curMon.getDate() + 7, 0, 0, 0, 0);
+    cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 7, 0, 0, 0, 0);
   }
 
   // 1. Tally PRCs
@@ -611,8 +638,7 @@ export function weeklyPRCVsTCDDistributionForMonth(prcs = [], tcds = [], monthKe
     });
   });
 
-  // Hide periods where PRC count is 0
-  return weeks.filter(w => w.prcCount > 0);
+  return weeks;
 }
 
 /** Compute daily distribution for a specific week window comparing PRCs vs TCDs */
@@ -636,6 +662,8 @@ export function dailyPRCVsTCDDistributionForWeek(prcs = [], tcds = [], weekStart
     days.push({
       dayKey: `${dStart.getFullYear()}-${String(dStart.getMonth() + 1).padStart(2, '0')}-${String(dStart.getDate()).padStart(2, '0')}`,
       label: `${dayName}, ${dayDate}`,
+      shortLabel: dayName,
+      dateLabel: dayDate,
       fullLabel: fullDate,
       start: dStart.getTime(),
       end: dEnd.getTime(),
@@ -717,8 +745,50 @@ export function dailyPRCVsTCDDistributionForWeek(prcs = [], tcds = [], weekStart
     });
   });
 
-  // Hide periods where PRC count is 0
-  return days.filter(d => d.prcCount > 0);
+  return days;
+}
+
+/** Get min and max timestamps across all PRCs and TCDs for timeline scrubbing */
+export function getDatasetDateBounds(prcs = [], tcds = []) {
+  let minTs = Infinity;
+  let maxTs = -Infinity;
+
+  const check = (raw) => {
+    if (!raw) return;
+    const dt = parseDateObj(raw);
+    if (!dt) return;
+    const ts = dt.getTime();
+    if (ts < minTs) minTs = ts;
+    if (ts > maxTs) maxTs = ts;
+  };
+
+  prcs.forEach(p => {
+    check(p.createdAt);
+    check(p.allocationDate);
+    check(p.prDate);
+    check(p.tcdDate);
+    check(p.poDate);
+    (p.materials || []).forEach(m => {
+      check(m.allocationDate);
+      check(m.tcdDate);
+      check(m.poDate);
+    });
+  });
+
+  (tcds || []).forEach(t => {
+    check(t.tcdDate);
+    check(t.createdAt);
+    check(t.approvedDate);
+  });
+
+  const now = Date.now();
+  if (minTs === Infinity) minTs = now - 90 * 86400000;
+  if (maxTs === -Infinity) maxTs = now;
+
+  return {
+    minTs: minTs - 7 * 86400000,
+    maxTs: Math.max(maxTs + 7 * 86400000, now + 7 * 86400000)
+  };
 }
 
 // Backwards compatibility aliases
