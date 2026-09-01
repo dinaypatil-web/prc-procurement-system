@@ -2665,7 +2665,11 @@ function renderPRCTable() {
           <td onclick="event.stopPropagation()" style="text-align:center;width:40px">
             <input type="checkbox" class="prc-row-checkbox" value="${m.prcId}" ${isSelected ? 'checked' : ''} onchange="togglePRCSelection('${m.prcId}', this.checked, event)" title="Select PRC ${m.prNumber}" style="cursor:pointer;accent-color:var(--color-primary);width:16px;height:16px;margin:0" />
           </td>
-          <td><span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(m.prNumber,q)}</span><span class="copy-icon">📋</span></span><br>${renderProgressStars(m, false)}</td>
+          <td>
+            <span class="copy-badge" onclick="copyToClipboard('${m.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(m.prNumber,q)}</span><span class="copy-icon">📋</span></span>
+            ${(m.prDate || m.prcCreatedAt) ? `<br><span style="font-size:11px;color:var(--color-text-secondary);font-weight:600;display:inline-flex;align-items:center;gap:3px;margin-top:2px" title="PRC Date: ${fmtDate(m.prDate || m.prcCreatedAt)}"><span>📅</span><span>${fmtDate(m.prDate || m.prcCreatedAt)}</span></span>` : ''}
+            <br>${renderProgressStars(m, false)}
+          </td>
           <td>${m.serialNumber||'—'}</td>
           <td><span class="copy-badge" onclick="copyToClipboard('${m.matCode}','Material Code',event)" title="Click to copy Material Code"><span class="font-mono text-sm font-semibold">${highlight(m.matCode,q)}</span><span class="copy-icon">📋</span></span></td>
           <td><strong>${highlight(m.description,q)}</strong></td>
@@ -2867,6 +2871,7 @@ function renderPRCTable() {
           </td>
           <td>
             <span class="copy-badge" onclick="copyToClipboard('${p.prNumber}','PRC Number',event)" title="Click to copy PRC Number"><span class="font-mono text-sm font-semibold">${highlight(p.prNumber,q)}</span><span class="copy-icon">📋</span></span>
+            ${(p.prDate || p.createdAt) ? `<br><span style="font-size:11px;color:var(--color-text-secondary);font-weight:600;display:inline-flex;align-items:center;gap:3px;margin-top:2px" title="PRC Date: ${fmtDate(p.prDate || p.createdAt)}"><span>📅</span><span>${fmtDate(p.prDate || p.createdAt)}</span></span>` : ''}
             <br>
             <span class="item-count-badge" title="${materials.length} material items recorded">Total Items: ${materials.length}</span>
             <br>

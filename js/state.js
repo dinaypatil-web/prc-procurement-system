@@ -2117,6 +2117,7 @@ export function getFilteredMaterials(bypassColumnField = null) {
         vendorName: m.vendorName || m.vendor || p.vendorName || p.vendor || '',
         vendor: m.vendorName || m.vendor || p.vendorName || p.vendor || '',
         deliveryDate: m.deliveryDate || m.deliveryEndDate || p.deliveryDate || p.deliveryEndDate || '',
+        prDate: m.prDate || p.prDate || p.createdAt || '',
         ...m,
         prcId: p.id,
         prNumber: p.prNumber,
