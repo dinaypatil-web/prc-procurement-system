@@ -4,13 +4,32 @@
 
 /** Parse any date representation into a valid Date object or null */
 export function parseDateObj(d) {
-  if (!d) return null;
-  if (d instanceof Date) return isNaN(d.getTime()) ? null : d;
+  if (!d && d !== 0) return null;
+  if (d instanceof Date) {
+    if (isNaN(d.getTime())) return null;
+    let y = d.getFullYear();
+    if (y < 100) { d = new Date(d.getTime()); d.setFullYear(2000 + y); }
+    else if (y >= 1900 && y < 1970) { d = new Date(d.getTime()); d.setFullYear(2000 + (y % 100)); }
+    return d;
+  }
 
-  const s = String(d).trim();
+  // Handle numeric Excel serial date (e.g. 44000 - 48000 is ~2020 - 2031)
+  if (typeof d === 'number' || (/^\d{5}(\.\d+)?$/.test(String(d).trim()))) {
+    const num = typeof d === 'number' ? d : parseFloat(d);
+    if (!isNaN(num) && num > 30000 && num < 60000) {
+      // Excel epoch starts Dec 30, 1899 (25569 days to 1970-01-01)
+      const dt = new Date(Math.round((num - 25569) * 86400 * 1000));
+      if (!isNaN(dt.getTime())) return dt;
+    }
+  }
+
+  let s = String(d).trim();
   if (!s || s === '—' || s === 'undefined' || s === 'null') return null;
 
-  // 1. Handle YYYY-MM-DD or YYYY/MM/DD or ISO 8601
+  // Normalize separators: replace multiple spaces, commas with single space
+  s = s.replace(/,/g, ' ').replace(/\s+/g, ' ');
+
+  // 1. Handle YYYY-MM-DD or YYYY/MM/DD (4-digit year first)
   const ymdMatch = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
   if (ymdMatch) {
     const year = parseInt(ymdMatch[1], 10);
@@ -20,26 +39,57 @@ export function parseDateObj(d) {
     if (!isNaN(dt.getTime())) return dt;
   }
 
-  // 2. Handle DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY (en-GB format)
-  const dmYMatch = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+  // 2. Handle DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY (en-GB / Indian format)
+  // Supports both 4-digit and 2-digit years: e.g. 06/05/2026 or 06/05/26
+  const dmYMatch = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
   if (dmYMatch) {
     const day = parseInt(dmYMatch[1], 10);
     const month = parseInt(dmYMatch[2], 10) - 1;
-    const year = parseInt(dmYMatch[3], 10);
+    let year = parseInt(dmYMatch[3], 10);
+    if (year < 100) {
+      year = year <= 50 ? 2000 + year : 1900 + year;
+    }
     const dt = new Date(year, month, day);
     if (!isNaN(dt.getTime())) return dt;
   }
 
-  // 3. Handle DD MMM YYYY (e.g. "01 Aug 2026" or "1 Aug 2026")
-  const dMmmYMatch = s.match(/^(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})/);
+  // 3. Handle DD MMM YYYY or DD-MMM-YY (e.g. "01-Apr-2026", "1-Apr-26", "01 Apr 2026")
+  const dMmmYMatch = s.match(/^(\d{1,2})[\/\-\s]+([A-Za-z]{3,9})[\/\-\s]+(\d{2,4})/);
   if (dMmmYMatch) {
-    const dt = new Date(`${dMmmYMatch[2]} ${dMmmYMatch[1]}, ${dMmmYMatch[3]}`);
+    const day = parseInt(dMmmYMatch[1], 10);
+    const monStr = dMmmYMatch[2];
+    let year = parseInt(dMmmYMatch[3], 10);
+    if (year < 100) {
+      year = year <= 50 ? 2000 + year : 1900 + year;
+    }
+    const dt = new Date(`${monStr} ${day}, ${year}`);
     if (!isNaN(dt.getTime())) return dt;
   }
 
-  // 4. Fallback to standard parse
+  // 4. Handle MMM DD, YYYY or MMM-DD-YYYY (e.g. "Apr 01, 2026", "April 1, 2026")
+  const mmmDYMatch = s.match(/^([A-Za-z]{3,9})[\/\-\s]+(\d{1,2})[,\/\-\s]+(\d{2,4})/);
+  if (mmmDYMatch) {
+    const monStr = mmmDYMatch[1];
+    const day = parseInt(mmmDYMatch[2], 10);
+    let year = parseInt(mmmDYMatch[3], 10);
+    if (year < 100) {
+      year = year <= 50 ? 2000 + year : 1900 + year;
+    }
+    const dt = new Date(`${monStr} ${day}, ${year}`);
+    if (!isNaN(dt.getTime())) return dt;
+  }
+
+  // 5. Fallback to standard parse with year sanitization
   const dt = new Date(s);
-  if (!isNaN(dt.getTime())) return dt;
+  if (!isNaN(dt.getTime())) {
+    let y = dt.getFullYear();
+    if (y < 100) {
+      dt.setFullYear(2000 + y);
+    } else if (y >= 1900 && y < 1970) {
+      dt.setFullYear(2000 + (y % 100));
+    }
+    return dt;
+  }
 
   return null;
 }
@@ -288,36 +338,37 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
   let oldestDate = null;
   let newestDate = null;
 
-  // Track oldest and newest dates strictly from the user's PRC & Material records
+  // Track oldest and newest dates strictly from the user's PRC & Material records (sanitized for realistic modern years >= 2000)
+  const currentYear = new Date().getFullYear();
   const updatePrcDateBounds = (raw) => {
     if (!raw) return;
     const dt = parseDateObj(raw);
     if (!dt || isNaN(dt.getTime())) return;
+    const y = dt.getFullYear();
+    if (y < 2000 || y > currentYear + 2) return;
     if (!oldestDate || dt < oldestDate) oldestDate = dt;
     if (!newestDate || dt > newestDate) newestDate = dt;
   };
 
   // 1. Tally Monthly PRCs & determine starting month strictly from the oldest PRC date in user records
   prcs.forEach(p => {
-    updatePrcDateBounds(p.prDate);
-    updatePrcDateBounds(p.createdAt);
-    updatePrcDateBounds(p.allocationDate);
-    updatePrcDateBounds(p.allocatedDate);
-    updatePrcDateBounds(p.poDate);
-    updatePrcDateBounds(p.tcdDate);
+    // Prioritize actual PR Date from PRC header or line materials
+    const prcDateRaw = p.prDate || (p.materials || []).find(m => m.prDate)?.prDate;
+    if (prcDateRaw) {
+      updatePrcDateBounds(prcDateRaw);
+    } else {
+      updatePrcDateBounds(p.createdAt);
+      updatePrcDateBounds(p.allocationDate);
+      updatePrcDateBounds(p.allocatedDate);
+    }
 
     (p.materials || []).forEach(m => {
-      updatePrcDateBounds(m.prDate);
-      updatePrcDateBounds(m.createdAt);
-      updatePrcDateBounds(m.allocationDate);
-      updatePrcDateBounds(m.allocatedDate);
-      updatePrcDateBounds(m.poDate);
-      updatePrcDateBounds(m.tcdDate);
+      if (m.prDate) updatePrcDateBounds(m.prDate);
     });
 
-    const raw = p.createdAt || p.prDate || p.allocationDate || p.updatedAt;
+    const raw = p.prDate || p.createdAt || p.allocationDate || p.updatedAt;
     const dt = parseDateObj(raw);
-    if (!dt) return;
+    if (!dt || dt.getFullYear() < 2000) return;
     const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
     prcMonths[key] = (prcMonths[key] || 0) + 1;
   });
@@ -329,7 +380,7 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
     const tcdNum = String(t.tcdNumber || t.id || '').trim();
     const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
     const dt = parseDateObj(raw);
-    if (!dt || !tcdNum) return;
+    if (!dt || !tcdNum || dt.getFullYear() < 2000) return;
     const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
     const dedupeKey = `${tcdNum}::${key}`;
     if (!countedTcdKeys.has(dedupeKey)) {
@@ -343,7 +394,7 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
     const pRaw = p.tcdDate || p.tcdApprovedDate;
     if (pTcdNum && pRaw) {
       const dt = parseDateObj(pRaw);
-      if (dt) {
+      if (dt && dt.getFullYear() >= 2000) {
         const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
         const dedupeKey = `${pTcdNum}::${key}`;
         if (!countedTcdKeys.has(dedupeKey)) {
@@ -358,7 +409,7 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
       const mRaw = m.tcdDate || m.tcdApprovedDate;
       if (mTcdNum && mRaw) {
         const dt = parseDateObj(mRaw);
-        if (dt) {
+        if (dt && dt.getFullYear() >= 2000) {
           const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
           const dedupeKey = `${mTcdNum}::${key}`;
           if (!countedTcdKeys.has(dedupeKey)) {
@@ -378,7 +429,7 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
   let curYear = startDt.getFullYear();
   let curMonth = startDt.getMonth() + 1; // 1-indexed
 
-  const endYear = endDt.getFullYear();
+  const endYear = Math.max(curYear, endDt.getFullYear());
   const endMonth = endDt.getMonth() + 1;
 
   const continuousMonthKeys = [];
