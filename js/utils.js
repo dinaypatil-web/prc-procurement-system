@@ -281,41 +281,63 @@ export function monthlyDistribution(prcs, dateField = 'createdAt') {
   return Object.entries(months).sort(([a],[b]) => a.localeCompare(b));
 }
 
-/** Compute monthly distribution comparing PRCs created vs TCDs finalized */
+/** Compute monthly distribution comparing PRCs created vs TCDs finalized, starting from the oldest PRC date in records */
 export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
   const prcMonths = {};
   const tcdMonths = {};
-  const allMonths = new Set();
+  let oldestDate = null;
+  let newestDate = null;
 
-  // 1. Tally Monthly PRCs
+  const updateDateBounds = (raw) => {
+    if (!raw) return;
+    const dt = parseDateObj(raw);
+    if (!dt || isNaN(dt.getTime())) return;
+    if (!oldestDate || dt < oldestDate) oldestDate = dt;
+    if (!newestDate || dt > newestDate) newestDate = dt;
+  };
+
+  // 1. Tally Monthly PRCs & find oldest/newest date in PRC & material records
   prcs.forEach(p => {
+    updateDateBounds(p.createdAt);
+    updateDateBounds(p.prDate);
+    updateDateBounds(p.allocationDate);
+    updateDateBounds(p.allocatedDate);
+    updateDateBounds(p.poDate);
+    updateDateBounds(p.tcdDate);
+
+    (p.materials || []).forEach(m => {
+      updateDateBounds(m.createdAt);
+      updateDateBounds(m.prDate);
+      updateDateBounds(m.allocationDate);
+      updateDateBounds(m.allocatedDate);
+      updateDateBounds(m.poDate);
+      updateDateBounds(m.tcdDate);
+    });
+
     const raw = p.createdAt || p.prDate || p.allocationDate || p.updatedAt;
     const dt = parseDateObj(raw);
     if (!dt) return;
     const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
     prcMonths[key] = (prcMonths[key] || 0) + 1;
-    allMonths.add(key);
   });
 
   // 2. Tally Monthly TCDs (from TCDs collection and PRC/material records with tcdNumber & tcdDate)
   const countedTcdKeys = new Set();
 
-  // A. From TCDs collection
   (tcds || []).forEach(t => {
     const tcdNum = String(t.tcdNumber || t.id || '').trim();
     const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
     const dt = parseDateObj(raw);
     if (!dt || !tcdNum) return;
+    updateDateBounds(raw);
     const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
     const dedupeKey = `${tcdNum}::${key}`;
     if (!countedTcdKeys.has(dedupeKey)) {
       countedTcdKeys.add(dedupeKey);
       tcdMonths[key] = (tcdMonths[key] || 0) + 1;
-      allMonths.add(key);
     }
   });
 
-  // B. Also include any TCDs recorded on PRCs/materials not already counted
   prcs.forEach(p => {
     const pTcdNum = String(p.tcdNumber || '').trim();
     const pRaw = p.tcdDate || p.tcdApprovedDate;
@@ -327,7 +349,6 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
         if (!countedTcdKeys.has(dedupeKey)) {
           countedTcdKeys.add(dedupeKey);
           tcdMonths[key] = (tcdMonths[key] || 0) + 1;
-          allMonths.add(key);
         }
       }
     }
@@ -343,17 +364,35 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
           if (!countedTcdKeys.has(dedupeKey)) {
             countedTcdKeys.add(dedupeKey);
             tcdMonths[key] = (tcdMonths[key] || 0) + 1;
-            allMonths.add(key);
           }
         }
       }
     });
   });
 
-  // Sorted chronological month keys
-  const sortedMonthKeys = Array.from(allMonths).sort((a, b) => a.localeCompare(b));
+  // Determine starting month from oldest PRC/material date (up to current/latest month)
+  const now = new Date();
+  const startDt = oldestDate || now;
+  const endDt = (newestDate && newestDate > now) ? newestDate : now;
 
-  return sortedMonthKeys.map(m => {
+  let curYear = startDt.getFullYear();
+  let curMonth = startDt.getMonth() + 1; // 1-indexed
+
+  const endYear = endDt.getFullYear();
+  const endMonth = endDt.getMonth() + 1;
+
+  const continuousMonthKeys = [];
+  while (curYear < endYear || (curYear === endYear && curMonth <= endMonth)) {
+    const key = `${curYear}-${String(curMonth).padStart(2, '0')}`;
+    continuousMonthKeys.push(key);
+    curMonth++;
+    if (curMonth > 12) {
+      curMonth = 1;
+      curYear++;
+    }
+  }
+
+  return continuousMonthKeys.map(m => {
     const [y, mm] = m.split('-');
     const dt = new Date(parseInt(y, 10), parseInt(mm, 10) - 1, 1);
     const label = !isNaN(dt.getTime())
