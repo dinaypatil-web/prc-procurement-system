@@ -281,14 +281,15 @@ export function monthlyDistribution(prcs, dateField = 'createdAt') {
   return Object.entries(months).sort(([a],[b]) => a.localeCompare(b));
 }
 
-/** Compute monthly distribution comparing PRCs created vs TCDs finalized, starting from the oldest PRC date in records */
+/** Compute monthly distribution comparing PRCs created vs TCDs finalized, starting from the oldest PRC date in user records */
 export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
   const prcMonths = {};
   const tcdMonths = {};
   let oldestDate = null;
   let newestDate = null;
 
-  const updateDateBounds = (raw) => {
+  // Track oldest and newest dates strictly from the user's PRC & Material records
+  const updatePrcDateBounds = (raw) => {
     if (!raw) return;
     const dt = parseDateObj(raw);
     if (!dt || isNaN(dt.getTime())) return;
@@ -296,22 +297,22 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
     if (!newestDate || dt > newestDate) newestDate = dt;
   };
 
-  // 1. Tally Monthly PRCs & find oldest/newest date in PRC & material records
+  // 1. Tally Monthly PRCs & determine starting month strictly from the oldest PRC date in user records
   prcs.forEach(p => {
-    updateDateBounds(p.createdAt);
-    updateDateBounds(p.prDate);
-    updateDateBounds(p.allocationDate);
-    updateDateBounds(p.allocatedDate);
-    updateDateBounds(p.poDate);
-    updateDateBounds(p.tcdDate);
+    updatePrcDateBounds(p.prDate);
+    updatePrcDateBounds(p.createdAt);
+    updatePrcDateBounds(p.allocationDate);
+    updatePrcDateBounds(p.allocatedDate);
+    updatePrcDateBounds(p.poDate);
+    updatePrcDateBounds(p.tcdDate);
 
     (p.materials || []).forEach(m => {
-      updateDateBounds(m.createdAt);
-      updateDateBounds(m.prDate);
-      updateDateBounds(m.allocationDate);
-      updateDateBounds(m.allocatedDate);
-      updateDateBounds(m.poDate);
-      updateDateBounds(m.tcdDate);
+      updatePrcDateBounds(m.prDate);
+      updatePrcDateBounds(m.createdAt);
+      updatePrcDateBounds(m.allocationDate);
+      updatePrcDateBounds(m.allocatedDate);
+      updatePrcDateBounds(m.poDate);
+      updatePrcDateBounds(m.tcdDate);
     });
 
     const raw = p.createdAt || p.prDate || p.allocationDate || p.updatedAt;
@@ -329,7 +330,6 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
     const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
     const dt = parseDateObj(raw);
     if (!dt || !tcdNum) return;
-    updateDateBounds(raw);
     const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
     const dedupeKey = `${tcdNum}::${key}`;
     if (!countedTcdKeys.has(dedupeKey)) {
@@ -370,7 +370,7 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
     });
   });
 
-  // Determine starting month from oldest PRC/material date (up to current/latest month)
+  // Determine starting month strictly from user's oldest PRC date (up to current/latest month)
   const now = new Date();
   const startDt = oldestDate || now;
   const endDt = (newestDate && newestDate > now) ? newestDate : now;
