@@ -67,16 +67,52 @@
         <span>Allocations</span>
         <span class="nav-badge" id="nav-alloc-count">0</span>
       </a>
-      <a class="nav-item" data-page="rfqs" href="#rfqs">
-        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v8m0 0l3-3m-3 3L9 8m-5 5h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293h3.172a1 1 0 00.707-.293l2.414-2.414a1 1 0 01.707-.293H20"/></svg>
-        <span>RFQs</span>
-        <span class="nav-badge" id="nav-rfq-count">0</span>
-      </a>
-      <a class="nav-item" data-page="tcds" href="#tcds">
-        <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-        <span>TCDs</span>
-        <span class="nav-badge" id="nav-tcd-count">0</span>
-      </a>
+      <!-- RFQs with status branches -->
+      <div class="nav-group" id="nav-group-rfqs">
+        <a class="nav-item" data-page="rfqs" href="#rfqs" onclick="handleNavWithStatus('rfqs', null, event)">
+          <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v8m0 0l3-3m-3 3L9 8m-5 5h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293h3.172a1 1 0 00.707-.293l2.414-2.414a1 1 0 01.707-.293H20"/></svg>
+          <span>RFQs</span>
+          <span class="nav-badge" id="nav-rfq-count">0</span>
+        </a>
+        <div class="nav-sub-items" id="nav-sub-rfqs">
+          <a class="nav-sub-item" data-page="rfqs" data-status="Active" onclick="handleNavWithStatus('rfqs', 'Active', event)" title="Active RFQs">
+            <span class="status-dot dot-active"></span>
+            <span>Active</span>
+            <span class="nav-sub-badge" id="nav-rfq-active-count">0</span>
+          </a>
+          <a class="nav-sub-item" data-page="rfqs" data-status="Closed" onclick="handleNavWithStatus('rfqs', 'Closed', event)" title="Closed RFQs (TCD Eligible)">
+            <span class="status-dot dot-closed"></span>
+            <span>Closed</span>
+            <span class="nav-sub-badge" id="nav-rfq-closed-count">0</span>
+          </a>
+          <a class="nav-sub-item" data-page="rfqs" data-status="Not Active" onclick="handleNavWithStatus('rfqs', 'Not Active', event)" title="Not Active / Short Closed RFQs">
+            <span class="status-dot dot-notactive"></span>
+            <span>Not Active</span>
+            <span class="nav-sub-badge" id="nav-rfq-notactive-count">0</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- TCDs with status branches -->
+      <div class="nav-group" id="nav-group-tcds">
+        <a class="nav-item" data-page="tcds" href="#tcds" onclick="handleNavWithStatus('tcds', null, event)">
+          <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <span>TCDs</span>
+          <span class="nav-badge" id="nav-tcd-count">0</span>
+        </a>
+        <div class="nav-sub-items" id="nav-sub-tcds">
+          <a class="nav-sub-item" data-page="tcds" data-status="Pending Approval" onclick="handleNavWithStatus('tcds', 'Pending Approval', event)" title="Pending Approval TCDs">
+            <span class="status-dot dot-pending"></span>
+            <span>Pending Approval</span>
+            <span class="nav-sub-badge" id="nav-tcd-pending-count">0</span>
+          </a>
+          <a class="nav-sub-item" data-page="tcds" data-status="Approved" onclick="handleNavWithStatus('tcds', 'Approved', event)" title="Approved TCDs">
+            <span class="status-dot dot-approved"></span>
+            <span>Approved</span>
+            <span class="nav-sub-badge" id="nav-tcd-approved-count">0</span>
+          </a>
+        </div>
+      </div>
       <a class="nav-item" data-page="pods" href="#pods">
         <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
         <span>Purchase Orders</span>
@@ -600,8 +636,44 @@ document.addEventListener('keydown', e => {
 });
 
 // ── NAV CLICK HANDLERS ─────────────────────────────────────
+window.handleNavWithStatus = function(tablePage, status, e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  if (tablePage === 'rfqs') {
+    if (status) {
+      setTableColumnFilter('rfqs', 'status', [status]);
+    } else {
+      clearTableColumnFilter('rfqs', 'status');
+    }
+    navigate('rfqs');
+  } else if (tablePage === 'tcds') {
+    if (status === 'Pending Approval') {
+      setTableColumnFilter('tcds', 'status', ['Pending Approval', 'Pending']);
+    } else if (status === 'Approved') {
+      setTableColumnFilter('tcds', 'status', ['Approved']);
+    } else if (status) {
+      setTableColumnFilter('tcds', 'status', [status]);
+    } else {
+      clearTableColumnFilter('tcds', 'status');
+    }
+    navigate('tcds');
+  } else {
+    navigate(tablePage);
+  }
+
+  updateSidebarBadges();
+  closeMobileSidebar();
+};
+
 document.querySelectorAll('.nav-item[data-page]').forEach(el => {
   el.addEventListener('click', e => {
+    // If it is an RFQ or TCD parent item with inline onclick, allow handleNavWithStatus to manage it
+    if (el.dataset.page === 'rfqs' || el.dataset.page === 'tcds') {
+      return;
+    }
     e.preventDefault();
     if (el.dataset.page === 'dashboard') {
       clearAllFilters();
@@ -9996,12 +10068,56 @@ window.executePOReportCommit = function() {
 // SIDEBAR BADGE UPDATES
 // ═══════════════════════════════════════════════════════════
 function updateSidebarBadges() {
-  const setBadge = (id, count) => { const el = document.getElementById(id); if (el) el.textContent = count || ''; };
-  setBadge('nav-prc-count', getUserPRCs().length);
-  setBadge('nav-alloc-count', getFilteredAllocations().length);
-  setBadge('nav-rfq-count', getFilteredRFQs().length);
-  setBadge('nav-tcd-count', getFilteredTCDs().length);
+  const setBadge = (id, count) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = (count !== undefined && count !== null) ? count : '0';
+  };
+  const state = getState();
+  const allPRCs = getUserPRCs();
+  const allAllocations = getFilteredAllocations();
+
+  // Total and status-filtered RFQs
+  const rfqs = typeof getFilteredRFQs === 'function' ? getFilteredRFQs(state.currentUser, true) : (state.rfqs || []);
+  const rfqActive = rfqs.filter(r => getRFQStatus(r, state.prcs) === 'Active').length;
+  const rfqClosed = rfqs.filter(r => getRFQStatus(r, state.prcs) === 'Closed').length;
+  const rfqNotActive = rfqs.filter(r => getRFQStatus(r, state.prcs) === 'Not Active').length;
+
+  // Total and status-filtered TCDs
+  const tcds = typeof getFilteredTCDs === 'function' ? getFilteredTCDs(state.currentUser, true) : (state.tcds || []);
+  const tcdApproved = tcds.filter(t => t.approved || String(t.status || '').trim().toLowerCase() === 'approved').length;
+  const tcdPending = tcds.filter(t => !t.approved && String(t.status || '').trim().toLowerCase() !== 'approved').length;
+
+  setBadge('nav-prc-count', allPRCs.length);
+  setBadge('nav-alloc-count', allAllocations.length);
+  setBadge('nav-rfq-count', rfqs.length);
+  setBadge('nav-rfq-active-count', rfqActive);
+  setBadge('nav-rfq-closed-count', rfqClosed);
+  setBadge('nav-rfq-notactive-count', rfqNotActive);
+  setBadge('nav-tcd-count', tcds.length);
+  setBadge('nav-tcd-pending-count', tcdPending);
+  setBadge('nav-tcd-approved-count', tcdApproved);
   setBadge('nav-pod-count', getFilteredPODs().length);
+
+  // Sync sub-item active state
+  const rfqFilter = getTableColumnFilters('rfqs')?.status;
+  const tcdFilter = getTableColumnFilters('tcds')?.status;
+
+  document.querySelectorAll('.nav-sub-item[data-page="rfqs"]').forEach(el => {
+    const st = el.dataset.status;
+    const isActive = Array.isArray(rfqFilter) ? rfqFilter.includes(st) : rfqFilter === st;
+    el.classList.toggle('active', !!isActive);
+  });
+
+  document.querySelectorAll('.nav-sub-item[data-page="tcds"]').forEach(el => {
+    const st = el.dataset.status;
+    let isActive = false;
+    if (st === 'Pending Approval') {
+      isActive = Array.isArray(tcdFilter) ? (tcdFilter.includes('Pending Approval') || tcdFilter.includes('Pending')) : (tcdFilter === 'Pending Approval' || tcdFilter === 'Pending');
+    } else if (st === 'Approved') {
+      isActive = Array.isArray(tcdFilter) ? tcdFilter.includes('Approved') : tcdFilter === 'Approved';
+    }
+    el.classList.toggle('active', !!isActive);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════
