@@ -1986,14 +1986,16 @@ window.switchViewLevel = function(level) {
 
 window.togglePRCTreeRow = function(prcId, evt) {
   if (evt) {
+    if (evt.stopPropagation) evt.stopPropagation();
     const target = evt.target;
     if (target && (target.closest('button.btn') || target.closest('select') || target.closest('input') || target.closest('a') || target.closest('.copy-badge'))) {
       return;
     }
   }
+  window._lastInteractedRowId = prcId;
   const isExpandedNow = togglePRCExpanded(prcId);
   const childRow = document.getElementById(`child-row-${prcId}`);
-  const parentRow = childRow ? childRow.previousElementSibling : null;
+  const parentRow = document.getElementById(`prc-row-${prcId}`) || (childRow ? childRow.previousElementSibling : null);
   if (childRow && parentRow) {
     childRow.classList.toggle('hidden', !isExpandedNow);
     parentRow.classList.toggle('is-expanded', isExpandedNow);
@@ -2007,7 +2009,7 @@ window.togglePRCTreeRow = function(prcId, evt) {
     const folderIcon = parentRow.querySelector('.tree-folder-icon');
     if (folderIcon) folderIcon.textContent = isExpandedNow ? '📂' : '📁';
   } else {
-    renderPRCTable();
+    preserveScroll(() => renderPRCTable());
   }
 };
 
@@ -10489,10 +10491,16 @@ on('*', () => {
   if (currentPage && ['dashboard', 'prc-list', 'allocations', 'rfqs', 'tcds', 'pods'].includes(currentPage)) {
     const activeModal = document.querySelector('.modal-overlay.open');
     if (!activeModal) {
-      const p = PAGES[currentPage];
       const content = document.getElementById('page-content');
-      if (p && content && !document.querySelector('input:focus, textarea:focus')) {
-        p.render(content);
+      if (content && !document.querySelector('input:focus, textarea:focus')) {
+        if (currentPage === 'prc-list') {
+          if (document.getElementById('prc-table-body')) {
+            preserveScroll(() => renderPRCTable());
+          }
+        } else {
+          const p = PAGES[currentPage];
+          if (p) preserveScroll(() => p.render(content));
+        }
       }
     }
   }

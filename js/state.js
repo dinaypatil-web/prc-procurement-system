@@ -5005,7 +5005,7 @@ export function togglePRCExpanded(prcId) {
     updated = [...list, prcId];
     isExpandedNow = true;
   }
-  setState({ expandedPRCIds: updated });
+  state.expandedPRCIds = updated;
   return isExpandedNow;
 }
 
@@ -5013,11 +5013,11 @@ export function expandAllPRCs(prcIds) {
   if (!prcIds) {
     prcIds = (state.prcs || []).map(p => p.id);
   }
-  setState({ expandedPRCIds: [...new Set(prcIds)] });
+  state.expandedPRCIds = [...new Set(prcIds)];
 }
 
 export function collapseAllPRCs() {
-  setState({ expandedPRCIds: [] });
+  state.expandedPRCIds = [];
 }
 
 // ═══════════════════════════════════════════════════════════
