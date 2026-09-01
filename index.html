@@ -67,50 +67,52 @@
         <span>Allocations</span>
         <span class="nav-badge" id="nav-alloc-count">0</span>
       </a>
-      <!-- RFQs with status branches -->
-      <div class="nav-group" id="nav-group-rfqs">
-        <a class="nav-item" data-page="rfqs" href="#rfqs" onclick="handleNavWithStatus('rfqs', null, event)">
+      <!-- RFQs TreeView -->
+      <div class="sidebar-tree-group" id="nav-group-rfqs">
+        <div class="sidebar-tree-header nav-item" data-page="rfqs" onclick="handleNavWithStatus('rfqs', null, event)">
+          <span class="sidebar-tree-toggle" onclick="toggleSidebarTree('nav-group-rfqs', event)" title="Expand / Collapse RFQs Status Tree">▾</span>
           <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 4H6a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2m-4-1v8m0 0l3-3m-3 3L9 8m-5 5h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293h3.172a1 1 0 00.707-.293l2.414-2.414a1 1 0 01.707-.293H20"/></svg>
-          <span>RFQs</span>
+          <span style="flex:1">RFQs</span>
           <span class="nav-badge" id="nav-rfq-count">0</span>
-        </a>
-        <div class="nav-sub-items" id="nav-sub-rfqs">
-          <a class="nav-sub-item" data-page="rfqs" data-status="Active" onclick="handleNavWithStatus('rfqs', 'Active', event)" title="Active RFQs">
+        </div>
+        <div class="sidebar-tree-children" id="nav-sub-rfqs">
+          <div class="sidebar-tree-node nav-sub-item" data-page="rfqs" data-status="Active" onclick="handleNavWithStatus('rfqs', 'Active', event)" title="Active RFQs">
             <span class="status-dot dot-active"></span>
             <span>Active</span>
             <span class="nav-sub-badge" id="nav-rfq-active-count">0</span>
-          </a>
-          <a class="nav-sub-item" data-page="rfqs" data-status="Closed" onclick="handleNavWithStatus('rfqs', 'Closed', event)" title="Closed RFQs (TCD Eligible)">
+          </div>
+          <div class="sidebar-tree-node nav-sub-item" data-page="rfqs" data-status="Closed" onclick="handleNavWithStatus('rfqs', 'Closed', event)" title="Closed RFQs (TCD Eligible)">
             <span class="status-dot dot-closed"></span>
             <span>Closed</span>
             <span class="nav-sub-badge" id="nav-rfq-closed-count">0</span>
-          </a>
-          <a class="nav-sub-item" data-page="rfqs" data-status="Not Active" onclick="handleNavWithStatus('rfqs', 'Not Active', event)" title="Not Active / Short Closed RFQs">
+          </div>
+          <div class="sidebar-tree-node nav-sub-item" data-page="rfqs" data-status="Not Active" onclick="handleNavWithStatus('rfqs', 'Not Active', event)" title="Not Active / Short Closed RFQs">
             <span class="status-dot dot-notactive"></span>
             <span>Not Active</span>
             <span class="nav-sub-badge" id="nav-rfq-notactive-count">0</span>
-          </a>
+          </div>
         </div>
       </div>
 
-      <!-- TCDs with status branches -->
-      <div class="nav-group" id="nav-group-tcds">
-        <a class="nav-item" data-page="tcds" href="#tcds" onclick="handleNavWithStatus('tcds', null, event)">
+      <!-- TCDs TreeView -->
+      <div class="sidebar-tree-group" id="nav-group-tcds">
+        <div class="sidebar-tree-header nav-item" data-page="tcds" onclick="handleNavWithStatus('tcds', null, event)">
+          <span class="sidebar-tree-toggle" onclick="toggleSidebarTree('nav-group-tcds', event)" title="Expand / Collapse TCDs Status Tree">▾</span>
           <svg class="nav-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          <span>TCDs</span>
+          <span style="flex:1">TCDs</span>
           <span class="nav-badge" id="nav-tcd-count">0</span>
-        </a>
-        <div class="nav-sub-items" id="nav-sub-tcds">
-          <a class="nav-sub-item" data-page="tcds" data-status="Pending Approval" onclick="handleNavWithStatus('tcds', 'Pending Approval', event)" title="Pending Approval TCDs">
+        </div>
+        <div class="sidebar-tree-children" id="nav-sub-tcds">
+          <div class="sidebar-tree-node nav-sub-item" data-page="tcds" data-status="Pending Approval" onclick="handleNavWithStatus('tcds', 'Pending Approval', event)" title="Pending Approval TCDs">
             <span class="status-dot dot-pending"></span>
             <span>Pending Approval</span>
             <span class="nav-sub-badge" id="nav-tcd-pending-count">0</span>
-          </a>
-          <a class="nav-sub-item" data-page="tcds" data-status="Approved" onclick="handleNavWithStatus('tcds', 'Approved', event)" title="Approved TCDs">
+          </div>
+          <div class="sidebar-tree-node nav-sub-item" data-page="tcds" data-status="Approved" onclick="handleNavWithStatus('tcds', 'Approved', event)" title="Approved TCDs">
             <span class="status-dot dot-approved"></span>
             <span>Approved</span>
             <span class="nav-sub-badge" id="nav-tcd-approved-count">0</span>
-          </a>
+          </div>
         </div>
       </div>
       <a class="nav-item" data-page="pods" href="#pods">
@@ -442,6 +444,9 @@ function navigate(page, context) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.page === activeNavPage);
   });
+  document.querySelectorAll('.sidebar-tree-header').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === activeNavPage);
+  });
 
   // Update topbar
   const p = PAGES[page];
@@ -636,10 +641,27 @@ document.addEventListener('keydown', e => {
 });
 
 // ── NAV CLICK HANDLERS ─────────────────────────────────────
+window.toggleSidebarTree = function(groupId, e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  const group = document.getElementById(groupId);
+  if (group) {
+    group.classList.toggle('is-collapsed');
+  }
+};
+
 window.handleNavWithStatus = function(tablePage, status, e) {
   if (e) {
     e.preventDefault();
     e.stopPropagation();
+  }
+
+  // Ensure branch is expanded when clicked
+  const groupId = tablePage === 'rfqs' ? 'nav-group-rfqs' : (tablePage === 'tcds' ? 'nav-group-tcds' : null);
+  if (groupId) {
+    document.getElementById(groupId)?.classList.remove('is-collapsed');
   }
 
   if (tablePage === 'rfqs') {
