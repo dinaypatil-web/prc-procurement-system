@@ -366,36 +366,36 @@ export function renderExecutive3D(container, prcs, s, helpers = {}) {
     </div>
   </div>
 
-  <!-- ── 3. CHARTS ROW: DUAL AXIS + 3D STATUS + 3D FUNNEL ───── -->
+  <!-- ── 3. CHARTS ROW 1: MONTHLY PRC VS TCD (WITH DAY-LEVEL DRILLDOWN) + 3D FUNNEL ── -->
   <div class="exec3d-charts-row-1">
     
-    <!-- Chart 1: Dual Axis Monthly Intake vs TCD Curve -->
-    <div class="exec3d-card">
-      <div class="exec3d-card-header">
+    <!-- Chart 1: Real Interactive Monthly PRC Vs Monthly TCD with Day-Level Detailing & Scroller -->
+    <div class="exec3d-card chart-card">
+      <div class="exec3d-card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div>
-          <div class="exec3d-card-title">PRC Intake & Finalized TCDs</div>
-          <div class="exec3d-card-subtitle">Smooth dual-axis trend curve with glow fills</div>
+          <div class="exec3d-card-title" id="prc-po-trend-title">Monthly PRC Vs Monthly TCD</div>
+          <div class="exec3d-card-subtitle" id="prc-po-trend-subtitle">PRCs created vs TCDs finalized per month · 💡 Click any month for weekly breakdown (±2 Wks)</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button type="button" id="btn-trend-back-weekly" class="btn btn-secondary btn-xs" style="display:none;padding:3px 9px;font-size:11px;font-weight:600;align-items:center;gap:4px" onclick="returnToWeeklyDrilldown()">
+            <span>←</span> <span>Back to Weekly</span>
+          </button>
+          <button type="button" id="btn-trend-back-monthly" class="btn btn-secondary btn-xs" style="display:none;padding:3px 9px;font-size:11px;font-weight:600;align-items:center;gap:4px" onclick="setDashboardTrendView('monthly')">
+            <span>←</span> <span>Back to Monthly Overview</span>
+          </button>
+          <div class="btn-group" style="display:inline-flex;border:1px solid var(--color-border);border-radius:6px;overflow:hidden;background:var(--color-surface)">
+            <button type="button" id="btn-trend-monthly" class="btn btn-primary btn-xs" style="padding:3px 8px;font-size:11px;font-weight:600" onclick="setDashboardTrendView('monthly')">Monthly</button>
+            <button type="button" id="btn-trend-weekly" class="btn btn-ghost btn-xs" style="padding:3px 8px;font-size:11px;font-weight:600" onclick="setDashboardTrendView('weekly')">Weekly (10 Wks)</button>
+          </div>
         </div>
       </div>
-      <div class="exec3d-chart-canvas-wrap">
-        <canvas id="exec3d-chart-trend"></canvas>
+      <div class="chart-canvas-wrap" style="height:280px">
+        <canvas id="chart-monthly-trend"></canvas>
       </div>
+      <div id="trend-chart-date-scroller" class="trend-date-scroller-wrap"></div>
     </div>
 
-    <!-- Chart 2: 3D Status Doughnut with Perspective Angle -->
-    <div class="exec3d-card">
-      <div class="exec3d-card-header">
-        <div>
-          <div class="exec3d-card-title">Status Distribution (3D)</div>
-          <div class="exec3d-card-subtitle">Faceted depth extrusions and breakdown</div>
-        </div>
-      </div>
-      <div class="exec3d-chart-canvas-wrap">
-        <canvas id="exec3d-chart-status"></canvas>
-      </div>
-    </div>
-
-    <!-- Chart 3: 3D STEPPED RIBBON FUNNEL (COUPLER STYLE) -->
+    <!-- Chart 2: 3D STEPPED RIBBON FUNNEL (COUPLER STYLE) -->
     <div class="exec3d-card exec3d-funnel-card">
       <div class="exec3d-card-header">
         <div>
@@ -409,59 +409,75 @@ export function renderExecutive3D(container, prcs, s, helpers = {}) {
     </div>
   </div>
 
-  <!-- ── 4. ANALYTICAL MATRIX TABLE WITH HEATMAP CELLS ──────── -->
-  <div class="exec3d-matrix-card">
-    <div class="exec3d-card-header">
-      <div>
-        <div class="exec3d-card-title">Procurement Period & Department Matrix</div>
-        <div class="exec3d-card-subtitle">Heatmap-tinted indicators for volume, completion rates & turnaround days</div>
+  <!-- ── 4. CHARTS ROW 2: 3D STATUS DOUGHNUT + ANALYTICAL MATRIX TABLE ── -->
+  <div class="exec3d-charts-row-2">
+    <!-- Chart 3: 3D Status Doughnut with Perspective Angle -->
+    <div class="exec3d-card">
+      <div class="exec3d-card-header">
+        <div>
+          <div class="exec3d-card-title">Status Distribution (3D)</div>
+          <div class="exec3d-card-subtitle">Faceted depth extrusions and breakdown</div>
+        </div>
       </div>
-      <button class="btn btn-secondary btn-xs" onclick="navigate('reports')">Export Excel 📊</button>
+      <div class="exec3d-chart-canvas-wrap">
+        <canvas id="exec3d-chart-status"></canvas>
+      </div>
     </div>
 
-    <div class="exec3d-matrix-table-wrap">
-      <table class="exec3d-table">
-        <thead>
-          <tr>
-            <th>Period / Batch</th>
-            <th>Total PRCs</th>
-            <th>Completed</th>
-            <th>Pending</th>
-            <th>Materials</th>
-            <th>Completion Rate</th>
-            <th>Avg Turnaround</th>
-            <th>Status Health</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${monthlyRows.map(row => `
+    <!-- Matrix Table with Heatmap Cells -->
+    <div class="exec3d-matrix-card" style="margin-top:0">
+      <div class="exec3d-card-header">
+        <div>
+          <div class="exec3d-card-title">Procurement Period & Department Matrix</div>
+          <div class="exec3d-card-subtitle">Heatmap-tinted indicators for volume, completion rates & turnaround days</div>
+        </div>
+        <button class="btn btn-secondary btn-xs" onclick="navigate('reports')">Export Excel 📊</button>
+      </div>
+
+      <div class="exec3d-matrix-table-wrap">
+        <table class="exec3d-table">
+          <thead>
             <tr>
-              <td style="font-weight:600">📁 ${row.period}</td>
-              <td class="exec3d-heat-violet">${row.total}</td>
-              <td class="exec3d-heat-teal">${row.completed}</td>
-              <td class="exec3d-heat-coral">${row.pending}</td>
-              <td>${row.materials}</td>
-              <td class="exec3d-heat-blue">${row.rate}%</td>
-              <td>${row.avgDays} Days</td>
-              <td>
-                <span class="badge ${row.rate >= 70 ? 'badge-success' : row.rate >= 40 ? 'badge-warning' : 'badge-danger'}">
-                  ${row.rate >= 70 ? 'Optimal' : row.rate >= 40 ? 'Moderate' : 'Needs Review'}
-                </span>
-              </td>
+              <th>Period / Batch</th>
+              <th>Total PRCs</th>
+              <th>Completed</th>
+              <th>Pending</th>
+              <th>Materials</th>
+              <th>Completion Rate</th>
+              <th>Avg Turnaround</th>
+              <th>Status Health</th>
             </tr>
-          `).join('')}
-          <tr class="exec3d-table-total-row">
-            <td>Total Portfolio</td>
-            <td class="exec3d-heat-violet">${totalPRCs}</td>
-            <td class="exec3d-heat-teal">${completed}</td>
-            <td class="exec3d-heat-coral">${pending}</td>
-            <td>${totalMats}</td>
-            <td class="exec3d-heat-blue">${totalPRCs ? Math.round((completed / totalPRCs) * 100) : 0}%</td>
-            <td>—</td>
-            <td><span class="badge badge-primary">Active</span></td>
-          </tr>
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            ${monthlyRows.map(row => `
+              <tr>
+                <td style="font-weight:600">📁 ${row.period}</td>
+                <td class="exec3d-heat-violet">${row.total}</td>
+                <td class="exec3d-heat-teal">${row.completed}</td>
+                <td class="exec3d-heat-coral">${row.pending}</td>
+                <td>${row.materials}</td>
+                <td class="exec3d-heat-blue">${row.rate}%</td>
+                <td>${row.avgDays} Days</td>
+                <td>
+                  <span class="badge ${row.rate >= 70 ? 'badge-success' : row.rate >= 40 ? 'badge-warning' : 'badge-danger'}">
+                    ${row.rate >= 70 ? 'Optimal' : row.rate >= 40 ? 'Moderate' : 'Needs Review'}
+                  </span>
+                </td>
+              </tr>
+            `).join('')}
+            <tr class="exec3d-table-total-row">
+              <td>Total Portfolio</td>
+              <td class="exec3d-heat-violet">${totalPRCs}</td>
+              <td class="exec3d-heat-teal">${completed}</td>
+              <td class="exec3d-heat-coral">${pending}</td>
+              <td>${totalMats}</td>
+              <td class="exec3d-heat-blue">${totalPRCs ? Math.round((completed / totalPRCs) * 100) : 0}%</td>
+              <td>—</td>
+              <td><span class="badge badge-primary">Active</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -481,73 +497,9 @@ function initExecutive3DCharts(prcs, s) {
   const grid = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
   const textColor = isDark ? '#94a3b8' : '#475569';
 
-  // 1. Dual-Axis Monthly Trend Curve
-  const trendEl = document.getElementById('exec3d-chart-trend');
-  if (trendEl && window.Chart) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const currentMonthIdx = new Date().getMonth();
-    const labels = months.slice(Math.max(0, currentMonthIdx - 5), currentMonthIdx + 1);
-
-    const prcData = labels.map(() => Math.floor(Math.random() * 40) + 20);
-    const tcdData = labels.map(() => Math.floor(Math.random() * 35) + 15);
-
-    exec3dCharts['trend'] = new Chart(trendEl, {
-      type: 'line',
-      data: {
-        labels: labels,
-        datasets: [
-          {
-            label: 'PRC Intake',
-            data: prcData,
-            borderColor: '#6366f1',
-            backgroundColor: 'rgba(99, 102, 241, 0.12)',
-            borderWidth: 3,
-            fill: true,
-            tension: 0.4,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            pointBackgroundColor: '#6366f1',
-            yAxisID: 'y'
-          },
-          {
-            label: 'TCDs Finalized',
-            data: tcdData,
-            borderColor: '#10b981',
-            backgroundColor: 'rgba(16, 185, 129, 0.08)',
-            borderWidth: 3,
-            fill: true,
-            tension: 0.4,
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            pointBackgroundColor: '#10b981',
-            yAxisID: 'y1'
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { position: 'top', labels: { boxWidth: 10, font: { size: 11, weight: '600' } } }
-        },
-        scales: {
-          x: { grid: { color: grid }, ticks: { color: textColor, font: { size: 11 } } },
-          y: {
-            type: 'linear',
-            position: 'left',
-            grid: { color: grid },
-            ticks: { color: textColor, font: { size: 10 } }
-          },
-          y1: {
-            type: 'linear',
-            position: 'right',
-            grid: { drawOnChartArea: false },
-            ticks: { color: textColor, font: { size: 10 } }
-          }
-        }
-      }
-    });
+  // 1. Render real Monthly PRC Vs Monthly TCD with Day-Level Detailing & Scroller
+  if (typeof window.renderTrendChart === 'function') {
+    window.renderTrendChart(prcs);
   }
 
   // 2. 3D Status Extruded Doughnut

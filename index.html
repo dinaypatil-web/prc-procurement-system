@@ -1387,6 +1387,7 @@ let selectedDrilldownWeekLabel = '';
 let trendWeeklyOffset = 0;
 
 function renderTrendChart(prcs) {
+  window.renderTrendChart = renderTrendChart;
   if (charts['monthly']) {
     try {
       charts['monthly'].destroy();
@@ -1846,6 +1847,7 @@ window.setDashboardTrendView = function(view) {
       : 'PRCs created vs TCDs finalized per month · 💡 Click any month for weekly breakdown (±2 Wks)';
   }
 };
+window.renderTrendChart = renderTrendChart;
 
 // ═══════════════════════════════════════════════════════════
 // PAGE: PRC LIST
