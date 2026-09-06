@@ -1,0 +1,553 @@
+/* ==========================================================================
+   EXECUTIVE 3D THEME (Coupler.io inspired)
+   Procurement Dashboard with 3D Isometric Graphs, Rich Gradients & Heatmaps
+   ========================================================================== */
+
+/* ── CONTAINER & GLOBAL OVERRIDES WHEN ACTIVE ─────────────────── */
+.exec3d-dashboard {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--color-text-primary);
+  padding-bottom: 40px;
+}
+
+/* ── TOP ASYMMETRIC HEADER ───────────────────────────────────── */
+.exec3d-header-wrap {
+  position: relative;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  overflow: hidden;
+}
+
+[data-theme="dark"] .exec3d-header-wrap {
+  background: #111827;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.4);
+}
+
+.exec3d-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.exec3d-logo-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0284c7 0%, #1e40af 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 800;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+}
+
+.exec3d-title-group h1 {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  margin: 0;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.exec3d-title-group .exec3d-subtitle {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+/* Nav Pills (Overview, 3D Funnel, Analytics) */
+.exec3d-nav-pills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-surface-2);
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+}
+
+[data-theme="dark"] .exec3d-nav-pills {
+  background: #1f2937;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.exec3d-nav-pill {
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.exec3d-nav-pill:hover {
+  color: var(--color-text-primary);
+}
+
+.exec3d-nav-pill.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .exec3d-nav-pill.active {
+  background: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+}
+
+/* Action Controls */
+.exec3d-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.exec3d-theme-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.exec3d-theme-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.35);
+}
+
+/* ── DATE RANGE PICKER & SLIDER WIDGET ──────────────────────── */
+.exec3d-date-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+
+[data-theme="dark"] .exec3d-date-card {
+  background: #111827;
+  border-color: rgba(255,255,255,0.08);
+}
+
+.exec3d-date-inputs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.exec3d-date-badge {
+  background: var(--color-surface-2);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.exec3d-slider-track {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  background: var(--color-surface-3);
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+.exec3d-slider-fill {
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  top: 0;
+  bottom: 0;
+  background: #0284c7;
+  border-radius: 4px;
+}
+
+.exec3d-slider-thumb-left,
+.exec3d-slider-thumb-right {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #0284c7;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+}
+
+.exec3d-slider-thumb-left { left: 15%; }
+.exec3d-slider-thumb-right { right: 15%; }
+
+/* ── VIBRANT GRADIENT KPI TILES (COUPLER STYLE) ──────────────── */
+.exec3d-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1380px) {
+  .exec3d-kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .exec3d-kpi-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .exec3d-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.exec3d-kpi-card {
+  position: relative;
+  border-radius: 14px;
+  padding: 16px 18px;
+  color: #ffffff;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 110px;
+}
+
+.exec3d-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+  border-radius: 14px 14px 0 0;
+}
+
+.exec3d-kpi-card:hover {
+  transform: translateY(-4px) scale(1.015);
+  box-shadow: 0 10px 24px -2px rgba(0, 0, 0, 0.22);
+}
+
+/* Specific Distinct Gradient Palettes */
+.exec3d-kpi-card.kpi-purple {
+  background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%);
+}
+.exec3d-kpi-card.kpi-blue {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+}
+.exec3d-kpi-card.kpi-cyan {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+}
+.exec3d-kpi-card.kpi-teal {
+  background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+}
+.exec3d-kpi-card.kpi-coral {
+  background: linear-gradient(135deg, #f43f5e 0%, #be123c 100%);
+}
+.exec3d-kpi-card.kpi-magenta {
+  background: linear-gradient(135deg, #a855f7 0%, #7e22ce 100%);
+}
+
+.exec3d-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.exec3d-kpi-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.9;
+}
+
+.exec3d-kpi-icon {
+  font-size: 16px;
+  opacity: 0.85;
+}
+
+.exec3d-kpi-value {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 6px 0 4px 0;
+  line-height: 1.1;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+}
+
+.exec3d-kpi-delta {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.92;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* ── CHARTS CONTAINER & 3D WRAPPER ───────────────────────────── */
+.exec3d-charts-row-1 {
+  display: grid;
+  grid-template-columns: 1.25fr 1.25fr 1fr;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1200px) {
+  .exec3d-charts-row-1 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .exec3d-funnel-card {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 800px) {
+  .exec3d-charts-row-1 {
+    grid-template-columns: 1fr;
+  }
+  .exec3d-funnel-card {
+    grid-column: span 1;
+  }
+}
+
+.exec3d-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.04);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+[data-theme="dark"] .exec3d-card {
+  background: #111827;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.exec3d-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.exec3d-card-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.exec3d-card-subtitle {
+  font-size: 11.5px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+/* ── 3D STEPPED RIBBON FUNNEL COMPONENT ──────────────────────── */
+.exec3d-funnel-container {
+  position: relative;
+  width: 100%;
+  height: 310px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.exec3d-funnel-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.08));
+}
+
+.exec3d-funnel-ribbon {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.exec3d-funnel-ribbon:hover {
+  filter: brightness(1.1) drop-shadow(0 4px 12px rgba(0, 0, 0, 0.25));
+  transform: scale(1.02);
+  transform-origin: center center;
+}
+
+.exec3d-funnel-pin {
+  stroke-dasharray: 2 2;
+  stroke: var(--color-text-tertiary);
+}
+
+.exec3d-funnel-pin-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  fill: var(--color-text-primary);
+}
+
+.exec3d-funnel-pin-sub {
+  font-size: 10px;
+  font-weight: 500;
+  fill: var(--color-text-secondary);
+}
+
+/* ── 3D DONUT & DUAL AXIS TRENDS ─────────────────────────────── */
+.exec3d-chart-canvas-wrap {
+  position: relative;
+  width: 100%;
+  height: 270px;
+}
+
+/* ── MATRIX TABLE WITH HEATMAP CELLS ─────────────────────────── */
+.exec3d-matrix-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.04);
+  margin-top: 20px;
+  overflow: hidden;
+}
+
+[data-theme="dark"] .exec3d-matrix-card {
+  background: #111827;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.exec3d-matrix-table-wrap {
+  overflow-x: auto;
+  margin-top: 14px;
+}
+
+.exec3d-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.exec3d-table th {
+  padding: 10px 14px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  border-bottom: 2px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.exec3d-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.exec3d-table tr:hover td {
+  background: rgba(59, 130, 246, 0.04);
+}
+
+/* Heatmap Subtle Color Tint Cells */
+.exec3d-heat-violet {
+  background: rgba(99, 102, 241, 0.12);
+  color: #4338ca !important;
+  font-weight: 700;
+  border-radius: 6px;
+}
+[data-theme="dark"] .exec3d-heat-violet {
+  background: rgba(99, 102, 241, 0.25);
+  color: #c7d2fe !important;
+}
+
+.exec3d-heat-blue {
+  background: rgba(2, 132, 199, 0.12);
+  color: #0369a1 !important;
+  font-weight: 700;
+  border-radius: 6px;
+}
+[data-theme="dark"] .exec3d-heat-blue {
+  background: rgba(2, 132, 199, 0.25);
+  color: #bae6fd !important;
+}
+
+.exec3d-heat-teal {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857 !important;
+  font-weight: 700;
+  border-radius: 6px;
+}
+[data-theme="dark"] .exec3d-heat-teal {
+  background: rgba(16, 185, 129, 0.25);
+  color: #a7f3d0 !important;
+}
+
+.exec3d-heat-coral {
+  background: rgba(244, 63, 94, 0.12);
+  color: #be123c !important;
+  font-weight: 700;
+  border-radius: 6px;
+}
+[data-theme="dark"] .exec3d-heat-coral {
+  background: rgba(244, 63, 94, 0.25);
+  color: #fecdd3 !important;
+}
+
+.exec3d-table-total-row {
+  font-weight: 800;
+  background: var(--color-surface-2);
+  border-top: 2px solid var(--color-border);
+}
+
+.exec3d-table-total-row td {
+  border-bottom: none;
+  font-size: 13px;
+}

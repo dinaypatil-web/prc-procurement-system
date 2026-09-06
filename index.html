@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="css/design-system.css"/>
   <link rel="stylesheet" href="css/components.css"/>
   <link rel="stylesheet" href="css/animations.css"/>
+  <link rel="stylesheet" href="css/theme-executive-3d.css"/>
 
   <!-- External Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -397,6 +398,7 @@ import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } fro
 import { getActiveDbProvider, setActiveDbProvider } from './js/db-adapter.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
 import { exportCSV, exportExcel, exportPDF, getAgeingReport, REPORT_COLUMNS } from './js/reports.js';
+import { renderExecutive3D, setDashboardTheme, isExecutive3DTheme } from './js/dashboard-3d.js';
 
 // ── CHARTS REGISTRY ───────────────────────────────────────
 const charts = {};
@@ -610,6 +612,11 @@ window.toggleTheme = function() {
 // Apply saved theme
 document.documentElement.setAttribute('data-theme', localStorage.getItem('theme') || 'light');
 
+// Apply saved dashboard theme preset ('standard' | 'executive-3d')
+document.documentElement.setAttribute('data-dashboard-theme', localStorage.getItem('dashboardTheme') || 'standard');
+window.setDashboardTheme = setDashboardTheme;
+window.isExecutive3DTheme = isExecutive3DTheme;
+
 // ── GLOBAL SEARCH ──────────────────────────────────────────
 const searchInput = document.getElementById('global-search');
 const searchDropdown = document.getElementById('search-dropdown');
@@ -783,6 +790,15 @@ function renderDashboard(container) {
   const state = getState();
   const prcs  = getUserPRCs();
   const s     = buildStatusSummary(prcs);
+
+  // If Executive 3D theme is selected, delegate to 3D renderer
+  if (isExecutive3DTheme()) {
+    Object.values(charts).forEach(c => c?.destroy?.());
+    Object.keys(charts).forEach(k => delete charts[k]);
+    renderExecutive3D(container, prcs, s);
+    return;
+  }
+
   const totalMats = prcs.reduce((sum, p) => sum + (p.materials || []).length, 0);
 
   // Count PRCs allocated today
@@ -926,6 +942,9 @@ function renderDashboard(container) {
     <p class="page-subtitle">Real-time overview of all procurement activities · ${new Date().toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
   </div>
   <div class="flex gap-3">
+    <button class="btn btn-secondary btn-sm" onclick="setDashboardTheme('executive-3d')" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border:none;font-weight:700;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 8px rgba(99,102,241,0.3)" title="Switch to Coupler.io Executive 3D Theme with 3D Funnel">
+      <span>✨ Executive 3D</span>
+    </button>
     <button class="btn btn-secondary btn-sm" onclick="navigate('reports')">
       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
       Export Report
@@ -5565,12 +5584,27 @@ function renderSettings(container) {
 
     <!-- Appearance -->
     <div id="settings-appearance" class="card hidden">
-      <h3 style="font-weight:700;margin-bottom:20px">Appearance</h3>
+      <h3 style="font-weight:700;margin-bottom:20px">Appearance & Dashboard Themes</h3>
       <div class="form-group">
-        <label class="form-label">Theme</label>
+        <label class="form-label" style="font-weight:700">Color Mode</label>
         <div style="display:flex;gap:12px;margin-top:8px">
           ${['dark','light','system'].map(t=>`
             <button class="btn ${state.theme===t?'btn-primary':'btn-secondary'}" onclick="setTheme('${t}')" style="flex:1">${t==='dark'?'🌙 Dark':t==='light'?'☀️ Light':'💻 System'}</button>`).join('')}
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:24px;border-top:1px solid var(--color-border);padding-top:20px">
+        <label class="form-label" style="font-weight:700;font-size:14px">Dashboard Visual Style & 3D Graphs</label>
+        <p style="font-size:12.5px;color:var(--color-text-secondary);margin-bottom:12px">Select your preferred analytics dashboard design. Both themes seamlessly support light and dark modes.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <button type="button" class="btn ${(localStorage.getItem('dashboardTheme')||'standard')==='standard'?'btn-primary':'btn-secondary'}" onclick="setDashboardTheme('standard');preserveScroll(()=>{renderSettings(document.getElementById('page-content'));showSettingsTab('appearance');});toast('Dashboard theme set to Standard Classic','success');" style="padding:14px;text-align:left;display:flex;flex-direction:column;gap:6px;border-radius:12px">
+            <span style="font-weight:800;font-size:14px">📊 Standard Classic</span>
+            <span style="font-size:11.5px;opacity:0.85;line-height:1.4">Traditional enterprise procurement KPI metrics, doughnut status chart & horizontal workflow bars.</span>
+          </button>
+          <button type="button" class="btn ${localStorage.getItem('dashboardTheme')==='executive-3d'?'btn-primary':'btn-secondary'}" onclick="setDashboardTheme('executive-3d');preserveScroll(()=>{renderSettings(document.getElementById('page-content'));showSettingsTab('appearance');});toast('Dashboard theme set to Executive 3D','success');" style="padding:14px;text-align:left;display:flex;flex-direction:column;gap:6px;border-radius:12px">
+            <span style="font-weight:800;font-size:14px">✨ Executive 3D (Coupler.io Theme)</span>
+            <span style="font-size:11.5px;opacity:0.85;line-height:1.4">3D Stepped Ribbon Funnel with isometric folds, vibrant gradient KPI cards & period matrix table with heatmap cells.</span>
+          </button>
         </div>
       </div>
     </div>
