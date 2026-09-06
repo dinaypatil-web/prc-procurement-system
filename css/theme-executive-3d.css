@@ -398,7 +398,8 @@
 .exec3d-funnel-container {
   position: relative;
   width: 100%;
-  height: 310px;
+  height: 375px;
+  min-height: 375px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -411,32 +412,19 @@
   filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.08));
 }
 
+.exec3d-funnel-svg text {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  user-select: none;
+}
+
 .exec3d-funnel-ribbon {
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
 }
 
 .exec3d-funnel-ribbon:hover {
-  filter: brightness(1.1) drop-shadow(0 4px 12px rgba(0, 0, 0, 0.25));
-  transform: scale(1.02);
-  transform-origin: center center;
-}
-
-.exec3d-funnel-pin {
-  stroke-dasharray: 2 2;
-  stroke: var(--color-text-tertiary);
-}
-
-.exec3d-funnel-pin-label {
-  font-size: 11.5px;
-  font-weight: 700;
-  fill: var(--color-text-primary);
-}
-
-.exec3d-funnel-pin-sub {
-  font-size: 10px;
-  font-weight: 500;
-  fill: var(--color-text-secondary);
+  filter: brightness(1.12) drop-shadow(0 6px 16px rgba(0, 0, 0, 0.3));
+  transform: translateY(-2px);
 }
 
 /* ── 3D DONUT & DUAL AXIS TRENDS ─────────────────────────────── */
