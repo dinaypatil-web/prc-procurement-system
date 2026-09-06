@@ -540,3 +540,69 @@
   border-bottom: none;
   font-size: 13px;
 }
+
+/* Clickable matrix rows and hover effects */
+.exec3d-row-clickable {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.exec3d-row-clickable:hover td {
+  background: rgba(99, 102, 241, 0.08) !important;
+}
+
+/* Current App User highlighted row */
+.exec3d-row-current-user td {
+  background: rgba(99, 102, 241, 0.04);
+  font-weight: 600;
+}
+
+.exec3d-row-current-user td:first-child {
+  border-left: 3px solid #6366f1;
+}
+
+.exec3d-view-data-btn {
+  opacity: 0.88;
+  transition: all 0.15s ease;
+}
+
+.exec3d-row-clickable:hover .exec3d-view-data-btn {
+  opacity: 1;
+  background: #6366f1 !important;
+  color: #ffffff !important;
+  border-color: #6366f1 !important;
+}
+
+/* Dossier Modal KPI Grid & Cards */
+.exec3d-modal-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  padding: 16px 20px;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.exec3d-modal-kpi-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.exec3d-modal-kpi-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.exec3d-modal-kpi-val {
+  font-size: 18px;
+  font-weight: 800;
+}
+

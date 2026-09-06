@@ -4,6 +4,8 @@
 // ==========================================================================
 
 import { getProcurementFunnelBreakdown } from './status-engine.js';
+import { getState, isSuperAdmin, doesRecordPertainToCurrentUser, setTableColumnFilter, clearAllTableColumnFilters } from './state.js';
+import { toast } from './utils.js';
 
 // Chart instances registry for Executive 3D theme
 export const exec3dCharts = {};
@@ -17,8 +19,62 @@ export function cleanupExecutive3DCharts() {
 
 // Current matrix grouping mode ('buyer' | 'department')
 let currentMatrixGrouping = 'buyer';
+// Current matrix scope ('all' | 'currentUser')
+let currentMatrixScope = 'all';
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeJsString(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/"/g, '&quot;')
+    .replace(/\n/g, ' ');
+}
+
+function isCurrentUserMatch(name, user) {
+  if (!name || !user) return false;
+  const n = String(name).trim().toLowerCase();
+  const uName = (user.name || '').trim().toLowerCase();
+  const uEmail = (user.email || '').trim().toLowerCase();
+  const uId = String(user.id || user.uid || '').trim().toLowerCase();
+
+  if (n === uName || n === uEmail || n === uId) return true;
+  if (uName && (n.includes(uName) || uName.includes(n))) return true;
+  if (uEmail && n.includes(uEmail)) return true;
+  return false;
+}
 
 if (typeof window !== 'undefined') {
+  window.switchMatrixScope = function(scope) {
+    currentMatrixScope = scope;
+    const btnAll = document.getElementById('exec3d-scope-all');
+    const btnUser = document.getElementById('exec3d-scope-user');
+    if (btnAll && btnUser) {
+      if (scope === 'all') {
+        btnAll.className = 'btn btn-primary btn-xs';
+        btnUser.className = 'btn btn-secondary btn-xs';
+      } else {
+        btnAll.className = 'btn btn-secondary btn-xs';
+        btnUser.className = 'btn btn-primary btn-xs';
+      }
+    }
+    const tbody = document.getElementById('exec3d-matrix-tbody');
+    if (tbody && window.latestPRCsFor3D) {
+      const rows = getLiveProcurementMatrix(window.latestPRCsFor3D, currentMatrixGrouping, currentMatrixScope);
+      tbody.innerHTML = renderMatrixRowsHTML(rows, window.latestPRCsFor3D, currentMatrixGrouping, currentMatrixScope);
+    }
+  };
+
   window.switchMatrixGrouping = function(mode) {
     currentMatrixGrouping = mode;
     const btnBuyer = document.getElementById('exec3d-btn-by-buyer');
@@ -34,8 +90,8 @@ if (typeof window !== 'undefined') {
     }
     const tbody = document.getElementById('exec3d-matrix-tbody');
     if (tbody && window.latestPRCsFor3D) {
-      const rows = getLiveProcurementMatrix(window.latestPRCsFor3D, mode);
-      tbody.innerHTML = renderMatrixRowsHTML(rows, window.latestPRCsFor3D);
+      const rows = getLiveProcurementMatrix(window.latestPRCsFor3D, mode, currentMatrixScope);
+      tbody.innerHTML = renderMatrixRowsHTML(rows, window.latestPRCsFor3D, mode, currentMatrixScope);
     }
   };
 }
@@ -186,9 +242,16 @@ export function generate3DFunnelSVG(stages, totalPRCs) {
 /**
  * Compute real live Buyer or Department workload matrix from actual PRCs in memory
  */
-export function getLiveProcurementMatrix(prcs = [], groupByField = 'buyer') {
+export function getLiveProcurementMatrix(prcs = [], groupByField = 'buyer', scope = 'all') {
+  const currentUser = getState()?.currentUser;
+  let dataset = prcs;
+
+  if (scope === 'currentUser' && currentUser) {
+    dataset = prcs.filter(p => doesRecordPertainToCurrentUser(p, currentUser));
+  }
+
   const map = {};
-  prcs.forEach(p => {
+  dataset.forEach(p => {
     let key = 'Unassigned';
     if (groupByField === 'buyer') {
       key = p.buyer || p.allocatedBuyer || p.buyerName || 'Unassigned';
@@ -229,17 +292,57 @@ export function getLiveProcurementMatrix(prcs = [], groupByField = 'buyer') {
 /**
  * Render matrix tbody rows HTML
  */
-function renderMatrixRowsHTML(rows, prcs = []) {
-  const totalPRCs = prcs.length;
-  const completed = prcs.filter(p => p.status === 'Process Completed').length;
-  const pending = prcs.filter(p => p.status !== 'Process Completed' && p.status !== 'Awaiting Offer').length;
-  const awaiting = prcs.filter(p => p.status === 'Awaiting Offer').length;
-  const totalMats = prcs.reduce((sum, p) => sum + (p.materials || []).length, 0);
+export function renderMatrixRowsHTML(rows, prcs = [], groupByField = 'buyer', scope = 'all') {
+  const currentUser = getState()?.currentUser;
+  let relevantPRCs = prcs;
+  if (scope === 'currentUser' && currentUser) {
+    relevantPRCs = prcs.filter(p => doesRecordPertainToCurrentUser(p, currentUser));
+  }
 
-  const rowsHtml = rows.map(r => `
-    <tr>
+  const totalPRCs = relevantPRCs.length;
+  const completed = relevantPRCs.filter(p => p.status === 'Process Completed').length;
+  const pending = relevantPRCs.filter(p => p.status !== 'Process Completed' && p.status !== 'Awaiting Offer').length;
+  const awaiting = relevantPRCs.filter(p => p.status === 'Awaiting Offer').length;
+  const totalMats = relevantPRCs.reduce((sum, p) => sum + (p.materials || []).length, 0);
+
+  if (!rows || rows.length === 0) {
+    return `
+      <tr>
+        <td colspan="9" style="text-align:center;padding:36px 16px;color:var(--color-text-secondary)">
+          <div style="font-size:26px;margin-bottom:8px">👤</div>
+          <div style="font-weight:700;font-size:13px;color:var(--color-text-primary)">
+            No records found for ${escapeHtml(currentUser?.name || 'Current User')}
+          </div>
+          <div style="font-size:12px;margin-top:4px">
+            Switch to "👥 All Buyers" or allocate incoming PRCs to populate this view.
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  const rowsHtml = rows.map(r => {
+    const isUser = isCurrentUserMatch(r.name, currentUser);
+    const safeName = escapeHtml(r.name);
+    const escapedArg = escapeJsString(r.name);
+    const isUnassigned = r.name === 'Unassigned';
+
+    let displayLabel = safeName;
+    if (groupByField === 'buyer') {
+      displayLabel = isUnassigned ? '⏳ Unassigned Buyer' : `👤 ${safeName}`;
+    } else {
+      displayLabel = `🏢 ${safeName}`;
+    }
+
+    return `
+    <tr class="exec3d-row-clickable ${isUser ? 'exec3d-row-current-user' : ''}" 
+        onclick="window.openMatrixEntityModal('${escapedArg}', '${groupByField}')"
+        title="Click to pop up complete workload data & PRCs for ${safeName}">
       <td style="font-weight:700">
-        ${r.name === 'Unassigned' ? '⏳ Unassigned Buyer' : `👤 ${r.name}`}
+        <div style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span>${displayLabel}</span>
+          ${isUser ? '<span class="badge badge-primary" style="font-size:9.5px;padding:2px 7px;font-weight:700;border-radius:10px" title="Active App User">⭐ You</span>' : ''}
+        </div>
       </td>
       <td class="exec3d-heat-violet">${r.total.toLocaleString()}</td>
       <td class="exec3d-heat-teal">${r.completed.toLocaleString()}</td>
@@ -252,12 +355,22 @@ function renderMatrixRowsHTML(rows, prcs = []) {
           ${r.rate >= 70 ? 'Optimal' : r.rate >= 40 ? 'Active' : 'Attention'}
         </span>
       </td>
+      <td style="text-align:right" onclick="event.stopPropagation()">
+        <button class="btn btn-secondary btn-xs exec3d-view-data-btn" 
+                onclick="window.openMatrixEntityModal('${escapedArg}', '${groupByField}')"
+                title="Pop up complete data for ${safeName}"
+                style="padding:3px 9px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px">
+          <span>👁️ Pop-up Data</span>
+        </button>
+      </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
+  const footerLabel = scope === 'currentUser' ? 'App User Portfolio' : 'Total Portfolio';
   const footerHtml = `
     <tr class="exec3d-table-total-row">
-      <td>Total Portfolio</td>
+      <td>${footerLabel}</td>
       <td class="exec3d-heat-violet">${totalPRCs.toLocaleString()}</td>
       <td class="exec3d-heat-teal">${completed.toLocaleString()}</td>
       <td class="exec3d-heat-coral">${pending.toLocaleString()}</td>
@@ -265,6 +378,7 @@ function renderMatrixRowsHTML(rows, prcs = []) {
       <td>${totalMats.toLocaleString()}</td>
       <td class="exec3d-heat-blue">${totalPRCs ? Math.round((completed / totalPRCs) * 100) : 0}%</td>
       <td><span class="badge badge-primary">Active</span></td>
+      <td></td>
     </tr>
   `;
 
@@ -291,7 +405,7 @@ export function renderExecutive3D(container, prcs, s, helpers = {}) {
   const funnelStages = getProcurementFunnelBreakdown(prcs);
 
   // Live Matrix Table
-  const matrixRows = getLiveProcurementMatrix(prcs, currentMatrixGrouping);
+  const matrixRows = getLiveProcurementMatrix(prcs, currentMatrixGrouping, currentMatrixScope);
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -472,9 +586,15 @@ export function renderExecutive3D(container, prcs, s, helpers = {}) {
       <div class="exec3d-card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div>
           <div class="exec3d-card-title">Buyer & Department Workload Matrix</div>
-          <div class="exec3d-card-subtitle">Live procurement distribution, completion rates & pending items</div>
+          <div class="exec3d-card-subtitle">Live procurement distribution, completion rates & pending items · Click any buyer to pop up details</div>
         </div>
-        <div style="display:flex;align-items:center;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <!-- Scope Toggle: All vs App User Only -->
+          <div class="btn-group" style="display:inline-flex;border:1px solid var(--color-border);border-radius:6px;overflow:hidden">
+            <button id="exec3d-scope-all" class="btn ${currentMatrixScope==='all'?'btn-primary':'btn-secondary'} btn-xs" style="padding:4px 10px;font-size:11px;font-weight:600" onclick="switchMatrixScope('all')">👥 All Buyers</button>
+            <button id="exec3d-scope-user" class="btn ${currentMatrixScope==='currentUser'?'btn-primary':'btn-secondary'} btn-xs" style="padding:4px 10px;font-size:11px;font-weight:600" onclick="switchMatrixScope('currentUser')">👤 App User Only</button>
+          </div>
+          <!-- Grouping Toggle: By Buyer vs By Department -->
           <div class="btn-group" style="display:inline-flex;border:1px solid var(--color-border);border-radius:6px;overflow:hidden">
             <button id="exec3d-btn-by-buyer" class="btn ${currentMatrixGrouping==='buyer'?'btn-primary':'btn-secondary'} btn-xs" style="padding:4px 10px;font-size:11px;font-weight:600" onclick="switchMatrixGrouping('buyer')">👥 By Buyer</button>
             <button id="exec3d-btn-by-dept" class="btn ${currentMatrixGrouping==='department'?'btn-primary':'btn-secondary'} btn-xs" style="padding:4px 10px;font-size:11px;font-weight:600" onclick="switchMatrixGrouping('department')">🏢 By Department</button>
@@ -495,10 +615,11 @@ export function renderExecutive3D(container, prcs, s, helpers = {}) {
               <th>Materials</th>
               <th>Completion Rate</th>
               <th>Status</th>
+              <th style="text-align:right">Action</th>
             </tr>
           </thead>
           <tbody id="exec3d-matrix-tbody">
-            ${renderMatrixRowsHTML(matrixRows, prcs)}
+            ${renderMatrixRowsHTML(matrixRows, prcs, currentMatrixGrouping, currentMatrixScope)}
           </tbody>
         </table>
       </div>
@@ -576,4 +697,318 @@ function initExecutive3DCharts(prcs, s) {
       }
     });
   }
+}
+
+/**
+ * ==========================================================================
+ * BUYER & DEPARTMENT WORKLOAD DOSSIER POP-UP MODAL
+ * ==========================================================================
+ * Pops up full detailed data for any clicked Buyer (or Department)
+ */
+export function openMatrixEntityModal(entityName, type = 'buyer') {
+  const modalId = 'exec3d-entity-modal';
+  const existing = document.getElementById(modalId);
+  if (existing) existing.remove();
+
+  const state = getState();
+  const allPRCs = window.latestPRCsFor3D || state.prcs || [];
+  const currentUser = state.currentUser;
+  const isAppUser = isCurrentUserMatch(entityName, currentUser);
+
+  // Filter PRCs belonging to this entity
+  let entityPRCs = [];
+  if (type === 'buyer') {
+    if (entityName === 'Unassigned') {
+      entityPRCs = allPRCs.filter(p => !p.buyer && !p.allocatedBuyer && !p.buyerName);
+    } else {
+      entityPRCs = allPRCs.filter(p => {
+        const b = String(p.buyer || p.allocatedBuyer || p.buyerName || '').trim().toLowerCase();
+        if (b === entityName.trim().toLowerCase()) return true;
+        if (isAppUser && doesRecordPertainToCurrentUser(p, currentUser)) return true;
+        return false;
+      });
+    }
+  } else {
+    entityPRCs = allPRCs.filter(p => {
+      const d = String(p.department || 'General Procurement').trim().toLowerCase();
+      return d === entityName.trim().toLowerCase();
+    });
+  }
+
+  // Profile metadata
+  const matchingUser = (state.users || []).find(u => isCurrentUserMatch(entityName, u)) || (isAppUser ? currentUser : null);
+  const userRole = matchingUser?.role || (type === 'buyer' ? 'Procurement Buyer' : 'Department Portfolio');
+  const userEmail = matchingUser?.email || '';
+  const userDept = matchingUser?.department || (type === 'department' ? entityName : 'Procurement');
+  const avatarLetter = (matchingUser?.name || entityName || 'U').charAt(0).toUpperCase();
+
+  // Metrics
+  const total = entityPRCs.length;
+  const completed = entityPRCs.filter(p => p.status === 'Process Completed').length;
+  const pending = entityPRCs.filter(p => p.status === 'Pending' || p.status === 'Authorised').length;
+  const awaiting = entityPRCs.filter(p => p.status === 'Awaiting Offer').length;
+  const inputsReq = entityPRCs.filter(p => p.status === 'Inputs Required').length;
+  const materialsCount = entityPRCs.reduce((sum, p) => sum + (p.materials || []).length, 0);
+  const rate = total ? Math.round((completed / total) * 100) : 0;
+
+  const modalEl = document.createElement('div');
+  modalEl.id = modalId;
+  modalEl.className = 'modal-overlay open';
+  modalEl.style.zIndex = '99999';
+
+  let activeStatusFilter = 'all';
+  let activeSearchTerm = '';
+
+  function getFilteredList() {
+    let list = entityPRCs;
+    if (activeStatusFilter !== 'all') {
+      if (activeStatusFilter === 'Completed') list = list.filter(p => p.status === 'Process Completed');
+      else if (activeStatusFilter === 'Pending') list = list.filter(p => p.status === 'Pending' || p.status === 'Authorised');
+      else if (activeStatusFilter === 'Awaiting') list = list.filter(p => p.status === 'Awaiting Offer');
+      else if (activeStatusFilter === 'Inputs') list = list.filter(p => p.status === 'Inputs Required');
+    }
+    if (activeSearchTerm) {
+      const q = activeSearchTerm.toLowerCase();
+      list = list.filter(p => 
+        (p.prNumber && p.prNumber.toLowerCase().includes(q)) ||
+        (p.description && p.description.toLowerCase().includes(q)) ||
+        (p.department && p.department.toLowerCase().includes(q)) ||
+        (p.materials && p.materials.some(m => (m.matCode && m.matCode.toLowerCase().includes(q)) || (m.description && m.description.toLowerCase().includes(q))))
+      );
+    }
+    return list;
+  }
+
+  function renderTableRowsHTML(list) {
+    if (!list.length) {
+      return `
+        <tr>
+          <td colspan="7" style="text-align:center;padding:32px;color:var(--color-text-secondary)">
+            <div style="font-size:24px;margin-bottom:6px">🔍</div>
+            <div style="font-weight:700">No PRCs match the search or status filter</div>
+          </td>
+        </tr>
+      `;
+    }
+
+    return list.map(p => {
+      const mats = p.materials || [];
+      const isDone = p.status === 'Process Completed';
+      const isAwaiting = p.status === 'Awaiting Offer';
+      const isInputs = p.status === 'Inputs Required';
+
+      const badgeClass = isDone ? 'badge-success' : isInputs ? 'badge-danger' : isAwaiting ? 'badge-info' : 'badge-warning';
+      const dateDisplay = p.prDate || p.createdAt || '—';
+      const safeDesc = escapeHtml(p.description || p.itemDescription || (mats[0]?.description) || 'General Material Procurement');
+
+      return `
+        <tr style="cursor:pointer" onclick="document.getElementById('${modalId}').remove();if(typeof openPRCDetail==='function')openPRCDetail('${p.id}');">
+          <td style="font-weight:700;color:var(--color-primary);white-space:nowrap">
+            <span style="display:inline-flex;align-items:center;gap:4px">
+              📄 ${escapeHtml(p.prNumber || p.id)}
+            </span>
+          </td>
+          <td style="white-space:nowrap;font-size:12px;color:var(--color-text-secondary)">${escapeHtml(dateDisplay)}</td>
+          <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${safeDesc}">
+            ${safeDesc}
+          </td>
+          <td style="white-space:nowrap;font-size:12px">${escapeHtml(p.department || 'Procurement')}</td>
+          <td style="white-space:nowrap">
+            <span class="badge badge-secondary" style="font-size:11px">${mats.length} Items</span>
+          </td>
+          <td style="white-space:nowrap">
+            <span class="badge ${badgeClass}" style="font-size:11px">${escapeHtml(p.status || 'Draft')}</span>
+          </td>
+          <td style="text-align:right;white-space:nowrap" onclick="event.stopPropagation()">
+            <button class="btn btn-ghost btn-xs" onclick="document.getElementById('${modalId}').remove();if(typeof openPRCDetail==='function')openPRCDetail('${p.id}');" title="Open complete PRC details" style="padding:2px 8px;font-size:11px;font-weight:600">
+              👁️ View PRC
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function updateModalBody() {
+    const list = getFilteredList();
+    const countEl = document.getElementById('exec3d-modal-filtered-count');
+    if (countEl) countEl.textContent = `${list.length} of ${total} PRCs`;
+    const tbody = document.getElementById('exec3d-modal-tbody');
+    if (tbody) tbody.innerHTML = renderTableRowsHTML(list);
+  }
+
+  window._exec3dModalSetFilter = function(filter) {
+    activeStatusFilter = filter;
+    document.querySelectorAll('.exec3d-modal-filter-btn').forEach(b => {
+      if (b.getAttribute('data-filter') === filter) {
+        b.className = 'btn btn-primary btn-xs exec3d-modal-filter-btn';
+      } else {
+        b.className = 'btn btn-secondary btn-xs exec3d-modal-filter-btn';
+      }
+    });
+    updateModalBody();
+  };
+
+  window._exec3dModalSearch = function(val) {
+    activeSearchTerm = val.trim();
+    updateModalBody();
+  };
+
+  window._exec3dOpenInPRCList = function() {
+    document.getElementById(modalId).remove();
+    clearAllTableColumnFilters('prc');
+    if (type === 'buyer') {
+      setTableColumnFilter('prc', 'buyerName', [entityName]);
+    } else {
+      setTableColumnFilter('prc', 'department', [entityName]);
+    }
+    if (typeof window.navigate === 'function') {
+      window.navigate('prc-list');
+    }
+    if (typeof toast === 'function') {
+      toast(`Filtered PRC Records by ${type === 'buyer' ? 'Buyer' : 'Department'}: ${entityName}`, 'info');
+    }
+  };
+
+  window._exec3dExportEntityCSV = function() {
+    if (!entityPRCs.length) {
+      if (typeof toast === 'function') toast('No PRCs to export', 'warning');
+      return;
+    }
+    const headers = ['PR Number', 'Date', 'Description', 'Department', 'Buyer', 'Status', 'Materials Count'];
+    const rows = entityPRCs.map(p => [
+      p.prNumber || p.id || '',
+      p.prDate || p.createdAt || '',
+      `"${String(p.description || '').replace(/"/g, '""')}"`,
+      `"${String(p.department || '').replace(/"/g, '""')}"`,
+      `"${String(p.buyer || p.allocatedBuyer || p.buyerName || '').replace(/"/g, '""')}"`,
+      p.status || '',
+      (p.materials || []).length
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `${type}_${entityName.replace(/\s+/g, '_')}_PRCs.csv`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    if (typeof toast === 'function') toast(`Exported ${entityPRCs.length} PRCs to CSV`, 'success');
+  };
+
+  modalEl.innerHTML = `
+    <div class="modal modal-lg fade-in-up" style="max-width:960px;max-height:92vh;display:flex;flex-direction:column;border-radius:14px;box-shadow:0 25px 60px -12px rgba(0,0,0,0.5);border:1px solid var(--color-border);background:var(--color-surface);overflow:hidden">
+      
+      <!-- Modal Header -->
+      <div class="modal-header" style="flex-shrink:0;padding:18px 24px;border-bottom:1px solid var(--color-border);background:var(--color-surface);display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div style="width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;box-shadow:0 4px 12px rgba(99,102,241,0.3)">
+            ${avatarLetter}
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <h3 class="modal-title" style="margin:0;font-size:17px;font-weight:800">
+                ${type === 'buyer' ? 'Buyer Workload Dossier' : 'Department Workload Dossier'}: ${escapeHtml(entityName)}
+              </h3>
+              ${isAppUser ? '<span class="badge badge-primary" style="font-size:10px;padding:2px 8px;font-weight:700">⭐ You (Logged-in App User)</span>' : ''}
+              <span class="badge badge-secondary" style="font-size:11px">${escapeHtml(userRole)}</span>
+            </div>
+            <p style="font-size:12px;color:var(--color-text-secondary);margin:3px 0 0 0">
+              ${userEmail ? `${escapeHtml(userEmail)} · ` : ''}${escapeHtml(userDept)} · ${total} Total PRCs Assigned · ${materialsCount} Materials
+            </p>
+          </div>
+        </div>
+        <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()" style="font-size:18px;cursor:pointer">✕</button>
+      </div>
+
+      <!-- KPI Summary Cards Strip -->
+      <div class="exec3d-modal-kpi-grid">
+        <div class="exec3d-modal-kpi-card" style="border-left:3px solid #6366f1">
+          <span class="exec3d-modal-kpi-label">Total PRCs</span>
+          <span class="exec3d-modal-kpi-val" style="color:#6366f1">${total.toLocaleString()}</span>
+        </div>
+        <div class="exec3d-modal-kpi-card" style="border-left:3px solid #10b981">
+          <span class="exec3d-modal-kpi-label">Completed (${rate}%)</span>
+          <span class="exec3d-modal-kpi-val" style="color:#10b981">${completed.toLocaleString()}</span>
+        </div>
+        <div class="exec3d-modal-kpi-card" style="border-left:3px solid #0284c7">
+          <span class="exec3d-modal-kpi-label">Pending</span>
+          <span class="exec3d-modal-kpi-val" style="color:#0284c7">${pending.toLocaleString()}</span>
+        </div>
+        <div class="exec3d-modal-kpi-card" style="border-left:3px solid #06b6d4">
+          <span class="exec3d-modal-kpi-label">Awaiting Offer</span>
+          <span class="exec3d-modal-kpi-val" style="color:#06b6d4">${awaiting.toLocaleString()}</span>
+        </div>
+        <div class="exec3d-modal-kpi-card" style="border-left:3px solid #f43f5e">
+          <span class="exec3d-modal-kpi-label">Inputs Required</span>
+          <span class="exec3d-modal-kpi-val" style="color:#f43f5e">${inputsReq.toLocaleString()}</span>
+        </div>
+        <div class="exec3d-modal-kpi-card" style="border-left:3px solid #8b5cf6">
+          <span class="exec3d-modal-kpi-label">Materials</span>
+          <span class="exec3d-modal-kpi-val" style="color:#8b5cf6">${materialsCount.toLocaleString()}</span>
+        </div>
+      </div>
+
+      <!-- Filter and Search Bar -->
+      <div style="padding:12px 20px;background:var(--color-surface);border-bottom:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-primary btn-xs exec3d-modal-filter-btn" data-filter="all" onclick="window._exec3dModalSetFilter('all')">All (${total})</button>
+          <button class="btn btn-secondary btn-xs exec3d-modal-filter-btn" data-filter="Completed" onclick="window._exec3dModalSetFilter('Completed')">Completed (${completed})</button>
+          <button class="btn btn-secondary btn-xs exec3d-modal-filter-btn" data-filter="Pending" onclick="window._exec3dModalSetFilter('Pending')">Pending (${pending})</button>
+          <button class="btn btn-secondary btn-xs exec3d-modal-filter-btn" data-filter="Awaiting" onclick="window._exec3dModalSetFilter('Awaiting')">Awaiting (${awaiting})</button>
+          <button class="btn btn-secondary btn-xs exec3d-modal-filter-btn" data-filter="Inputs" onclick="window._exec3dModalSetFilter('Inputs')">Inputs Req (${inputsReq})</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="text" placeholder="Search PR #, desc, mat..." oninput="window._exec3dModalSearch(this.value)" 
+                 style="font-size:12px;padding:5px 10px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-bg);width:190px" />
+          <span id="exec3d-modal-filtered-count" style="font-size:11.5px;color:var(--color-text-secondary);white-space:nowrap">${total} PRCs</span>
+        </div>
+      </div>
+
+      <!-- PRC List Table -->
+      <div style="flex:1;overflow-y:auto;padding:0;max-height:480px">
+        <table class="exec3d-table" style="margin:0;width:100%">
+          <thead style="position:sticky;top:0;background:var(--color-surface);z-index:2;box-shadow:0 1px 0 var(--color-border)">
+            <tr>
+              <th>PR Number</th>
+              <th>Date</th>
+              <th>Description / Scope</th>
+              <th>Department</th>
+              <th>Materials</th>
+              <th>Status</th>
+              <th style="text-align:right">Action</th>
+            </tr>
+          </thead>
+          <tbody id="exec3d-modal-tbody">
+            ${renderTableRowsHTML(entityPRCs)}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="modal-footer" style="padding:14px 20px;border-top:1px solid var(--color-border);background:var(--color-bg-secondary);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="window._exec3dExportEntityCSV()" style="font-size:12px;display:inline-flex;align-items:center;gap:5px">
+            <span>📥 Export CSV</span>
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="window._exec3dOpenInPRCList()" style="font-size:12px;display:inline-flex;align-items:center;gap:5px;background:linear-gradient(135deg,#6366f1,#4f46e5);border:none">
+            <span>📋 Open in PRC Records Table →</span>
+          </button>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('${modalId}').remove()" style="font-size:12px">
+          ✕ Close
+        </button>
+      </div>
+
+    </div>
+  `;
+
+  document.body.appendChild(modalEl);
+}
+
+if (typeof window !== 'undefined') {
+  window.openMatrixEntityModal = openMatrixEntityModal;
+  window.openBuyerDetailsModal = function(buyerName) {
+    openMatrixEntityModal(buyerName, 'buyer');
+  };
 }
