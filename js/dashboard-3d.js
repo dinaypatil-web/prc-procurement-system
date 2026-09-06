@@ -3,32 +3,17 @@
 // PRC Procurement System — 3D Stepped Ribbon Funnel, 3D Charts & Heatmap Matrix
 // ==========================================================================
 
-/**
- * Global helper to switch dashboard theme ('standard' | 'executive-3d')
- */
+// Chart instances registry for Executive 3D theme
+export const exec3dCharts = {};
+
+export function cleanupExecutive3DCharts() {
+  Object.values(exec3dCharts).forEach(c => {
+    try { c?.destroy?.(); } catch (e) { /* ignore */ }
+  });
+  Object.keys(exec3dCharts).forEach(k => delete exec3dCharts[k]);
+}
+
 if (typeof window !== 'undefined') {
-  window.setDashboardTheme = function(theme) {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('dashboardTheme', theme);
-    }
-    const root = document.documentElement;
-    if (root) {
-      root.setAttribute('data-dashboard-theme', theme);
-    }
-    
-    // Re-render dashboard if current page is dashboard
-    if (typeof getState === 'function' && getState().currentPage === 'dashboard') {
-      const pageContent = document.getElementById('page-content');
-      if (pageContent && typeof renderDashboard === 'function') {
-        renderDashboard(pageContent);
-      }
-    }
-  };
-
-  window.isExecutive3DTheme = function() {
-    return typeof localStorage !== 'undefined' && localStorage.getItem('dashboardTheme') === 'executive-3d';
-  };
-
   window.switch3DTab = function(tabName) {
     const buttons = document.querySelectorAll('.exec3d-nav-pill');
     buttons.forEach(b => b.classList.remove('active'));
@@ -42,16 +27,6 @@ if (typeof window !== 'undefined') {
       document.querySelector('.exec3d-header-wrap')?.scrollIntoView({ behavior: 'smooth' });
     }
   };
-}
-
-export function setDashboardTheme(theme) {
-  if (typeof window !== 'undefined' && window.setDashboardTheme) {
-    window.setDashboardTheme(theme);
-  }
-}
-
-export function isExecutive3DTheme() {
-  return typeof localStorage !== 'undefined' && localStorage.getItem('dashboardTheme') === 'executive-3d';
 }
 
 /**
@@ -501,6 +476,7 @@ export function renderExecutive3D(container, prcs, s, helpers = {}) {
  * Initialize Chart.js graphs for the Executive 3D theme
  */
 function initExecutive3DCharts(prcs, s) {
+  cleanupExecutive3DCharts();
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
   const grid = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
   const textColor = isDark ? '#94a3b8' : '#475569';
@@ -515,7 +491,7 @@ function initExecutive3DCharts(prcs, s) {
     const prcData = labels.map(() => Math.floor(Math.random() * 40) + 20);
     const tcdData = labels.map(() => Math.floor(Math.random() * 35) + 15);
 
-    new Chart(trendEl, {
+    exec3dCharts['trend'] = new Chart(trendEl, {
       type: 'line',
       data: {
         labels: labels,
@@ -586,7 +562,7 @@ function initExecutive3DCharts(prcs, s) {
       (s['Wrong PRC'] || 0) + (s['PR Not Approved'] || 0) + (s['Future PRC'] || 0)
     ];
 
-    new Chart(statusEl, {
+    exec3dCharts['status'] = new Chart(statusEl, {
       type: 'doughnut',
       data: {
         labels: statusLabels,

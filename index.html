@@ -398,7 +398,7 @@ import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } fro
 import { getActiveDbProvider, setActiveDbProvider } from './js/db-adapter.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
 import { exportCSV, exportExcel, exportPDF, getAgeingReport, REPORT_COLUMNS } from './js/reports.js';
-import { renderExecutive3D, setDashboardTheme, isExecutive3DTheme } from './js/dashboard-3d.js';
+import { renderExecutive3D, cleanupExecutive3DCharts } from './js/dashboard-3d.js';
 
 // ── CHARTS REGISTRY ───────────────────────────────────────
 const charts = {};
@@ -614,8 +614,36 @@ document.documentElement.setAttribute('data-theme', localStorage.getItem('theme'
 
 // Apply saved dashboard theme preset ('standard' | 'executive-3d')
 document.documentElement.setAttribute('data-dashboard-theme', localStorage.getItem('dashboardTheme') || 'standard');
-window.setDashboardTheme = setDashboardTheme;
-window.isExecutive3DTheme = isExecutive3DTheme;
+
+window.isExecutive3DTheme = function() {
+  return localStorage.getItem('dashboardTheme') === 'executive-3d';
+};
+
+window.setDashboardTheme = function(theme) {
+  const current = localStorage.getItem('dashboardTheme') || 'standard';
+  localStorage.setItem('dashboardTheme', theme);
+  document.documentElement.setAttribute('data-dashboard-theme', theme);
+
+  // Clean up all existing chart instances across both engines
+  Object.values(charts).forEach(c => {
+    try { c?.destroy?.(); } catch (e) { /* ignore */ }
+  });
+  Object.keys(charts).forEach(k => delete charts[k]);
+  if (typeof cleanupExecutive3DCharts === 'function') {
+    cleanupExecutive3DCharts();
+  }
+
+  const content = document.getElementById('page-content');
+  const activePage = getState().currentPage || 'dashboard';
+
+  if (activePage === 'dashboard' && content) {
+    content.innerHTML = '';
+    renderDashboard(content);
+    if (typeof toast === 'function') {
+      toast(`Dashboard switched to ${theme === 'executive-3d' ? 'Executive 3D' : 'Standard Classic'}`, 'success');
+    }
+  }
+};
 
 // ── GLOBAL SEARCH ──────────────────────────────────────────
 const searchInput = document.getElementById('global-search');
@@ -793,8 +821,11 @@ function renderDashboard(container) {
 
   // If Executive 3D theme is selected, delegate to 3D renderer
   if (isExecutive3DTheme()) {
-    Object.values(charts).forEach(c => c?.destroy?.());
+    Object.values(charts).forEach(c => { try { c?.destroy?.(); } catch (e) {} });
     Object.keys(charts).forEach(k => delete charts[k]);
+    if (typeof cleanupExecutive3DCharts === 'function') {
+      cleanupExecutive3DCharts();
+    }
     renderExecutive3D(container, prcs, s);
     return;
   }
