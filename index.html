@@ -388,8 +388,7 @@
 <script type="module">
 // =========================================================
 // MAIN APPLICATION ENTRY POINT
-// =========================================================
-import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, getFilteredVendors, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getTableColumnFilters, setTableColumnFilter, clearTableColumnFilter, clearAllTableColumnFilters, getTableActiveFilterCount, getDistinctTableColumnValues, matchCellFilter, getPODItems, getUndoHistory, undoRecordUpdate, undoLastRecordUpdate, undoMultipleRecordUpdates, clearUndoHistory } from './js/state.js';
+import { getState, setState, initDemoData, initAppData, setAuthenticatedUser, clearAuthenticatedUser, on, getUserPRCs, getFilteredPRCs, getPaginatedPRCs, getFilteredMaterials, getPaginatedMaterials, updatePRC, getPRCById, addAuditLog, updateMaterial, bulkUpdateMaterials, deletePRC, createAllocation, updateAllocation, getAllocatedQty, getAllocationById, deleteAllocation, getAvailablePRCsForAllocation, isPRCAuthorised, isPRCShortClosed, isMaterialShortClosed, createRFQ, updateRFQ, getAvailableForRFQ, getRFQById, toggleRFQClose, deleteRFQ, createTCD, getAvailableForTCD, getTCDById, approveTCD, deleteTCD, getAvailableForPOD, createPOD, getPODById, updatePOD, deletePOD, exportDatabaseBackup, restoreDatabaseBackup, resetDatabase, forceSyncWithFirestore, pushLocalDataToFirestore, loadFromLocalCache, isPRCExpanded, togglePRCExpanded, expandAllPRCs, collapseAllPRCs, updateUserProfile, isSuperAdmin, updateAnyUserProfile, doesRecordPertainToCurrentUser, loginUser, logoutUser, getFilteredAllocations, getFilteredRFQs, getFilteredTCDs, getFilteredPODs, getFilteredActivityLogs, getFilteredVendors, setColumnFilter, clearColumnFilter, clearAllColumnFilters, clearAllFilters, getActiveColumnFilterCount, getDistinctColumnValues, getTableColumnFilters, setTableColumnFilter, clearTableColumnFilter, clearAllTableColumnFilters, getTableActiveFilterCount, getDistinctTableColumnValues, matchCellFilter, getPODItems, getUndoHistory, undoRecordUpdate, undoLastRecordUpdate, undoMultipleRecordUpdates, clearUndoHistory, getDashboardPRCs, getDashboardTCDs, setDashboardBuyerFilter, getDashboardBuyerFilter, getAllAvailableBuyers } from './js/state.js?v=3';
 import { calculateStatus, calculateMaterialStatus, getStatusChipClass, getStatusIcon, buildTimeline, calcAgeDays, getPRCAge, getAgeBadgeClass, STATUS, buildStatusSummary, isAllocationComplete, isPRCAllocationComplete, isMaterialAllocationComplete, isPRCOrMaterialInactive, getRFQStatus, getAllocationStatus, getProcurementFunnelBreakdown } from './js/status-engine.js';
 import { fmtDate, fmtDateTime, fmtNum, timeAgo, toast, debounce, animateCounter, highlight, uniqueBy, groupBy, monthlyDistribution, monthlyPRCVsTCDDistribution, weeklyPRCVsTCDDistribution, weeklyPRCVsTCDDistributionForMonth, dailyPRCVsTCDDistributionForWeek, priorityChipClass, clone, confirm as confirmDialog, enableTableHorizontalScroll, copyToClipboard, toInputDateVal, isTodayDate, getDatasetDateBounds } from './js/utils.js';
 import { parseExcelFile, validateRows, normalizeRow, mergeImport, downloadSampleTemplate, renderPreviewTable, SAMPLE_IMPORT_DATA, downloadBulkAllocationTemplate, validateBulkAllocationRows, renderBulkAllocationPreviewTable, applyBulkAllocationImport, downloadPOReportTemplate, validatePOReportRows, renderPOReportPreviewTable, applyPOReportImport, formatPONumberWithAmendment, rollbackImportSnapshot, getImportHistory, renderImportHistoryTable, getLastImportSnapshotId, clearImportHistory, detectExcelImportCategory, verifyExcelImportCategory, renderCategoricalCheckBanner, IMPORT_CATEGORIES } from './js/excel-import.js';
@@ -398,7 +397,7 @@ import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } fro
 import { getActiveDbProvider, setActiveDbProvider } from './js/db-adapter.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
 import { exportCSV, exportExcel, exportPDF, getAgeingReport, REPORT_COLUMNS } from './js/reports.js';
-import { renderExecutive3D, cleanupExecutive3DCharts } from './js/dashboard-3d.js';
+import { renderExecutive3D, cleanupExecutive3DCharts } from './js/dashboard-3d.js?v=3';
 
 // ── CHARTS REGISTRY ───────────────────────────────────────
 const charts = {};
@@ -645,6 +644,20 @@ window.setDashboardTheme = function(theme) {
   }
 };
 
+window.refreshDashboard = function() {
+  const content = document.getElementById('page-content');
+  const activePage = getState().currentPage || 'dashboard';
+  if (activePage === 'dashboard' && content) {
+    Object.values(charts).forEach(c => { try { c?.destroy?.(); } catch (e) {} });
+    Object.keys(charts).forEach(k => delete charts[k]);
+    if (typeof cleanupExecutive3DCharts === 'function') {
+      cleanupExecutive3DCharts();
+    }
+    content.innerHTML = '';
+    renderDashboard(content);
+  }
+};
+
 // ── GLOBAL SEARCH ──────────────────────────────────────────
 const searchInput = document.getElementById('global-search');
 const searchDropdown = document.getElementById('search-dropdown');
@@ -816,7 +829,12 @@ window.filterByDashboardTile = function(filterType, filterValue) {
 // ═══════════════════════════════════════════════════════════
 function renderDashboard(container) {
   const state = getState();
-  const prcs  = getUserPRCs();
+  const isAdmin = isSuperAdmin();
+  const buyerFilter = typeof getDashboardBuyerFilter === 'function' ? getDashboardBuyerFilter() : { scope: 'all', selectedBuyers: [] };
+  const allAvailableBuyers = typeof getAllAvailableBuyers === 'function' ? getAllAvailableBuyers() : [];
+  const allEnterprisePRCs = state.prcs || [];
+
+  const prcs  = typeof getDashboardPRCs === 'function' ? getDashboardPRCs() : getUserPRCs();
   const s     = buildStatusSummary(prcs);
 
   // If Executive 3D theme is selected, delegate to 3D renderer
@@ -842,7 +860,7 @@ function renderDashboard(container) {
   // Count TCDs created today (from TCDs collection and PRC/material records)
   const countedTcdNums = new Set();
   let tcdsCreatedToday = 0;
-  const userTCDs = typeof getFilteredTCDs === 'function' ? getFilteredTCDs() : (state.tcds || []);
+  const userTCDs = typeof getDashboardTCDs === 'function' ? getDashboardTCDs() : (typeof getFilteredTCDs === 'function' ? getFilteredTCDs() : (state.tcds || []));
   userTCDs.forEach(t => {
     const tcdNum = String(t.tcdNumber || t.id || '').trim();
     const raw = t.tcdDate || t.createdAt || t.approvedDate || t.updatedAt;
@@ -986,6 +1004,42 @@ function renderDashboard(container) {
     </button>
   </div>
 </div>
+
+<!-- SUPER ADMIN BUYER SCOPE FILTER BAR (STANDARD THEME) -->
+${isAdmin ? `
+<div class="card mb-4" style="margin-bottom:18px;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;background:var(--color-surface);border-left:4px solid var(--color-primary);border-radius:10px">
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <span class="badge badge-primary" style="font-size:11px;font-weight:700;padding:4px 8px">👑 Super Admin View</span>
+    <span style="font-size:12.5px;font-weight:700;color:var(--color-text-secondary)">Buyer Scope:</span>
+    <select id="classic-buyer-filter-select" class="form-control form-control-sm" style="width:auto;min-width:240px;font-size:12px;font-weight:600" onchange="window.setSuperAdminBuyerScope(this.value)">
+      <option value="all" ${buyerFilter.scope === 'all' ? 'selected' : ''}>🌐 All Buyers (Entire Enterprise · ${allEnterprisePRCs.length} PRCs)</option>
+      <optgroup label="── Individual Buyers ──">
+        ${allAvailableBuyers.map(b => {
+          const count = allEnterprisePRCs.filter(p => (p.buyer || p.allocatedBuyer || p.buyerName || p.allocatedBy || '').trim().toLowerCase() === b.toLowerCase()).length;
+          const isSelected = buyerFilter.scope === 'selective' && buyerFilter.selectedBuyers.length === 1 && buyerFilter.selectedBuyers[0].toLowerCase() === b.toLowerCase();
+          return `<option value="${escapeHtml(b)}" ${isSelected ? 'selected' : ''}>👤 ${escapeHtml(b)} (${count} PRCs)</option>`;
+        }).join('')}
+      </optgroup>
+    </select>
+    <button class="btn btn-secondary btn-xs" onclick="window.openSelectiveBuyersModal()" style="font-size:11px;padding:4px 10px;font-weight:600" title="Select multiple buyers">
+      <span>👥 Multi-Select</span>
+      ${buyerFilter.scope === 'selective' && buyerFilter.selectedBuyers.length > 1 ? `<span class="badge badge-primary" style="margin-left:4px;font-size:10px">${buyerFilter.selectedBuyers.length}</span>` : ''}
+    </button>
+  </div>
+  ${buyerFilter.scope === 'selective' && buyerFilter.selectedBuyers.length > 0 ? `
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:12px;font-weight:600;color:var(--color-primary)">
+        🎯 Filtered: <strong>${buyerFilter.selectedBuyers.length === 1 ? escapeHtml(buyerFilter.selectedBuyers[0]) : `${buyerFilter.selectedBuyers.length} Selective Buyers`}</strong> (${prcs.length} PRCs)
+      </span>
+      <button class="btn btn-ghost btn-xs" onclick="window.resetDashboardBuyerFilter()" style="font-size:11px;font-weight:700">✕ Show All</button>
+    </div>
+  ` : `
+    <div style="font-size:12px;color:var(--color-text-secondary);font-weight:600">
+      🌐 Enterprise View: <strong>All Buyers</strong> (${allEnterprisePRCs.length} PRCs)
+    </div>
+  `}
+</div>
+` : ''}
 
 <!-- KPI GRID -->
 <div class="kpi-grid stagger-children" id="kpi-grid">

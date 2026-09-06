@@ -98,7 +98,11 @@ const state = {
   allocatedToday: 0,
   tcdToday: 0,
   overdueCount: 0,
-  avgProcurementDays: 0
+  avgProcurementDays: 0,
+
+  // Super Admin Dashboard Buyer Filtering
+  dashboardBuyerScope: 'all', // 'all' | 'selective'
+  dashboardSelectedBuyers: []  // string[] of selective buyer names
 };
 
 export function getState() { return state; }
@@ -128,7 +132,9 @@ function saveToLocalCache() {
       users: state.users,
       notifications: state.notifications,
       activityLogs: state.activityLogs,
-      recordUndoHistory: state.recordUndoHistory || []
+      recordUndoHistory: state.recordUndoHistory || [],
+      dashboardBuyerScope: state.dashboardBuyerScope || 'all',
+      dashboardSelectedBuyers: state.dashboardSelectedBuyers || []
     };
     // Save ONLY to current user-scoped key to prevent cross-user data leakage
     localStorage.setItem(_getCacheKey(), JSON.stringify(dataToSave));
@@ -147,6 +153,12 @@ export function loadFromLocalCache() {
         if (parsed && Array.isArray(parsed.prcs)) {
           if (Array.isArray(parsed.recordUndoHistory)) {
             state.recordUndoHistory = parsed.recordUndoHistory;
+          }
+          if (parsed.dashboardBuyerScope) {
+            state.dashboardBuyerScope = parsed.dashboardBuyerScope;
+          }
+          if (Array.isArray(parsed.dashboardSelectedBuyers)) {
+            state.dashboardSelectedBuyers = parsed.dashboardSelectedBuyers;
           }
           console.info(`📦 Local cache loaded for current user key (${uidKey}): ${parsed.prcs?.length || 0} PRCs`);
           return parsed;
@@ -1917,6 +1929,146 @@ export function getUserPRCs(user = state.currentUser) {
   let list = [...state.prcs];
   if (!isSuperAdmin(user)) {
     list = list.filter(p => doesRecordPertainToCurrentUser(p, user));
+  }
+  return list;
+}
+
+/**
+ * Extract, deduplicate, and sort all active buyer names across PRCs, materials, allocations, and users.
+ */
+export function getAllAvailableBuyers() {
+  const buyersSet = new Set();
+
+  (state.prcs || []).forEach(p => {
+    const b = (p.buyer || p.allocatedBuyer || p.buyerName || p.allocatedBy || '').trim();
+    if (b && b !== 'Unassigned' && b !== '-') buyersSet.add(b);
+    (p.materials || []).forEach(m => {
+      const mb = (m.buyerName || m.allocatedBy || '').trim();
+      if (mb && mb !== 'Unassigned' && mb !== '-') buyersSet.add(mb);
+    });
+  });
+
+  (state.allocations || []).forEach(a => {
+    const ab = (a.buyerName || a.buyer || '').trim();
+    if (ab && ab !== 'Unassigned' && ab !== '-') buyersSet.add(ab);
+  });
+
+  (state.users || []).forEach(u => {
+    const un = (u.name || '').trim();
+    if (un && un !== 'Unassigned' && un !== '-') buyersSet.add(un);
+  });
+
+  return Array.from(buyersSet).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+}
+
+/**
+ * Get current Super Admin dashboard buyer filter state
+ */
+export function getDashboardBuyerFilter() {
+  return {
+    scope: state.dashboardBuyerScope || 'all',
+    selectedBuyers: Array.isArray(state.dashboardSelectedBuyers) ? [...state.dashboardSelectedBuyers] : []
+  };
+}
+
+/**
+ * Set Super Admin dashboard buyer filter state
+ * @param {'all' | 'selective'} scope
+ * @param {string[] | string} selectedBuyers
+ */
+export function setDashboardBuyerFilter(scope = 'all', selectedBuyers = []) {
+  state.dashboardBuyerScope = (scope === 'selective') ? 'selective' : 'all';
+  if (Array.isArray(selectedBuyers)) {
+    state.dashboardSelectedBuyers = selectedBuyers.filter(Boolean);
+  } else if (typeof selectedBuyers === 'string' && selectedBuyers.trim()) {
+    state.dashboardSelectedBuyers = [selectedBuyers.trim()];
+  } else {
+    state.dashboardSelectedBuyers = [];
+  }
+
+  // If selective was chosen but no buyers selected, default back to 'all'
+  if (state.dashboardBuyerScope === 'selective' && state.dashboardSelectedBuyers.length === 0) {
+    state.dashboardBuyerScope = 'all';
+  }
+
+  saveToLocalCache();
+  emit('dashboardBuyerFilter');
+  emit('*');
+}
+
+/**
+ * Helper to match a record/item against selected buyers list
+ */
+function recordMatchesBuyerList(record, buyersList) {
+  if (!buyersList || buyersList.length === 0) return true;
+  if (!record) return false;
+
+  const targets = buyersList.map(b => String(b).trim().toLowerCase());
+  const rBuyer = String(record.buyer || record.allocatedBuyer || record.buyerName || record.allocatedBy || '').trim().toLowerCase();
+  
+  if (rBuyer && targets.some(t => rBuyer === t || rBuyer.includes(t) || t.includes(rBuyer))) {
+    return true;
+  }
+
+  // Check material items if present
+  if (Array.isArray(record.materials)) {
+    for (const m of record.materials) {
+      const mBuyer = String(m.buyerName || m.allocatedBy || '').trim().toLowerCase();
+      if (mBuyer && targets.some(t => mBuyer === t || mBuyer.includes(t) || t.includes(mBuyer))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Returns PRCs for the Dashboard view.
+ * If user is Super Admin: respects dashboardBuyerScope ('all' or 'selective').
+ * If user is regular user: strictly returns only records pertaining to current user.
+ */
+export function getDashboardPRCs(user = state.currentUser) {
+  let list = [...state.prcs];
+  if (!isSuperAdmin(user)) {
+    return list.filter(p => doesRecordPertainToCurrentUser(p, user));
+  }
+
+  // Super Admin view
+  if (state.dashboardBuyerScope === 'selective' && state.dashboardSelectedBuyers && state.dashboardSelectedBuyers.length > 0) {
+    list = list.filter(p => recordMatchesBuyerList(p, state.dashboardSelectedBuyers));
+  }
+  return list;
+}
+
+/**
+ * Returns TCDs for the Dashboard view.
+ * If user is Super Admin: respects dashboardBuyerScope ('all' or 'selective').
+ * If user is regular user: strictly returns only records pertaining to current user.
+ */
+export function getDashboardTCDs(user = state.currentUser) {
+  let list = (state.tcds || []);
+  if (!isSuperAdmin(user)) {
+    return list.filter(t => doesRecordPertainToCurrentUser(t, user));
+  }
+
+  if (state.dashboardBuyerScope === 'selective' && state.dashboardSelectedBuyers && state.dashboardSelectedBuyers.length > 0) {
+    const targets = state.dashboardSelectedBuyers.map(b => String(b).trim().toLowerCase());
+    list = list.filter(t => {
+      const b = String(t.buyerName || t.buyer || t.createdBy || '').trim().toLowerCase();
+      if (b && targets.some(target => b === target || b.includes(target) || target.includes(b))) {
+        return true;
+      }
+      // Check vendor allocations or items inside TCD
+      const vAllocs = t.vendorAllocations || [];
+      for (const va of vAllocs) {
+        const vaBuyer = String(va.buyerName || '').trim().toLowerCase();
+        if (vaBuyer && targets.some(target => vaBuyer === target || vaBuyer.includes(target) || target.includes(vaBuyer))) {
+          return true;
+        }
+      }
+      return false;
+    });
   }
   return list;
 }

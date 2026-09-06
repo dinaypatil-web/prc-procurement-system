@@ -4,7 +4,7 @@
 // ==========================================================================
 
 import { getProcurementFunnelBreakdown, calcAgeDays } from './status-engine.js';
-import { getState, isSuperAdmin, doesRecordPertainToCurrentUser, setTableColumnFilter, clearAllTableColumnFilters, getFilteredTCDs } from './state.js';
+import { getState, isSuperAdmin, doesRecordPertainToCurrentUser, setTableColumnFilter, clearAllTableColumnFilters, getFilteredTCDs, getDashboardBuyerFilter, setDashboardBuyerFilter, getAllAvailableBuyers, getDashboardTCDs } from './state.js?v=3';
 import { toast } from './utils.js';
 
 // Chart instances registry for Executive 3D theme
@@ -93,6 +93,155 @@ if (typeof window !== 'undefined') {
       const rows = getLiveProcurementMatrix(window.latestPRCsFor3D, mode, currentMatrixScope);
       tbody.innerHTML = renderMatrixRowsHTML(rows, window.latestPRCsFor3D, mode, currentMatrixScope);
     }
+  };
+
+  // Super Admin Buyer Scope Controls
+  window.setSuperAdminBuyerScope = function(scopeOrBuyer) {
+    if (scopeOrBuyer === 'all' || !scopeOrBuyer) {
+      setDashboardBuyerFilter('all', []);
+      toast('Showing dashboard for All Buyers (Entire Enterprise)', 'info');
+    } else {
+      setDashboardBuyerFilter('selective', [scopeOrBuyer]);
+      toast(`Dashboard filtered to ${scopeOrBuyer}`, 'success');
+    }
+    if (typeof window.refreshDashboard === 'function') {
+      window.refreshDashboard();
+    }
+  };
+
+  window.resetDashboardBuyerFilter = function() {
+    setDashboardBuyerFilter('all', []);
+    toast('Dashboard reset to All Buyers', 'info');
+    if (typeof window.refreshDashboard === 'function') {
+      window.refreshDashboard();
+    }
+  };
+
+  window.filterDashboardToBuyer = function(buyerName) {
+    if (!buyerName) return;
+    setDashboardBuyerFilter('selective', [buyerName]);
+    toast(`Dashboard filtered to ${buyerName}`, 'success');
+    if (typeof window.refreshDashboard === 'function') {
+      window.refreshDashboard();
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  window.openSelectiveBuyersModal = function() {
+    const modalId = 'exec3d-selective-buyers-modal';
+    const existing = document.getElementById(modalId);
+    if (existing) existing.remove();
+
+    const state = getState();
+    const allEnterprisePRCs = state.prcs || [];
+    const currentFilter = getDashboardBuyerFilter();
+    const allBuyers = getAllAvailableBuyers();
+    const selectedSet = new Set(currentFilter.scope === 'selective' ? (currentFilter.selectedBuyers || []).map(b => b.toLowerCase()) : []);
+
+    const modal = document.createElement('div');
+    modal.id = modalId;
+    modal.className = 'modal-overlay open';
+    modal.style.zIndex = '99999';
+
+    modal.innerHTML = `
+      <div class="modal-card" style="max-width:560px;width:92vw;border-radius:14px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.35);background:var(--color-surface);border:1px solid var(--color-border);animation:exec3dFadeIn 0.2s cubic-bezier(0.16,1,0.3,1)">
+        <!-- Header -->
+        <div style="padding:18px 24px;border-bottom:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between;background:var(--color-surface-2)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800">
+              👥
+            </div>
+            <div>
+              <h3 style="margin:0;font-size:16px;font-weight:800;color:var(--color-text-primary)">
+                Selective Buyers Dashboard Filter
+              </h3>
+              <p style="margin:2px 0 0 0;font-size:11.5px;color:var(--color-text-secondary)">
+                Select one or more buyers to aggregate analytics, KPIs & lead times
+              </p>
+            </div>
+          </div>
+          <button class="modal-close-btn" onclick="document.getElementById('${modalId}').remove()" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--color-text-secondary)">✕</button>
+        </div>
+
+        <!-- Search & Bulk Controls Toolbar -->
+        <div style="padding:12px 24px;border-bottom:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--color-surface)">
+          <div style="position:relative;flex:1">
+            <input type="text" id="exec3d-buyer-search-input" placeholder="Search buyers..." class="form-control form-control-sm" style="padding-left:28px;border-radius:8px;font-size:12px" oninput="window._exec3dFilterBuyerList(this.value)">
+            <span style="position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:12px;opacity:0.6">🔍</span>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="btn btn-secondary btn-xs" onclick="window._exec3dSelectAllBuyers(true)" style="font-size:11px;padding:3px 8px">Select All</button>
+            <button type="button" class="btn btn-secondary btn-xs" onclick="window._exec3dSelectAllBuyers(false)" style="font-size:11px;padding:3px 8px">Clear</button>
+          </div>
+        </div>
+
+        <!-- Checklist Body -->
+        <div id="exec3d-buyer-checklist" style="max-height:300px;overflow-y:auto;padding:12px 24px;display:flex;flex-direction:column;gap:6px">
+          ${allBuyers.map(b => {
+            const count = allEnterprisePRCs.filter(p => (p.buyer || p.allocatedBuyer || p.buyerName || p.allocatedBy || '').trim().toLowerCase() === b.toLowerCase()).length;
+            const isChecked = selectedSet.has(b.toLowerCase());
+            const safeB = escapeHtml(b);
+            return `
+              <label class="exec3d-buyer-check-item" data-buyer-name="${escapeHtml(b.toLowerCase())}" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface-2);cursor:pointer;transition:all 0.15s ease">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <input type="checkbox" value="${safeB}" class="exec3d-buyer-cb" ${isChecked ? 'checked' : ''} style="cursor:pointer;width:15px;height:15px;accent-color:#6366f1">
+                  <span style="font-size:13px;font-weight:600;color:var(--color-text-primary)">${safeB}</span>
+                </div>
+                <span class="badge badge-secondary" style="font-size:11px;font-weight:700">${count} PRCs</span>
+              </label>
+            `;
+          }).join('')}
+        </div>
+
+        <!-- Footer -->
+        <div style="padding:14px 24px;border-top:1px solid var(--color-border);display:flex;align-items:center;justify-content:space-between;background:var(--color-surface-2)">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="window.resetDashboardBuyerFilter();document.getElementById('${modalId}').remove()">
+            🌐 Reset to All Buyers
+          </button>
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('${modalId}').remove()">Cancel</button>
+            <button type="button" class="btn btn-primary btn-sm" onclick="window._exec3dApplySelectiveBuyers();document.getElementById('${modalId}').remove()" style="font-weight:700;display:inline-flex;align-items:center;gap:6px">
+              <span>💾 Apply Selection</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    window._exec3dFilterBuyerList = function(query) {
+      const q = (query || '').trim().toLowerCase();
+      const items = modal.querySelectorAll('.exec3d-buyer-check-item');
+      items.forEach(el => {
+        const name = el.getAttribute('data-buyer-name') || '';
+        el.style.display = (!q || name.includes(q)) ? 'flex' : 'none';
+      });
+    };
+
+    window._exec3dSelectAllBuyers = function(select) {
+      const cbs = modal.querySelectorAll('.exec3d-buyer-cb');
+      cbs.forEach(cb => {
+        const parent = cb.closest('.exec3d-buyer-check-item');
+        if (parent && parent.style.display !== 'none') {
+          cb.checked = select;
+        }
+      });
+    };
+
+    window._exec3dApplySelectiveBuyers = function() {
+      const checked = Array.from(modal.querySelectorAll('.exec3d-buyer-cb:checked')).map(cb => cb.value);
+      if (checked.length === 0) {
+        setDashboardBuyerFilter('all', []);
+        toast('Reset to All Buyers (no buyers selected)', 'info');
+      } else {
+        setDashboardBuyerFilter('selective', checked);
+        toast(`Dashboard filtered to ${checked.length} selective buyer${checked.length > 1 ? 's' : ''}`, 'success');
+      }
+      if (typeof window.refreshDashboard === 'function') {
+        window.refreshDashboard();
+      }
+    };
   };
 }
 
@@ -321,11 +470,16 @@ export function renderMatrixRowsHTML(rows, prcs = [], groupByField = 'buyer', sc
     `;
   }
 
+  const state = getState();
+  const isAdmin = isSuperAdmin();
+  const buyerFilter = getDashboardBuyerFilter();
+
   const rowsHtml = rows.map(r => {
     const isUser = isCurrentUserMatch(r.name, currentUser);
     const safeName = escapeHtml(r.name);
     const escapedArg = escapeJsString(r.name);
     const isUnassigned = r.name === 'Unassigned';
+    const isFilteredBuyer = buyerFilter.scope === 'selective' && (buyerFilter.selectedBuyers || []).some(b => b.toLowerCase() === r.name.toLowerCase());
 
     let displayLabel = safeName;
     if (groupByField === 'buyer') {
@@ -335,13 +489,14 @@ export function renderMatrixRowsHTML(rows, prcs = [], groupByField = 'buyer', sc
     }
 
     return `
-    <tr class="exec3d-row-clickable ${isUser ? 'exec3d-row-current-user' : ''}" 
+    <tr class="exec3d-row-clickable ${isUser ? 'exec3d-row-current-user' : ''} ${isFilteredBuyer ? 'exec3d-row-filtered' : ''}" 
         onclick="window.openMatrixEntityModal('${escapedArg}', '${groupByField}')"
         title="Click to pop up complete workload data & PRCs for ${safeName}">
       <td style="font-weight:700">
         <div style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span>${displayLabel}</span>
           ${isUser ? '<span class="badge badge-primary" style="font-size:9.5px;padding:2px 7px;font-weight:700;border-radius:10px" title="Active App User">⭐ You</span>' : ''}
+          ${isFilteredBuyer ? '<span class="badge badge-success" style="font-size:9.5px;padding:2px 7px;font-weight:700;border-radius:10px;background:#10b981;color:#fff" title="Currently filtered on dashboard">🎯 Active Filter</span>' : ''}
         </div>
       </td>
       <td class="exec3d-heat-violet">${r.total.toLocaleString()}</td>
@@ -356,12 +511,22 @@ export function renderMatrixRowsHTML(rows, prcs = [], groupByField = 'buyer', sc
         </span>
       </td>
       <td style="text-align:right" onclick="event.stopPropagation()">
-        <button class="btn btn-secondary btn-xs exec3d-view-data-btn" 
-                onclick="window.openMatrixEntityModal('${escapedArg}', '${groupByField}')"
-                title="Pop up complete data for ${safeName}"
-                style="padding:3px 9px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px">
-          <span>👁️ Pop-up Data</span>
-        </button>
+        <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:nowrap">
+          ${(isAdmin && groupByField === 'buyer' && !isUnassigned) ? `
+            <button class="btn ${isFilteredBuyer ? 'btn-primary' : 'btn-secondary'} btn-xs" 
+                    onclick="window.filterDashboardToBuyer('${escapedArg}')"
+                    title="${isFilteredBuyer ? 'Currently active filter on dashboard' : `Filter dashboard to ${safeName}`}"
+                    style="padding:3px 8px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:3px">
+              <span>${isFilteredBuyer ? '✓ Active' : '🎯 Filter'}</span>
+            </button>
+          ` : ''}
+          <button class="btn btn-secondary btn-xs exec3d-view-data-btn" 
+                  onclick="window.openMatrixEntityModal('${escapedArg}', '${groupByField}')"
+                  title="Pop up complete data for ${safeName}"
+                  style="padding:3px 9px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px">
+            <span>👁️ Pop-up Data</span>
+          </button>
+        </div>
       </td>
     </tr>
   `;
@@ -409,7 +574,12 @@ export function renderExecutive3D(container, prcs, s, helpers = {}) {
 
   // Calculate TCD Turnaround / Processing Lead Time distribution
   const state = getState();
-  const userTCDs = typeof getFilteredTCDs === 'function' ? getFilteredTCDs() : (state.tcds || []);
+  const isAdmin = isSuperAdmin();
+  const buyerFilter = getDashboardBuyerFilter();
+  const allAvailableBuyers = getAllAvailableBuyers();
+  const allEnterprisePRCs = state.prcs || [];
+
+  const userTCDs = typeof getDashboardTCDs === 'function' ? getDashboardTCDs() : (typeof getFilteredTCDs === 'function' ? getFilteredTCDs() : (state.tcds || []));
   const tcdTurnaroundList = [];
   const countedTcdNumsForAge = new Set();
 
@@ -500,6 +670,44 @@ export function renderExecutive3D(container, prcs, s, helpers = {}) {
       </button>
     </div>
   </div>
+
+  <!-- ── 1B. SUPER ADMIN BUYER SCOPE FILTER BAR ─────────────── -->
+  ${isAdmin ? `
+  <div class="exec3d-admin-filter-bar">
+    <div class="exec3d-admin-filter-left">
+      <span class="exec3d-admin-badge">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="margin-right:4px;display:inline-block;vertical-align:-1px"><path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/></svg>
+        Super Admin View
+      </span>
+      <span class="exec3d-admin-label">Buyer Scope:</span>
+      <select id="exec3d-buyer-filter-select" class="exec3d-buyer-select" onchange="window.setSuperAdminBuyerScope(this.value)">
+        <option value="all" ${buyerFilter.scope === 'all' ? 'selected' : ''}>🌐 All Buyers (Entire Enterprise · ${allEnterprisePRCs.length} PRCs)</option>
+        <optgroup label="── Individual Buyers ──">
+          ${allAvailableBuyers.map(b => {
+            const count = allEnterprisePRCs.filter(p => (p.buyer || p.allocatedBuyer || p.buyerName || p.allocatedBy || '').trim().toLowerCase() === b.toLowerCase()).length;
+            const isSelected = buyerFilter.scope === 'selective' && buyerFilter.selectedBuyers.length === 1 && buyerFilter.selectedBuyers[0].toLowerCase() === b.toLowerCase();
+            return `<option value="${escapeHtml(b)}" ${isSelected ? 'selected' : ''}>👤 ${escapeHtml(b)} (${count} PRCs)</option>`;
+          }).join('')}
+        </optgroup>
+      </select>
+      <button class="btn btn-secondary btn-xs exec3d-multi-btn" onclick="window.openSelectiveBuyersModal()" title="Select multiple specific buyers to combine in dashboard">
+        <span>👥 Multi-Select</span>
+        ${buyerFilter.scope === 'selective' && buyerFilter.selectedBuyers.length > 1 ? `<span class="badge badge-primary" style="font-size:10px;padding:1px 6px;margin-left:4px">${buyerFilter.selectedBuyers.length}</span>` : ''}
+      </button>
+    </div>
+
+    ${buyerFilter.scope === 'selective' && buyerFilter.selectedBuyers.length > 0 ? `
+      <div class="exec3d-filter-active-pill">
+        <span>🎯 Filtered: <strong>${buyerFilter.selectedBuyers.length === 1 ? escapeHtml(buyerFilter.selectedBuyers[0]) : `${buyerFilter.selectedBuyers.length} Selective Buyers`}</strong> (${totalPRCs} PRCs)</span>
+        <button class="exec3d-filter-clear-btn" onclick="window.resetDashboardBuyerFilter()" title="Reset to All Buyers">✕ Show All</button>
+      </div>
+    ` : `
+      <div class="exec3d-filter-scope-pill">
+        <span>🌐 Enterprise Total: <strong>All Buyers</strong> (${allEnterprisePRCs.length} PRCs)</span>
+      </div>
+    `}
+  </div>
+  ` : ''}
 
   <!-- ── 2. VIBRANT GRADIENT KPI TILES (100% LIVE METRICS) ───── -->
   <div class="exec3d-kpi-grid">
