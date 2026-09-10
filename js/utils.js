@@ -965,3 +965,27 @@ if (typeof window !== 'undefined') {
   window.escapeJsString = escapeJsString;
 }
 
+/** Helper to normalize PR number for robust comparison */
+export function normalizePRNumberForMatch(pr) {
+  if (pr === null || pr === undefined) return '';
+  const str = String(pr).trim().toUpperCase();
+  if (!str) return '';
+  // Strip common PR or PRC prefix
+  const stripped = str.replace(/^(PRC|PR)[-_]?/i, '');
+  // Strip leading zeros
+  const noZeros = stripped.replace(/^0+/, '');
+  return noZeros || stripped || str;
+}
+
+/** Helper to normalize Material code for robust comparison */
+export function normalizeMatCodeForMatch(code) {
+  if (code === null || code === undefined) return '';
+  const str = String(code).trim().toUpperCase();
+  if (!str) return '';
+  // Strip common MAT prefix
+  const stripped = str.replace(/^MAT[-_]?/i, '');
+  // Strip leading zeros
+  const noZeros = stripped.replace(/^0+/, '');
+  return noZeros || stripped || str;
+}
+

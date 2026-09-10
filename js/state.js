@@ -28,7 +28,7 @@ import {
 import { isFirebaseConfigured } from './firebase-config.js';
 import { isTursoConfigured } from './turso-db.js';
 
-import { clone, parseDateObj, isTodayDate } from './utils.js';
+import { clone, parseDateObj, isTodayDate, normalizePRNumberForMatch, normalizeMatCodeForMatch } from './utils.js';
 
 export const LOCAL_CACHE_KEY = 'PRC_PROCUREMENT_USER_CACHE';
 
@@ -385,6 +385,170 @@ export async function resetDatabase() {
 export const resetCreatorDatabase = resetDatabase;
 
 // ── STATE DISPATCH ────────────────────────────────────────
+
+/**
+ * Cross-reconciles PRCs against downstream collections (allocations, rfqs, tcds, pods).
+ * If a PRC or any of its line-item materials is missing top-level or material-level
+ * allocation, RFQ, TCD, or PO metadata, but corresponding records exist in the
+ * downstream collections, safely restore them and recalculate statuses.
+ */
+export function reconcilePRCWorkflowFromDownstream(prcs = state.prcs, allocations = state.allocations, rfqs = state.rfqs, tcds = state.tcds, pods = state.pods) {
+  if (!Array.isArray(prcs) || prcs.length === 0) {
+    return { prcs: prcs || [], changed: false };
+  }
+
+  let anyPrcChanged = false;
+
+  const updatedPrcs = prcs.map(prc => {
+    if (!prc) return prc;
+    const prNum = prc.prNumber || prc.id;
+    const prNorm = normalizePRNumberForMatch(prNum);
+
+    // Check if PRC or materials are missing workflow fields
+    const missingTopWorkflow = !prc.allocationNumber || !prc.rfqNumber || !prc.tcdNumber || !prc.poNumber;
+    const mats = prc.materials || [];
+    const missingMatWorkflow = mats.some(m => !m.allocationNumber || !m.rfqNumber || !m.tcdNumber || !m.poNumber);
+
+    if (!missingTopWorkflow && !missingMatWorkflow) {
+      return prc;
+    }
+
+    // Lookup downstream records
+    const alloc = Array.isArray(allocations) ? allocations.find(a => (a.items || []).some(i => 
+      i.prNumber === prNum || i.prcId === prc.id || normalizePRNumberForMatch(i.prNumber) === prNorm
+    )) : null;
+
+    const rfq = Array.isArray(rfqs) ? rfqs.find(r => (r.items || []).some(i => 
+      i.prNumber === prNum || i.prcId === prc.id || normalizePRNumberForMatch(i.prNumber) === prNorm
+    )) : null;
+
+    const pod = Array.isArray(pods) ? pods.find(p => (p.items || []).some(i => 
+      i.prNumber === prNum || i.prcId === prc.id || normalizePRNumberForMatch(i.prNumber) === prNorm
+    )) : null;
+
+    const tcd = Array.isArray(tcds) ? tcds.find(t => (t.items || []).some(i => 
+      i.prNumber === prNum || i.prcId === prc.id || normalizePRNumberForMatch(i.prNumber) === prNorm
+    ) || (t.vendorAllocations || []).some(va => (va.items || []).some(it => 
+      it.prNumber === prNum || it.prcId === prc.id || normalizePRNumberForMatch(it.prNumber) === prNorm
+    ))) : null;
+
+    const tcdNum = tcd?.tcdNumber || pod?.tcdNumber;
+
+    let prcModified = false;
+    let prcCopy = { ...prc };
+
+    // Restore Allocation
+    if (!prcCopy.allocationNumber && alloc) {
+      prcCopy.allocationNumber = alloc.allocationNumber;
+      prcCopy.allocationDate = alloc.allocationDate || prcCopy.allocationDate;
+      prcCopy.buyerName = alloc.buyerName || prcCopy.buyerName;
+      prcCopy.allocatedBy = alloc.allocatedBy || alloc.buyerName || prcCopy.allocatedBy;
+      prcModified = true;
+    }
+
+    // Restore RFQ
+    if (!prcCopy.rfqNumber && rfq) {
+      prcCopy.rfqNumber = rfq.rfqNumber;
+      prcCopy.rfqDate = rfq.rfqDate || prcCopy.rfqDate;
+      prcModified = true;
+    }
+
+    // Restore TCD
+    if (!prcCopy.tcdNumber && tcdNum) {
+      prcCopy.tcdNumber = tcdNum;
+      prcCopy.tcdDate = tcd?.tcdDate || pod?.poDate || prcCopy.tcdDate;
+      prcCopy.tcdApproved = true;
+      prcCopy.offersReceived = true;
+      prcModified = true;
+    }
+
+    // Restore PO
+    if (!prcCopy.poNumber && pod) {
+      prcCopy.poNumber = pod.poNumber;
+      prcCopy.poDate = pod.poDate || prcCopy.poDate;
+      prcCopy.vendorName = pod.vendorName || prcCopy.vendorName;
+      prcCopy.vendor = pod.vendorName || prcCopy.vendor;
+      prcModified = true;
+    }
+
+    // Restore material-level fields
+    let matsModified = false;
+    const updatedMats = (prcCopy.materials || []).map(m => {
+      let mCopy = { ...m };
+      let matModified = false;
+      const matNorm = normalizeMatCodeForMatch(mCopy.matCode);
+
+      const rfqItem = rfq ? (rfq.items || []).find(i => 
+        i.materialId === mCopy.id || normalizeMatCodeForMatch(i.matCode) === matNorm
+      ) : null;
+
+      const podItem = pod ? (pod.items || []).find(i => 
+        i.materialId === mCopy.id || normalizeMatCodeForMatch(i.matCode) === matNorm
+      ) : null;
+
+      const allocItem = alloc ? (alloc.items || []).find(i => 
+        i.materialId === mCopy.id || normalizeMatCodeForMatch(i.matCode) === matNorm
+      ) : null;
+
+      if (!mCopy.allocationNumber && (allocItem || prcCopy.allocationNumber)) {
+        mCopy.allocationNumber = prcCopy.allocationNumber;
+        mCopy.allocationDate = prcCopy.allocationDate;
+        mCopy.buyerName = prcCopy.buyerName;
+        mCopy.allocatedBy = prcCopy.allocatedBy;
+        matModified = true;
+      }
+
+      if (!mCopy.rfqNumber && (rfqItem || prcCopy.rfqNumber)) {
+        mCopy.rfqNumber = prcCopy.rfqNumber;
+        mCopy.rfqDate = prcCopy.rfqDate;
+        matModified = true;
+      }
+
+      if (!mCopy.tcdNumber && (tcdNum || prcCopy.tcdNumber)) {
+        mCopy.tcdNumber = prcCopy.tcdNumber;
+        mCopy.tcdDate = prcCopy.tcdDate;
+        mCopy.tcdApproved = true;
+        mCopy.offersReceived = true;
+        matModified = true;
+      }
+
+      if (!mCopy.poNumber && (podItem || prcCopy.poNumber)) {
+        mCopy.poNumber = prcCopy.poNumber;
+        mCopy.poDate = prcCopy.poDate;
+        mCopy.vendorName = prcCopy.vendorName;
+        const q = parseFloat(podItem?.quantity) || parseFloat(mCopy.quantity) || 0;
+        mCopy.poQuantity = q;
+        mCopy.processedQty = q;
+        mCopy.pendingQty = Math.max(0, (parseFloat(mCopy.quantity) || q) - q - (parseFloat(mCopy.closedQty) || 0));
+        matModified = true;
+      }
+
+      if (matModified) {
+        mCopy.status = calculateMaterialStatus(mCopy);
+        matsModified = true;
+      }
+      return mCopy;
+    });
+
+    if (matsModified) {
+      prcCopy.materials = updatedMats;
+      prcModified = true;
+    }
+
+    if (prcModified) {
+      prcCopy.status = calculateStatus(prcCopy, prcCopy.materials);
+      anyPrcChanged = true;
+      return prcCopy;
+    }
+
+    return prc;
+  });
+
+  return {
+    prcs: updatedPrcs,
+    changed: anyPrcChanged
+  };
+}
 
 /**
  * Scans available PRCs and materials in state to enforce allocation document routing:
@@ -996,6 +1160,13 @@ export function setState(patch) {
 
   Object.assign(state, patch);
 
+  if (patch.prcs || patch.allocations || patch.rfqs || patch.tcds || patch.pods) {
+    const downstreamRec = reconcilePRCWorkflowFromDownstream(state.prcs, state.allocations, state.rfqs, state.tcds, state.pods);
+    if (downstreamRec.changed) {
+      state.prcs = downstreamRec.prcs;
+    }
+  }
+
   if (patch.prcs || patch.allocations) {
     const reconciled = reconcileAllocationRouting(state.prcs, state.allocations);
     if (reconciled.allocChanged || reconciled.prcChanged) {
@@ -1124,6 +1295,12 @@ export async function initAppData(forceClean = false) {
       activityLogs = cached.activityLogs || [];
       loadedFrom = 'local-cache';
     }
+  }
+
+  // Cross-reconcile downstream workflow into PRCs
+  const downstreamRec = reconcilePRCWorkflowFromDownstream(prcs, allocations, rfqs, tcds, pods);
+  if (downstreamRec.changed) {
+    prcs = downstreamRec.prcs;
   }
 
   // Reconcile allocation & POD document routing for all available data
@@ -1325,6 +1502,8 @@ export async function setAuthenticatedUser(firebaseUser) {
     state.rfqs = consolidateRFQs(cached.rfqs || []);
     state.tcds = consolidateTCDs(cached.tcds || []);
     state.pods = consolidatePODs(cached.pods || []);
+    const downstreamRec = reconcilePRCWorkflowFromDownstream(state.prcs, state.allocations, state.rfqs, state.tcds, state.pods);
+    if (downstreamRec.changed) state.prcs = downstreamRec.prcs;
     const podRec = reconcilePODRouting(state.prcs, state.pods, state.tcds);
     state.pods = podRec.pods;
     state.vendors = cached.vendors || [];
@@ -1362,6 +1541,10 @@ function handleRealtimeUpdate(colName, items) {
 
     if (isDifferent || colName === 'prcs') {
       state[colName] = processedItems;
+      if (['prcs', 'allocations', 'rfqs', 'tcds', 'pods'].includes(colName)) {
+        const downstreamRec = reconcilePRCWorkflowFromDownstream(state.prcs, state.allocations, state.rfqs, state.tcds, state.pods);
+        if (downstreamRec.changed) state.prcs = downstreamRec.prcs;
+      }
       if (colName === 'prcs') {
         state.statusSummary = buildStatusSummary(items);
         state.totalMaterials = items.reduce((acc, p) => acc + (p.materials || []).length, 0);
@@ -1392,6 +1575,8 @@ export async function forceSyncWithFirestore() {
       state.rfqs = consolidateRFQs(firestoreData.rfqs || []);
       state.tcds = consolidateTCDs(firestoreData.tcds || []);
       state.pods = consolidatePODs(firestoreData.pods || []);
+      const downstreamRec = reconcilePRCWorkflowFromDownstream(state.prcs, state.allocations, state.rfqs, state.tcds, state.pods);
+      if (downstreamRec.changed) state.prcs = downstreamRec.prcs;
       const podRec = reconcilePODRouting(state.prcs, state.pods, state.tcds);
       state.pods = podRec.pods;
       state.vendors = firestoreData.vendors || [];
