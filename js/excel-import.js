@@ -4,6 +4,7 @@
 import { toast, clone, fmtDateTime } from './utils.js';
 import { updatePRC, getState, setState, addAuditLog, createAllocation, pushLocalDataToFirestore } from './state.js';
 import { calculateStatus, calculateMaterialStatus, buildStatusSummary } from './status-engine.js';
+import { directSavePRC } from './db-adapter.js';
 
 // ═══════════════════════════════════════════════════════════
 // IMPORT SNAPSHOT & CALL BACK (ROLLBACK) ENGINE
@@ -659,7 +660,49 @@ export function validateRows(rows) {
   };
 }
 
-/** Merge import rows into state — skips existing PRCs to prevent duplicates and overwrites */
+/** Helper to normalize PR number for robust comparison */
+export function normalizePRNumberForMatch(pr) {
+  if (pr === null || pr === undefined) return '';
+  const str = String(pr).trim().toUpperCase();
+  if (!str) return '';
+  // Strip common PR or PRC prefix
+  const stripped = str.replace(/^(PRC|PR)[-_]?/i, '');
+  // Strip leading zeros
+  const noZeros = stripped.replace(/^0+/, '');
+  return noZeros || stripped || str;
+}
+
+/** Helper to normalize Material code for robust comparison */
+export function normalizeMatCodeForMatch(code) {
+  if (code === null || code === undefined) return '';
+  const str = String(code).trim().toUpperCase();
+  if (!str) return '';
+  // Strip common MAT prefix
+  const stripped = str.replace(/^MAT[-_]?/i, '');
+  // Strip leading zeros
+  const noZeros = stripped.replace(/^0+/, '');
+  return noZeros || stripped || str;
+}
+
+/** Check if two PR numbers match */
+export function matchPRNumber(pr1, pr2) {
+  if (!pr1 || !pr2) return false;
+  const s1 = String(pr1).trim().toUpperCase();
+  const s2 = String(pr2).trim().toUpperCase();
+  if (s1 === s2) return true;
+  return normalizePRNumberForMatch(s1) === normalizePRNumberForMatch(s2);
+}
+
+/** Check if two Material codes match */
+export function matchMaterialCode(code1, code2) {
+  if (!code1 || !code2) return false;
+  const s1 = String(code1).trim().toUpperCase();
+  const s2 = String(code2).trim().toUpperCase();
+  if (s1 === s2) return true;
+  return normalizeMatCodeForMatch(s1) === normalizeMatCodeForMatch(s2);
+}
+
+/** Merge import rows into state — updates existing PRCs without erasing allocation/RFQ/TCD/PO data, and strictly gates status updates */
 export function mergeImport(rows, fileName = 'Requisitions_Import.xlsx') {
   const state     = getState();
   const existing  = state.prcs || [];
@@ -673,7 +716,16 @@ export function mergeImport(rows, fileName = 'Requisitions_Import.xlsx') {
   );
   results.snapshotId = snapshotId;
 
-  const existingPRCSet = new Set(existing.map(p => String(p.prNumber || '').trim().toUpperCase()));
+  // Build map of existing PRCs by both raw and normalized keys
+  const existingPRCMap = new Map();
+  const existingPRCNormMap = new Map();
+
+  existing.forEach(p => {
+    const rawKey = String(p.prNumber || p.id || '').trim().toUpperCase();
+    if (rawKey) existingPRCMap.set(rawKey, p);
+    const normKey = normalizePRNumberForMatch(p.prNumber || p.id);
+    if (normKey) existingPRCNormMap.set(normKey, p);
+  });
 
   const grouped = {};
   rows.forEach(row => {
@@ -684,134 +736,145 @@ export function mergeImport(rows, fileName = 'Requisitions_Import.xlsx') {
   });
 
   const newPRCsToAdd = [];
+  const modifiedExistingPRCIds = new Set();
+  const updatedExistingPRCs = existing.map(p => ({
+    ...p,
+    materials: (p.materials || []).map(m => ({ ...m }))
+  }));
 
   Object.entries(grouped).forEach(([prNumber, matRows]) => {
-    const prUpper = prNumber.toUpperCase();
+    const prUpper = prNumber.trim().toUpperCase();
+    const prNorm = normalizePRNumberForMatch(prNumber);
 
-    // If PRC already exists in the system, do NOT overwrite the PRC header or duplicate materials.
-    // Instead: if imported rows for this PRC contain allocation details, create/merge Allocation documents
-    // Otherwise mark the existing PRC as Authorised so it appears under 'Authorised Pending PRCs'.
-    if (existingPRCSet.has(prUpper)) {
-      const existingPrc = existing.find(p => String(p.prNumber || '').trim().toUpperCase() === prUpper);
-      if (!existingPrc) {
-        results.skipped++;
-        results.skippedPRCs.push(prNumber);
-        return;
+    const existingPrcRef = existingPRCMap.get(prUpper) || existingPRCNormMap.get(prNorm);
+    const existingPrcIdx = existingPrcRef
+      ? updatedExistingPRCs.findIndex(p => p.id === existingPrcRef.id || String(p.prNumber || '').trim().toUpperCase() === prUpper || normalizePRNumberForMatch(p.prNumber || p.id) === prNorm)
+      : -1;
+
+    if (existingPrcIdx !== -1) {
+      // PRC ALREADY EXISTS IN RECORDS
+      const existingPrc = updatedExistingPRCs[existingPrcIdx];
+      const firstRow = matRows[0] || {};
+
+      // 1. STATUS CONVERSION RULE:
+      // "app shall only update PRC status if PRC is converted to Creation from Draft or Authorised from creation."
+      const currPrStatus = String(existingPrc.prStatus || existingPrc.status || '').trim().toLowerCase();
+      const incomingRaw = String(firstRow['PR STATUS'] || firstRow['PRC STATUS'] || firstRow['STATUS'] || '').trim();
+      const incoming = incomingRaw.toLowerCase();
+
+      const isDraftToCreation = (
+        (currPrStatus === 'draft') &&
+        (incoming === 'creation' || incoming === 'created')
+      );
+      const isCreationToAuthorised = (
+        (currPrStatus === 'creation' || currPrStatus === 'created') &&
+        (incoming === 'authorised' || incoming === 'authorized' || incoming === 'approved')
+      );
+
+      let statusUpdated = false;
+      if (isDraftToCreation) {
+        existingPrc.prStatus = 'Creation';
+        statusUpdated = true;
+      } else if (isCreationToAuthorised) {
+        existingPrc.prStatus = 'Authorised';
+        statusUpdated = true;
       }
 
-      // Collect allocation groups from the imported rows for this PRC
-      const allocGroups = {};
-      let anyAllocFound = false;
+      // 2. PRESERVE ALL ALREADY UPDATED ALLOCATION, RFQ, TCD, & PO DATA:
+      // Never overwrite existing non-empty allocation details with blank or older data
+      const incAllocNum = String(firstRow['ALLOCATION NUMBER'] || '').trim();
+      const incAllocDate = String(firstRow['ALLOCATION DATE'] || '').trim();
+      const incBuyerName = String(firstRow['BUYER NAME'] || '').trim();
+      if (!existingPrc.allocationNumber && incAllocNum && incAllocDate && incBuyerName) {
+        existingPrc.allocationNumber = incAllocNum;
+        existingPrc.allocationDate = incAllocDate;
+        existingPrc.buyerName = incBuyerName;
+        existingPrc.allocatedBy = incBuyerName;
+      }
+      // Never overwrite existing rfqNumber, rfqDate, tcdNumber, tcdDate, tcdApproved, poNumber, poDate, vendorName
 
+      // 3. Process Materials: Preserve existing material workflow data
       matRows.forEach((row, idx) => {
         const matCode = String(row['MATERIAL CODE'] || '').trim() || `MAT-${idx + 1}`;
         const serialNo = String(row['SERIAL NUMBER'] || idx + 1).trim();
         const matId = `${prNumber}-${matCode}-${serialNo}`;
-        const allocNum = String(row['ALLOCATION NUMBER'] || '').trim();
-        const allocDate = String(row['ALLOCATION DATE'] || '').trim();
-        const buyerName = String(row['BUYER NAME'] || '').trim();
 
-        if (allocNum && allocDate && buyerName) {
-          anyAllocFound = true;
-          if (!allocGroups[allocNum]) allocGroups[allocNum] = { allocationNumber: allocNum, allocationDate: allocDate, buyerName, items: [] };
+        let matIdx = existingPrc.materials.findIndex(m =>
+          m.id === matId ||
+          (matchMaterialCode(m.matCode, matCode) && String(m.serialNumber || '') === String(serialNo))
+        );
+        if (matIdx === -1 && existingPrc.materials.length === 1 && matRows.length === 1) {
+          matIdx = 0;
+        }
 
-          // Only add allocation item if material exists in the existing PRC
-          const matExists = (existingPrc.materials || []).some(m => m.id === matId || (m.matCode === matCode && String(m.serialNumber || '') === String(serialNo)));
-          if (matExists) {
-            allocGroups[allocNum].items.push({
-              prcId: existingPrc.id,
-              materialId: matId,
-              quantity: parseFloat(row['QUANTITY']) || 0,
-              matCode,
-              description: String(row['MATERIAL DESC'] || '').trim(),
-              unit: String(row['UOM'] || '').trim(),
-              prNumber: prNumber
-            });
+        if (matIdx !== -1) {
+          const exMat = existingPrc.materials[matIdx];
+          const rowAllocNum = String(row['ALLOCATION NUMBER'] || '').trim();
+          const rowAllocDate = String(row['ALLOCATION DATE'] || '').trim();
+          const rowBuyerName = String(row['BUYER NAME'] || '').trim();
+
+          // Only set allocation if material did not have one
+          if (!exMat.allocationNumber && rowAllocNum && rowAllocDate && rowBuyerName) {
+            exMat.allocationNumber = rowAllocNum;
+            exMat.allocationDate = rowAllocDate;
+            exMat.buyerName = rowBuyerName;
+            exMat.allocatedBy = rowBuyerName;
           }
+
+          if (statusUpdated) {
+            exMat.prStatus = existingPrc.prStatus;
+          }
+
+          exMat.status = calculateMaterialStatus(exMat);
+          existingPrc.materials[matIdx] = exMat;
+        } else {
+          // New line item under existing PRC: add it without erasing existing items
+          const qty = parseFloat(row['QUANTITY']) || 1;
+          const rate = parseFloat(row['SUGGESTED RATE']) || 0;
+          const val = parseFloat(row['VALUE']) || (qty * rate);
+          const newMat = {
+            id: matId,
+            serialNumber: serialNo,
+            matCode: matCode,
+            description: String(row['MATERIAL DESC'] || 'Material ' + matCode).trim(),
+            unit: String(row['UOM'] || 'EA').trim(),
+            quantity: qty,
+            suggestedRate: rate,
+            value: val,
+            pendingQty: qty,
+            closedQty: 0,
+            processedQty: 0,
+            prStatus: existingPrc.prStatus || 'Authorised',
+            allocationNumber: existingPrc.allocationNumber || String(row['ALLOCATION NUMBER'] || '').trim(),
+            allocationDate: existingPrc.allocationDate || String(row['ALLOCATION DATE'] || '').trim(),
+            buyerName: existingPrc.buyerName || String(row['BUYER NAME'] || '').trim(),
+            allocatedBy: existingPrc.allocatedBy || String(row['BUYER NAME'] || '').trim(),
+            rfqNumber: '',
+            rfqDate: '',
+            offersReceived: false,
+            tcdNumber: '',
+            tcdDate: '',
+            tcdApproved: false,
+            poNumber: '',
+            poDate: '',
+            vendorName: ''
+          };
+          newMat.status = calculateMaterialStatus(newMat);
+          existingPrc.materials.push(newMat);
         }
       });
 
-      try {
-        const stateNow = getState();
-        const existingAllocNumbers = new Set((stateNow.allocations || []).map(a => a.allocationNumber));
-
-        Object.values(allocGroups).forEach(alloc => {
-          if (!alloc.items.length) return;
-          if (existingAllocNumbers.has(alloc.allocationNumber)) {
-            // merge into existing allocation
-            const allocations = [...(stateNow.allocations || [])];
-            const idx = allocations.findIndex(a => a.allocationNumber === alloc.allocationNumber);
-            if (idx === -1) return;
-            const existing = { ...allocations[idx], items: [...(allocations[idx].items || [])] };
-            const keySet = new Set(existing.items.map(i => `${i.prcId}::${i.materialId}`));
-            alloc.items.forEach(it => {
-              const key = `${it.prcId}::${it.materialId}`;
-              if (!keySet.has(key)) {
-                existing.items.push(it);
-                keySet.add(key);
-              }
-            });
-            allocations[idx] = existing;
-
-            // Cascade allocation fields to PRC materials
-            const prcs = [...(stateNow.prcs || [])];
-            const affectedPrcIds = new Set(existing.items.map(i => i.prcId));
-            affectedPrcIds.forEach(prcId => {
-              const prcIdx = prcs.findIndex(p => p.id === prcId);
-              if (prcIdx === -1) return;
-              const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
-              existing.items.filter(i => i.prcId === prcId).forEach(item => {
-                const matIdx = prc.materials.findIndex(m => m.id === item.materialId);
-                if (matIdx === -1) return;
-                prc.materials[matIdx] = {
-                  ...prc.materials[matIdx],
-                  allocationNumber: existing.allocationNumber,
-                  allocationDate: existing.allocationDate,
-                  buyerName: existing.buyerName,
-                  allocatedBy: existing.buyerName
-                };
-                prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
-              });
-              if (!prc.allocationNumber || prc.allocationNumber === existing.allocationNumber) {
-                prc.allocationNumber = existing.allocationNumber;
-                prc.allocationDate = existing.allocationDate;
-                prc.buyerName = existing.buyerName;
-                prc.allocatedBy = existing.buyerName;
-              }
-              prc.status = calculateStatus(prc, prc.materials);
-              prc.updatedAt = new Date().toISOString();
-              prcs[prcIdx] = prc;
-            });
-
-            setState({ allocations, prcs, statusSummary: buildStatusSummary(prcs) });
-          } else {
-            // create new allocation
-            createAllocation({ allocationNumber: alloc.allocationNumber, allocationDate: alloc.allocationDate, buyerName: alloc.buyerName, items: alloc.items });
-          }
-        });
-
-        // If no allocations were found in the imported rows, mark PRC as Authorised so it appears under pending allocations
-        if (!Object.keys(allocGroups).length) {
-          const prcs = [...(stateNow.prcs || [])];
-          const prcIdx = prcs.findIndex(p => p.id === existingPrc.id);
-          if (prcIdx !== -1) {
-            const prc = { ...prcs[prcIdx] };
-            prc.prStatus = prc.prStatus || 'Authorised';
-            prc.updatedAt = new Date().toISOString();
-            prc.status = calculateStatus(prc, prc.materials || []);
-            prcs[prcIdx] = prc;
-            setState({ prcs, statusSummary: buildStatusSummary(prcs) });
-          }
-        }
-      } catch (err) {
-        console.error('Failed to process imported rows for existing PRC:', err);
-      }
+      existingPrc.status = calculateStatus(existingPrc, existingPrc.materials);
+      existingPrc.updatedAt = new Date().toISOString();
+      updatedExistingPRCs[existingPrcIdx] = existingPrc;
+      modifiedExistingPRCIds.add(existingPrc.id);
 
       results.skipped++;
       results.skippedPRCs.push(prNumber);
       return;
     }
 
+    // NEW PRC: Not found in database
     const firstRow = matRows[0];
     const seenMatKeys = new Set();
     const materials = [];
@@ -823,7 +886,7 @@ export function mergeImport(rows, fileName = 'Requisitions_Import.xlsx') {
 
       if (seenMatKeys.has(matKey)) {
         results.duplicateRows++;
-        return; // Avoid duplicate line items within the same PRC in the file
+        return;
       }
       seenMatKeys.add(matKey);
 
@@ -863,7 +926,6 @@ export function mergeImport(rows, fileName = 'Requisitions_Import.xlsx') {
         wbsDesc:                String(row['WBS DESC'] || '').trim(),
         remarks:                String(row['REMARKS'] || '').trim(),
 
-        // Material-level workflow fields
         allocationNumber:       String(row['ALLOCATION NUMBER'] || '').trim(),
         allocationDate:         String(row['ALLOCATION DATE'] || '').trim(),
         buyerName:              String(row['BUYER NAME'] || '').trim(),
@@ -952,7 +1014,7 @@ export function mergeImport(rows, fileName = 'Requisitions_Import.xlsx') {
     results.new++;
   });
 
-  const updatedPRCs = [...existing, ...newPRCsToAdd];
+  const updatedPRCs = [...updatedExistingPRCs, ...newPRCsToAdd];
   const summary = buildStatusSummary(updatedPRCs);
   const totalMats = updatedPRCs.reduce((acc, p) => acc + (p.materials || []).length, 0);
 
@@ -960,6 +1022,19 @@ export function mergeImport(rows, fileName = 'Requisitions_Import.xlsx') {
     prcs: updatedPRCs,
     statusSummary: summary,
     totalMaterials: totalMats
+  });
+
+  // Direct persistence for modified existing PRCs
+  const effectiveUid = state.firebaseUser?.uid || 'guest';
+  modifiedExistingPRCIds.forEach(prcId => {
+    const prcToSave = updatedPRCs.find(p => p.id === prcId);
+    if (prcToSave) {
+      try {
+        directSavePRC(effectiveUid, prcToSave);
+      } catch (e) {
+        console.warn('directSavePRC error on existing PRC:', e);
+      }
+    }
   });
 
   // If imported rows contained allocation data, create or merge Allocation documents
@@ -998,48 +1073,17 @@ export function mergeImport(rows, fileName = 'Requisitions_Import.xlsx') {
         const allocations = [...(stateNow.allocations || [])];
         const idx = allocations.findIndex(a => a.allocationNumber === alloc.allocationNumber);
         if (idx === -1) return; // safety
-        const existing = { ...allocations[idx], items: [...(allocations[idx].items || [])] };
-        const keySet = new Set(existing.items.map(i => `${i.prcId}::${i.materialId}`));
+        const existingAlloc = { ...allocations[idx], items: [...(allocations[idx].items || [])] };
+        const keySet = new Set(existingAlloc.items.map(i => `${i.prcId}::${i.materialId}`));
         alloc.items.forEach(it => {
           const key = `${it.prcId}::${it.materialId}`;
           if (!keySet.has(key)) {
-            existing.items.push(it);
+            existingAlloc.items.push(it);
             keySet.add(key);
           }
         });
-        allocations[idx] = existing;
-
-        // Cascade changes to PRCs/materials similar to createAllocation
-        const prcs = [...(stateNow.prcs || [])];
-        const affectedPrcIds = new Set(existing.items.map(i => i.prcId));
-        affectedPrcIds.forEach(prcId => {
-          const prcIdx = prcs.findIndex(p => p.id === prcId);
-          if (prcIdx === -1) return;
-          const prc = { ...prcs[prcIdx], materials: [...(prcs[prcIdx].materials || [])] };
-          existing.items.filter(i => i.prcId === prcId).forEach(item => {
-            const matIdx = prc.materials.findIndex(m => m.id === item.materialId);
-            if (matIdx === -1) return;
-            prc.materials[matIdx] = {
-              ...prc.materials[matIdx],
-              allocationNumber: existing.allocationNumber,
-              allocationDate: existing.allocationDate,
-              buyerName: existing.buyerName,
-              allocatedBy: existing.buyerName
-            };
-            prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
-          });
-          if (!prc.allocationNumber || prc.allocationNumber === existing.allocationNumber) {
-            prc.allocationNumber = existing.allocationNumber;
-            prc.allocationDate = existing.allocationDate;
-            prc.buyerName = existing.buyerName;
-            prc.allocatedBy = existing.buyerName;
-          }
-          prc.status = calculateStatus(prc, prc.materials);
-          prc.updatedAt = new Date().toISOString();
-          prcs[prcIdx] = prc;
-        });
-
-        setState({ allocations, prcs, statusSummary: buildStatusSummary(prcs) });
+        allocations[idx] = existingAlloc;
+        setState({ allocations });
       } else {
         // Create a new Allocation document for this allocation number
         createAllocation({ allocationNumber: alloc.allocationNumber, allocationDate: alloc.allocationDate, buyerName: alloc.buyerName, items: alloc.items });
@@ -1051,14 +1095,14 @@ export function mergeImport(rows, fileName = 'Requisitions_Import.xlsx') {
 
   addAuditLog({
     action: 'import', collection: 'PRCs', docId: 'batch',
-    changes: { summary: `New: ${results.new} PRCs imported, Skipped: ${results.skipped} existing PRCs (prevented duplicates/overwriting)` }
+    changes: { summary: `New: ${results.new} PRCs imported, Skipped/Preserved: ${results.skipped} existing PRCs (prevented duplicates/overwriting)` }
   });
 
-  // Direct Cloud Firestore synchronization
+  // Direct Cloud / Database synchronization
   try {
     pushLocalDataToFirestore();
   } catch (syncErr) {
-    console.warn('Direct Firestore push notice for imported data:', syncErr);
+    console.warn('Direct push notice for imported data:', syncErr);
   }
 
   return results;
@@ -2042,8 +2086,10 @@ export function validatePOReportRows(rawRows) {
   const prcMap = new Map();
 
   existingPRCs.forEach(p => {
-    const key = String(p.prNumber || p.id || '').trim().toUpperCase();
-    if (key) prcMap.set(key, p);
+    const rawKey = String(p.prNumber || p.id || '').trim().toUpperCase();
+    if (rawKey) prcMap.set(rawKey, p);
+    const normKey = normalizePRNumberForMatch(p.prNumber || p.id);
+    if (normKey) prcMap.set(normKey, p);
   });
 
   const errors = [];
@@ -2134,14 +2180,17 @@ export function validatePOReportRows(rawRows) {
 
   // Evaluate each matched group against database
   const processedGroups = Object.values(groups).map(g => {
-    const prcUpper = g.prcNumber.toUpperCase();
-    const matchedPrc = prcMap.get(prcUpper);
+    const prcUpper = g.prcNumber.trim().toUpperCase();
+    const prcNorm = normalizePRNumberForMatch(g.prcNumber);
+    const matchedPrc = prcMap.get(prcUpper) || prcMap.get(prcNorm);
     let matchedMat = null;
 
     if (matchedPrc) {
-      const matUpper = g.matCode.toUpperCase();
+      const matUpper = g.matCode.trim().toUpperCase();
+      const matNorm = normalizeMatCodeForMatch(g.matCode);
       matchedMat = (matchedPrc.materials || []).find(m =>
         String(m.matCode || '').trim().toUpperCase() === matUpper ||
+        normalizeMatCodeForMatch(m.matCode) === matNorm ||
         String(m.id || '').toUpperCase().includes(matUpper)
       );
     }
@@ -2328,8 +2377,12 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
   const podDocsMap = {};
 
   validGroups.forEach(g => {
-    const prcUpper = g.prcNumber.toUpperCase();
-    let prcIdx = existingPRCs.findIndex(p => String(p.prNumber || p.id || '').trim().toUpperCase() === prcUpper);
+    const prcUpper = g.prcNumber.trim().toUpperCase();
+    const prcNorm = normalizePRNumberForMatch(g.prcNumber);
+    let prcIdx = existingPRCs.findIndex(p =>
+      String(p.prNumber || p.id || '').trim().toUpperCase() === prcUpper ||
+      normalizePRNumberForMatch(p.prNumber || p.id) === prcNorm
+    );
 
     // If PRC is not found in existing records, skip completely (do NOT create new PRC)
     if (prcIdx === -1) {
@@ -2338,9 +2391,11 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
 
     const prc = { ...existingPRCs[prcIdx], materials: [...(existingPRCs[prcIdx].materials || [])] };
 
-    const matUpper = g.matCode.toUpperCase();
+    const matUpper = g.matCode.trim().toUpperCase();
+    const matNorm = normalizeMatCodeForMatch(g.matCode);
     let matIdx = prc.materials.findIndex(m =>
       String(m.matCode || '').trim().toUpperCase() === matUpper ||
+      normalizeMatCodeForMatch(m.matCode) === matNorm ||
       String(m.id || '').toUpperCase().includes(matUpper)
     );
 
@@ -2699,6 +2754,19 @@ export function applyPOReportImport(processedGroups, fileName = 'PO_Report.xlsx'
   });
 
   const summary = buildStatusSummary ? buildStatusSummary(existingPRCs) : state.statusSummary;
+
+  // Direct persistence for modified existing PRCs
+  const effectiveUid = state.firebaseUser?.uid || 'guest';
+  modifiedPRCIndices.forEach(idx => {
+    const prcToSave = existingPRCs[idx];
+    if (prcToSave) {
+      try {
+        directSavePRC(effectiveUid, prcToSave);
+      } catch (e) {
+        console.warn('directSavePRC error during PO Report Import:', e);
+      }
+    }
+  });
 
   // Commit updated state
   setState({
