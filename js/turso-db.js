@@ -222,6 +222,10 @@ function _mapPRCHeader(m) {
     isSystemIssue: _toBool(m.is_system_issue),
     offersReceived: _toBool(m.offers_received),
     remarks: m.remarks || '',
+    slaActionPlan: m.sla_action_plan || '',
+    slaActionDate: m.sla_action_date || '',
+    slaActionUpdatedBy: m.sla_action_updated_by || '',
+    slaActionUpdatedAt: m.sla_action_updated_at || '',
     createdBy: m.created_by || '',
     requestedBy: m.requested_by || '',
     authorizedBy: m.authorized_by || '',
@@ -649,9 +653,10 @@ export async function directSavePRC(uid, prc) {
         warehouse_code, warehouse_desc, buyer_name, allocated_by, allocation_number, allocation_date,
         rfq_number, rfq_date, tcd_number, tcd_date, tcd_approved, tcd_approved_by, tcd_approved_date,
         po_number, po_date, vendor_name, is_short_closed, is_wrong_prc, is_pr_not_approved,
-        is_future_prc, is_system_issue, offers_received, remarks, created_by, requested_by,
+        is_future_prc, is_system_issue, offers_received, remarks, sla_action_plan, sla_action_date,
+        sla_action_updated_by, sla_action_updated_at, created_by, requested_by,
         authorized_by, authorized_on, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         user_id = excluded.user_id,
         pr_number = excluded.pr_number,
@@ -693,6 +698,10 @@ export async function directSavePRC(uid, prc) {
         is_system_issue = excluded.is_system_issue,
         offers_received = excluded.offers_received,
         remarks = excluded.remarks,
+        sla_action_plan = excluded.sla_action_plan,
+        sla_action_date = excluded.sla_action_date,
+        sla_action_updated_by = excluded.sla_action_updated_by,
+        sla_action_updated_at = excluded.sla_action_updated_at,
         created_by = excluded.created_by,
         requested_by = excluded.requested_by,
         authorized_by = excluded.authorized_by,
@@ -740,6 +749,10 @@ export async function directSavePRC(uid, prc) {
         prc.isSystemIssue ? 1 : 0,
         prc.offersReceived ? 1 : 0,
         prc.remarks || '',
+        prc.slaActionPlan || '',
+        prc.slaActionDate || '',
+        prc.slaActionUpdatedBy || '',
+        prc.slaActionUpdatedAt || '',
         prc.createdBy || '',
         prc.requestedBy || '',
         prc.authorizedBy || '',
@@ -747,6 +760,7 @@ export async function directSavePRC(uid, prc) {
         prc.createdAt || prc.createdOn || now,
         now
       ]
+
     },
     {
       sql: `DELETE FROM prc_materials WHERE prc_id = ?;`,

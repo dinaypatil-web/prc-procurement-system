@@ -398,6 +398,8 @@ import { getActiveDbProvider, setActiveDbProvider } from './js/db-adapter.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
 import { exportCSV, exportExcel, exportPDF, getAgeingReport, REPORT_COLUMNS } from './js/reports.js';
 import { renderExecutive3D, cleanupExecutive3DCharts } from './js/dashboard-3d.js?v=3';
+import { renderSLAWatchlistHTML } from './js/sla-watchlist.js';
+window.renderSLAWatchlistHTML = renderSLAWatchlistHTML;
 
 // ── CHARTS REGISTRY ───────────────────────────────────────
 const charts = {};
@@ -1128,6 +1130,11 @@ ${isAdmin ? `
       <canvas id="chart-dept"></canvas>
     </div>
   </div>
+</div>
+
+<!-- PROACTIVE 10-DAY SLA WATCHLIST & BUYER ACTION REGISTER -->
+<div id="sla-watchlist-container">
+  ${typeof renderSLAWatchlistHTML === 'function' ? renderSLAWatchlistHTML(prcs, buyerFilter) : ''}
 </div>
 
 <!-- AGEING CHART: PENDING PRC VS TCD CREATION -->

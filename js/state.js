@@ -2973,6 +2973,21 @@ export function updatePRC(id, patch, cascadeToMaterials = false) {
   });
 }
 
+/**
+ * Saves a buyer's proactive SLA action plan and reminder note for a PRC.
+ * Persists until TCD is created.
+ */
+export function savePRCSLAAction(prcId, actionPlan, targetDate = null) {
+  const user = state.currentUser?.name || state.currentUser?.email || 'Buyer';
+  const now = new Date().toISOString();
+  return updatePRC(prcId, {
+    slaActionPlan: String(actionPlan || '').trim(),
+    slaActionDate: targetDate || null,
+    slaActionUpdatedAt: now,
+    slaActionUpdatedBy: user
+  });
+}
+
 export function getPRCById(id) {
   return state.prcs.find(p => p.id === id) || null;
 }

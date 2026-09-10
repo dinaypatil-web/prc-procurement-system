@@ -877,5 +877,143 @@ export function getProcurementFunnelBreakdown(prcs = []) {
   ];
 }
 
+// =========================================================
+// PROACTIVE 10-DAY TCD SLA MONITORING ENGINE
+// =========================================================
 
+/**
+ * Computes 10-day SLA metrics and proactive status for a PRC.
+ * SLA target is to process PRC through to TCD creation within 10 days.
+ */
+export function getPRCSLAInfo(prc) {
+  if (!prc) return null;
 
+  const mats = prc.materials || [];
+  const hasTCD = !!(
+    prc.tcdNumber ||
+    prc.tcdApproved ||
+    prc.poNumber ||
+    prc.status === STATUS.COMPLETED ||
+    mats.some(m => m.tcdNumber || m.tcdApproved || m.poNumber || m.status === STATUS.COMPLETED)
+  );
+
+  const isInactive = isPRCOrMaterialInactive(prc);
+  const isExcluded = hasTCD || isInactive || prc.status === STATUS.SHORT_CLOSED || prc.status === STATUS.NOT_ACTIVE;
+
+  // Start date from allocation, fallback to PR date / created date
+  const allocDate = prc.allocationDate || prc.allocatedDate || mats.find(m => m.allocationDate)?.allocationDate;
+  const startDate = allocDate || prc.prDate || prc.createdOn || prc.createdAt;
+  const hasAlloc = !!allocDate;
+
+  // Calendar days elapsed
+  const elapsedDays = startDate ? calcAgeDays(startDate) : 0;
+  const targetDays = 10;
+  const remainingDays = targetDays - elapsedDays;
+
+  // Category classification
+  let slaCategory = 'on_track'; // 'on_track' | 'warning' | 'critical' | 'overdue'
+  let slaBadgeColor = '#10b981';
+  let slaLabel = `${remainingDays}d remaining`;
+
+  if (elapsedDays > 10) {
+    slaCategory = 'overdue';
+    slaBadgeColor = '#ef4444';
+    slaLabel = `Overdue by ${elapsedDays - 10}d`;
+  } else if (elapsedDays >= 7) {
+    slaCategory = 'critical';
+    slaBadgeColor = '#f97316';
+    slaLabel = `${remainingDays}d remaining (Critical)`;
+  } else if (elapsedDays >= 4) {
+    slaCategory = 'warning';
+    slaBadgeColor = '#eab308';
+    slaLabel = `${remainingDays}d remaining`;
+  } else {
+    slaCategory = 'on_track';
+    slaBadgeColor = '#10b981';
+    slaLabel = `${remainingDays}d remaining (On Track)`;
+  }
+
+  // Current pipeline stage description
+  let stageKey = 'allocated';
+  let stageLabel = 'Allocation Done';
+  if (prc.rfqNumber || mats.some(m => m.rfqNumber)) {
+    if (prc.offersReceived || mats.some(m => m.offersReceived)) {
+      stageKey = 'offers_in';
+      stageLabel = 'Offers In (Ready for TCD)';
+    } else {
+      stageKey = 'rfq_issued';
+      stageLabel = 'RFQ Floated (Awaiting Offers)';
+    }
+  } else if (!hasAlloc) {
+    stageKey = 'authorisation';
+    stageLabel = 'Authorised (Pending Allocation)';
+  }
+
+  const buyer = (prc.buyer || prc.allocatedBuyer || prc.buyerName || prc.allocatedBy || '').trim();
+  const hasActionPlan = !!(prc.slaActionPlan && String(prc.slaActionPlan).trim());
+
+  return {
+    prcId: prc.id,
+    prNumber: prc.prNumber || prc.id,
+    hasTCD,
+    isExcluded,
+    startDate,
+    hasAlloc,
+    allocDate,
+    elapsedDays,
+    targetDays,
+    remainingDays,
+    slaCategory,
+    slaBadgeColor,
+    slaLabel,
+    stageKey,
+    stageLabel,
+    buyer,
+    hasActionPlan,
+    actionPlan: prc.slaActionPlan || '',
+    actionDate: prc.slaActionDate || null,
+    actionUpdatedAt: prc.slaActionUpdatedAt || null,
+    actionUpdatedBy: prc.slaActionUpdatedBy || ''
+  };
+}
+
+/**
+ * Filter and sort PRCs for the proactive 10-day SLA watchlist.
+ * Only returns active PRCs pending TCD creation.
+ */
+export function getSLAWatchlistPRCs(prcs = [], buyerFilter = null) {
+  if (!Array.isArray(prcs)) return [];
+
+  const list = [];
+  prcs.forEach(p => {
+    const sla = getPRCSLAInfo(p);
+    if (!sla || sla.isExcluded) return;
+
+    // Apply buyer filter if specified
+    if (buyerFilter) {
+      if (buyerFilter.scope === 'selective' && Array.isArray(buyerFilter.selectedBuyers) && buyerFilter.selectedBuyers.length > 0) {
+        const matches = buyerFilter.selectedBuyers.some(b => b.toLowerCase() === sla.buyer.toLowerCase());
+        if (!matches) return;
+      } else if (typeof buyerFilter === 'string' && buyerFilter !== 'all') {
+        if (sla.buyer.toLowerCase() !== buyerFilter.toLowerCase()) return;
+      }
+    }
+
+    list.push({ prc: p, sla });
+  });
+
+  // Sort by urgency:
+  // 1. Overdue first (descending elapsed days)
+  // 2. Critical (descending elapsed days)
+  // 3. PRCs missing action plans prioritized within same category
+  const urgencyWeight = { overdue: 4, critical: 3, warning: 2, on_track: 1 };
+  list.sort((a, b) => {
+    const wDiff = urgencyWeight[b.sla.slaCategory] - urgencyWeight[a.sla.slaCategory];
+    if (wDiff !== 0) return wDiff;
+    if (!a.sla.hasActionPlan && b.sla.hasActionPlan) return -1;
+    if (a.sla.hasActionPlan && !b.sla.hasActionPlan) return 1;
+    return b.sla.elapsedDays - a.sla.elapsedDays;
+  });
+
+  return list;
+}

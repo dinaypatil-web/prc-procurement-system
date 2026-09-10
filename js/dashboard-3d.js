@@ -6,6 +6,7 @@
 import { getProcurementFunnelBreakdown, calcAgeDays } from './status-engine.js';
 import { getState, isSuperAdmin, doesRecordPertainToCurrentUser, setTableColumnFilter, clearAllTableColumnFilters, getFilteredTCDs, getDashboardBuyerFilter, setDashboardBuyerFilter, getAllAvailableBuyers, getDashboardTCDs } from './state.js?v=3';
 import { toast } from './utils.js';
+import { renderSLAWatchlistHTML } from './sla-watchlist.js';
 
 // Chart instances registry for Executive 3D theme
 export const exec3dCharts = {};
@@ -857,6 +858,11 @@ export function renderExecutive3D(container, prcs, s, helpers = {}) {
         ${generate3DFunnelSVG(funnelStages, totalPRCs)}
       </div>
     </div>
+  </div>
+
+  <!-- ── 3B. PROACTIVE 10-DAY TCD SLA WATCHLIST & BUYER ACTION REGISTER ── -->
+  <div id="sla-watchlist-container" style="margin-top:20px">
+    ${renderSLAWatchlistHTML(prcs, buyerFilter)}
   </div>
 
   <!-- ── 4. CHARTS ROW 2: 3D STATUS DOUGHNUT + LIVE BUYER/DEPARTMENT MATRIX TABLE ── -->
