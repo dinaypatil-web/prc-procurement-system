@@ -1003,15 +1003,13 @@ export function getSLAWatchlistPRCs(prcs = [], buyerFilter = null) {
   });
 
   // Sort by urgency:
-  // 1. Overdue first (descending elapsed days)
-  // 2. Critical (descending elapsed days)
-  // 3. PRCs missing action plans prioritized within same category
+  // 1. Overdue first (highest elapsed days first)
+  // 2. Critical (highest elapsed days first)
+  // 3. Warning & On Track
   const urgencyWeight = { overdue: 4, critical: 3, warning: 2, on_track: 1 };
   list.sort((a, b) => {
     const wDiff = urgencyWeight[b.sla.slaCategory] - urgencyWeight[a.sla.slaCategory];
     if (wDiff !== 0) return wDiff;
-    if (!a.sla.hasActionPlan && b.sla.hasActionPlan) return -1;
-    if (a.sla.hasActionPlan && !b.sla.hasActionPlan) return 1;
     return b.sla.elapsedDays - a.sla.elapsedDays;
   });
 

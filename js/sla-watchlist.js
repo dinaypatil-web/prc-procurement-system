@@ -199,8 +199,16 @@ export function renderSLAWatchlistHTML(prcs, buyerFilter = null) {
             barBg = '#eab308';
           }
 
+          const isJustActioned = window._lastActionedPRCId && (window._lastActionedPRCId === p.id || window._lastActionedPRCId === p.prNumber);
           return `
-          <tr style="border-bottom:1px solid var(--color-border);transition:background 0.15s ease" onmouseover="this.style.background='var(--color-surface-2)'" onmouseout="this.style.background='transparent'">
+          <tr 
+            id="sla-row-${escapeHtml(p.id)}" 
+            data-prc-id="${escapeHtml(p.id)}" 
+            data-prc-num="${escapeHtml(p.prNumber || p.id)}" 
+            style="border-bottom:1px solid var(--color-border);transition:background 0.3s ease;${isJustActioned ? 'background:rgba(59,130,246,0.12);' : ''}" 
+            onmouseover="if(!this.dataset.highlighted)this.style.background='var(--color-surface-2)'" 
+            onmouseout="if(!this.dataset.highlighted)this.style.background='transparent'"
+          >
             <!-- PRC Number & Requisition Info -->
             <td style="padding:12px 14px;vertical-align:top">
               <div style="font-weight:700;color:var(--color-primary);cursor:pointer;display:inline-flex;align-items:center;gap:4px" onclick="if(typeof window.openPRCDetail==='function'){window.openPRCDetail('${escapeJsString(p.id || p.prNumber)}')}else if(typeof window.openPRCModal==='function'){window.openPRCModal('${escapeJsString(p.id || p.prNumber)}')}" title="Click to view PRC details">
@@ -314,6 +322,31 @@ export function renderSLAWatchlistHTML(prcs, buyerFilter = null) {
 // GLOBAL CONTROLLERS & ACTION MODAL
 // ═══════════════════════════════════════════════════════════
 
+/**
+ * Resolve the active application state safely across module scopes
+ */
+function getEffectiveState() {
+  if (typeof window !== 'undefined' && typeof window.getState === 'function') {
+    const s = window.getState();
+    if (s && Array.isArray(s.prcs) && s.prcs.length > 0) return s;
+  }
+  return getState();
+}
+
+/**
+ * Robust lookup for PRC by id or prNumber (string or numeric)
+ */
+function findWatchlistPRC(prcId, stateObj) {
+  const s = stateObj || getEffectiveState();
+  const list = (s && Array.isArray(s.prcs)) ? s.prcs : [];
+  return list.find(p => 
+    p.id === prcId || 
+    String(p.id) === String(prcId) || 
+    p.prNumber === prcId || 
+    String(p.prNumber) === String(prcId)
+  ) || null;
+}
+
 if (typeof window !== 'undefined') {
   /**
    * Switch active filter tab on SLA Watchlist
@@ -330,31 +363,6 @@ if (typeof window !== 'undefined') {
     currentSLASearch = query;
     refreshSLAWatchlistDOM();
   };
-
-  /**
-   * Resolve the active application state safely across module scopes
-   */
-  function getEffectiveState() {
-    if (typeof window !== 'undefined' && typeof window.getState === 'function') {
-      const s = window.getState();
-      if (s && Array.isArray(s.prcs) && s.prcs.length > 0) return s;
-    }
-    return getState();
-  }
-
-  /**
-   * Robust lookup for PRC by id or prNumber (string or numeric)
-   */
-  function findWatchlistPRC(prcId, stateObj) {
-    const s = stateObj || getEffectiveState();
-    const list = (s && Array.isArray(s.prcs)) ? s.prcs : [];
-    return list.find(p => 
-      p.id === prcId || 
-      String(p.id) === String(prcId) || 
-      p.prNumber === prcId || 
-      String(p.prNumber) === String(prcId)
-    ) || null;
-  }
 
   /**
    * Open the Buyer Proactive Action Modal
@@ -537,6 +545,12 @@ if (typeof window !== 'undefined') {
     const modalEl = document.getElementById('sla-action-modal');
     if (modalEl) modalEl.classList.remove('open');
 
+    // If user was on 'action_needed' tab, switch to 'all' or 'action_planned' so the saved record stays visible!
+    if (currentSLATab === 'action_needed') {
+      currentSLATab = 'all';
+    }
+    window._lastActionedPRCId = String(prcId);
+
     toast(`✅ Proactive Action Plan recorded for PRC!`, 'success');
     refreshSLAWatchlistDOM();
     if (typeof window.refreshDashboard === 'function') {
@@ -562,6 +576,7 @@ if (typeof window !== 'undefined') {
     const modalEl = document.getElementById('sla-action-modal');
     if (modalEl) modalEl.classList.remove('open');
 
+    window._lastActionedPRCId = null;
     toast('Action plan cleared', 'info');
     refreshSLAWatchlistDOM();
     if (typeof window.refreshDashboard === 'function') {
@@ -582,4 +597,23 @@ function refreshSLAWatchlistDOM() {
   const buyerFilter = typeof window.getDashboardBuyerFilter === 'function' ? window.getDashboardBuyerFilter() : null;
 
   container.innerHTML = renderSLAWatchlistHTML(prcs, buyerFilter);
+
+  // Auto-scroll to and highlight the recently actioned PRC
+  if (window._lastActionedPRCId) {
+    const id = window._lastActionedPRCId;
+    const targetRow = container.querySelector(`tr[data-prc-id="${id}"]`) ||
+                      container.querySelector(`tr[data-prc-num="${id}"]`) ||
+                      document.getElementById(`sla-row-${id}`);
+    if (targetRow) {
+      targetRow.dataset.highlighted = 'true';
+      targetRow.style.background = 'rgba(59,130,246,0.18)';
+      targetRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      setTimeout(() => {
+        if (targetRow) {
+          delete targetRow.dataset.highlighted;
+          targetRow.style.background = '';
+        }
+      }, 4000);
+    }
+  }
 }
