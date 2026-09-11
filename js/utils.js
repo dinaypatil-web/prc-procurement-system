@@ -368,26 +368,37 @@ export function getTCDCreationDate(tcdOrPrc) {
 export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
   const prcMonths = {};
   const tcdMonths = {};
-  let oldestDate = null;
+  let oldestAllocDate = null;
   let newestDate = null;
 
-  // Track oldest and newest dates strictly from the user's records (sanitized for realistic modern years >= 2000)
   const currentYear = new Date().getFullYear();
-  const updateDateBounds = (raw) => {
+
+  // Helper to track latest date forward across all records
+  const updateNewestDate = (raw) => {
     if (!raw) return;
     const dt = parseDateObj(raw);
     if (!dt || isNaN(dt.getTime())) return;
     const y = dt.getFullYear();
     if (y < 2000 || y > currentYear + 2) return;
-    if (!oldestDate || dt < oldestDate) oldestDate = dt;
     if (!newestDate || dt > newestDate) newestDate = dt;
   };
 
-  // 1. Tally Monthly PRCs strictly by PRC Allocation Date
+  // Helper to track oldest PRC allocation date strictly
+  const updateOldestAllocDate = (raw) => {
+    if (!raw) return;
+    const dt = parseDateObj(raw);
+    if (!dt || isNaN(dt.getTime())) return;
+    const y = dt.getFullYear();
+    if (y < 2000 || y > currentYear + 2) return;
+    if (!oldestAllocDate || dt < oldestAllocDate) oldestAllocDate = dt;
+    if (!newestDate || dt > newestDate) newestDate = dt;
+  };
+
+  // 1. Tally Monthly PRCs strictly by PRC Allocation Date & track oldest PRC allocation date
   prcs.forEach(p => {
     const allocRaw = getPRCAllocationDate(p);
     if (allocRaw) {
-      updateDateBounds(allocRaw);
+      updateOldestAllocDate(allocRaw);
       const dt = parseDateObj(allocRaw);
       if (dt && dt.getFullYear() >= 2000) {
         const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
@@ -399,11 +410,17 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
   // 2. Tally Monthly TCDs strictly by TCD Creation Date
   const countedTcdKeys = new Set();
 
+  function dt_check(raw) {
+    if (!raw) return false;
+    const dt = parseDateObj(raw);
+    return dt && dt.getFullYear() >= 2000;
+  }
+
   (tcds || []).forEach(t => {
     const tcdNum = String(t.tcdNumber || t.id || '').trim();
     const raw = getTCDCreationDate(t);
     if (!dt_check(raw) || !tcdNum) return;
-    updateDateBounds(raw);
+    updateNewestDate(raw);
     const dt = parseDateObj(raw);
     if (!dt || dt.getFullYear() < 2000) return;
     const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
@@ -414,17 +431,11 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
     }
   });
 
-  function dt_check(raw) {
-    if (!raw) return false;
-    const dt = parseDateObj(raw);
-    return dt && dt.getFullYear() >= 2000;
-  }
-
   prcs.forEach(p => {
     const pTcdNum = String(p.tcdNumber || '').trim();
     const pRaw = getTCDCreationDate(p);
     if (pTcdNum && pRaw) {
-      updateDateBounds(pRaw);
+      updateNewestDate(pRaw);
       const dt = parseDateObj(pRaw);
       if (dt && dt.getFullYear() >= 2000) {
         const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
@@ -440,7 +451,7 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
       const mTcdNum = String(m.tcdNumber || '').trim();
       const mRaw = getTCDCreationDate(m);
       if (mTcdNum && mRaw) {
-        updateDateBounds(mRaw);
+        updateNewestDate(mRaw);
         const dt = parseDateObj(mRaw);
         if (dt && dt.getFullYear() >= 2000) {
           const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
@@ -454,17 +465,26 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
     });
   });
 
-  // Fallback date bounds if no allocation/TCD dates yet
-  if (!oldestDate) {
+  // Fallback start date if no PRC allocation dates exist in data
+  if (!oldestAllocDate) {
     prcs.forEach(p => {
-      updateDateBounds(p.createdAt);
-      updateDateBounds(p.prDate);
+      const fallbackRaw = p.createdAt || p.prDate;
+      if (fallbackRaw) {
+        const dt = parseDateObj(fallbackRaw);
+        if (dt && !isNaN(dt.getTime())) {
+          const y = dt.getFullYear();
+          if (y >= 2000 && y <= currentYear + 2) {
+            if (!oldestAllocDate || dt < oldestAllocDate) oldestAllocDate = dt;
+            if (!newestDate || dt > newestDate) newestDate = dt;
+          }
+        }
+      }
     });
   }
 
-  // Determine starting month strictly from user's oldest activity date (up to current/latest month)
+  // Determine starting month strictly from the oldest PRC allocation date available in data
   const now = new Date();
-  const startDt = oldestDate || now;
+  const startDt = oldestAllocDate || now;
   const endDt = (newestDate && newestDate > now) ? newestDate : now;
 
   let curYear = startDt.getFullYear();
@@ -903,33 +923,51 @@ export function getDatasetDateBounds(prcs = [], tcds = []) {
   let minTs = Infinity;
   let maxTs = -Infinity;
 
-  const check = (raw) => {
+  const checkMax = (raw) => {
     if (!raw) return;
     const dt = parseDateObj(raw);
-    if (!dt) return;
+    if (!dt || isNaN(dt.getTime())) return;
     const ts = dt.getTime();
-    if (ts < minTs) minTs = ts;
+    if (ts > maxTs) maxTs = ts;
+  };
+
+  let minAllocTs = Infinity;
+  const checkAlloc = (raw) => {
+    if (!raw) return;
+    const dt = parseDateObj(raw);
+    if (!dt || isNaN(dt.getTime())) return;
+    const ts = dt.getTime();
+    if (ts < minAllocTs) minAllocTs = ts;
     if (ts > maxTs) maxTs = ts;
   };
 
   prcs.forEach(p => {
-    check(p.createdAt);
-    check(p.allocationDate);
-    check(p.prDate);
-    check(p.tcdDate);
-    check(p.poDate);
+    const allocRaw = getPRCAllocationDate(p);
+    if (allocRaw) checkAlloc(allocRaw);
+    checkMax(p.createdAt);
+    checkMax(p.prDate);
+    checkMax(p.tcdDate);
+    checkMax(p.poDate);
     (p.materials || []).forEach(m => {
-      check(m.allocationDate);
-      check(m.tcdDate);
-      check(m.poDate);
+      checkMax(m.tcdDate);
+      checkMax(m.poDate);
     });
   });
 
   (tcds || []).forEach(t => {
-    check(t.tcdDate);
-    check(t.createdAt);
-    check(t.approvedDate);
+    checkMax(t.tcdDate);
+    checkMax(t.createdAt);
+    checkMax(t.approvedDate);
   });
+
+  if (minAllocTs !== Infinity) {
+    minTs = minAllocTs;
+  } else {
+    prcs.forEach(p => {
+      const dt = parseDateObj(p.createdAt || p.prDate);
+      if (dt && !isNaN(dt.getTime()) && dt.getTime() < minTs) minTs = dt.getTime();
+    });
+  }
 
   const now = Date.now();
   if (minTs === Infinity) minTs = now - 90 * 86400000;
