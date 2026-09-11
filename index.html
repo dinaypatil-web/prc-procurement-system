@@ -397,7 +397,7 @@ import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } fro
 import { getActiveDbProvider, setActiveDbProvider } from './js/db-adapter.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
 import { exportCSV, exportExcel, exportPDF, getAgeingReport, REPORT_COLUMNS } from './js/reports.js';
-import { renderExecutive3D, cleanupExecutive3DCharts } from './js/dashboard-3d.js';
+import { renderExecutive3D, cleanupExecutive3DCharts, generate3DFunnelSVG } from './js/dashboard-3d.js';
 import { renderSLAWatchlistHTML } from './js/sla-watchlist.js';
 window.renderSLAWatchlistHTML = renderSLAWatchlistHTML;
 window.openPRCModal = function(id) {
@@ -852,6 +852,14 @@ function renderDashboard(container) {
       cleanupExecutive3DCharts();
     }
     renderExecutive3D(container, prcs, s);
+    // Allow funnel mode toggle buttons to re-render the funnel without full page reload
+    window._rerenderFunnelOnly = function() {
+      const fw = document.getElementById('exec3d-funnel-wrap');
+      if (fw) {
+        const liveStages = getProcurementFunnelBreakdown(prcs);
+        fw.innerHTML = generate3DFunnelSVG(liveStages, prcs.length, { prcs });
+      }
+    };
     return;
   }
 
@@ -1061,20 +1069,24 @@ ${isAdmin ? `
   `).join('')}
 </div>
 
-<!-- CHARTS ROW 1 -->
-<div class="chart-grid-2 mt-4" style="margin-top:24px">
-  <div class="card chart-card">
-    <div class="card-header">
-      <div>
-        <div class="card-title">Status Distribution</div>
-        <div class="card-subtitle">All PRCs by current status</div>
-      </div>
-    </div>
-    <div class="chart-canvas-wrap" style="height:280px">
-      <canvas id="chart-status-pie"></canvas>
+<!-- STATUS DISTRIBUTION -->
+<div class="card chart-card" style="margin-top:24px">
+  <div class="card-header">
+    <div>
+      <div class="card-title">Status Distribution</div>
+      <div class="card-subtitle">All PRCs by current status</div>
     </div>
   </div>
-  <div class="card chart-card">
+  <div class="chart-canvas-wrap" style="height:280px">
+    <canvas id="chart-status-pie"></canvas>
+  </div>
+</div>
+
+<!-- CHARTS ROW 1: MONTHLY PRC VS TCD + PROCUREMENT FUNNEL (SIDE BY SIDE) -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:20px;align-items:stretch">
+
+  <!-- Monthly PRC Vs TCD Trend Chart -->
+  <div class="card chart-card" style="display:flex;flex-direction:column">
     <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <div>
         <div class="card-title" id="prc-po-trend-title">Monthly PRC Vs Monthly TCD</div>
@@ -1093,29 +1105,24 @@ ${isAdmin ? `
         </div>
       </div>
     </div>
-    <div class="chart-canvas-wrap" style="height:280px">
+    <div class="chart-canvas-wrap" style="height:280px;flex:1">
       <canvas id="chart-monthly-trend"></canvas>
     </div>
     <div id="trend-chart-date-scroller" class="trend-date-scroller-wrap"></div>
   </div>
-</div>
 
-<!-- CHARTS ROW 2 -->
-<div class="chart-grid-3" style="margin-top:20px">
-  <div class="card chart-card">
-    <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-      <div>
-        <div class="card-title">Procurement Funnel</div>
-        <div class="card-subtitle">Drop-offs & reasons between stages</div>
-      </div>
-      <button class="btn btn-ghost btn-xs" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);font-weight:600" onclick="openFunnelReasonsModal()" title="View reasons why each stage is shortened">
-        <span>🔍</span> <span>Drop-off Reasons</span>
-      </button>
-    </div>
-    <div class="chart-canvas-wrap" style="height:240px">
-      <canvas id="chart-funnel"></canvas>
+  <!-- 3D VECTOR PROCUREMENT FUNNEL -->
+  <div class="card chart-card exec3d-funnel-card" id="procurement-funnel-card" style="padding:0; overflow:hidden; border-radius:16px; background:#1b124a; border:1px solid rgba(255,255,255,0.1); box-shadow:0 12px 36px rgba(0,0,0,0.4); display:flex; flex-direction:column">
+    <div id="chart-funnel-container" class="exec3d-funnel-container" style="flex:1">
+      <!-- 3D Vector Origami Ribbon Funnel Diagram rendered dynamically -->
     </div>
   </div>
+
+</div>
+
+
+<!-- CHARTS ROW 2: VENDOR DISTRIBUTION & DEPARTMENT BREAKDOWN -->
+<div class="chart-grid-2" style="margin-top:20px; display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:18px">
   <div class="card chart-card">
     <div class="card-header">
       <div>
@@ -1131,7 +1138,7 @@ ${isAdmin ? `
     <div class="card-header">
       <div class="card-title">Department Breakdown</div>
     </div>
-    <div class="chart-canvas-wrap" style="height:240px">
+    <div class="chart-canvas-wrap" style="height:250px">
       <canvas id="chart-dept"></canvas>
     </div>
   </div>
@@ -1221,70 +1228,23 @@ function initDashboardCharts(prcs, s) {
   // Weekly / Monthly PRC Vs PO Trend
   renderTrendChart(prcs);
 
-  // Procurement Funnel
+  // Procurement Funnel (3D Vector Ribbon Funnel Showcase)
   const funnelStages = getProcurementFunnelBreakdown(prcs);
-  const funnelEl = document.getElementById('chart-funnel');
-  if (funnelEl) {
-    charts['funnel'] = new Chart(funnelEl, {
-      type: 'bar',
-      data: {
-        labels: funnelStages.map(d => d.stage),
-        datasets: [{
-          data: funnelStages.map(d => d.count),
-          backgroundColor: funnelStages.map(d => d.color),
-          borderRadius: 6,
-          borderSkipped: false
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        indexAxis: 'y',
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              title: (items) => {
-                if (!items || !items.length) return '';
-                const idx = items[0].dataIndex;
-                const s = funnelStages[idx];
-                const pct = prcs.length ? Math.round(s.count / prcs.length * 100) : 0;
-                return `${s.label}: ${s.count} PRCs (${pct}% of Total)`;
-              },
-              label: (ctx) => {
-                const idx = ctx.dataIndex;
-                const s = funnelStages[idx];
-                if (!s.dropFrom || s.dropCount === 0) {
-                  return [' ✅ 100% retained — Top of funnel'];
-                }
-                const lines = [
-                  ` 🔻 Shortened from ${s.dropFrom} by: -${s.dropCount} PRCs`,
-                  ' 📌 Reasons for Drop-off:'
-                ];
-                (s.dropReasons || []).forEach(r => {
-                  lines.push(`   ${r.icon} ${r.label}: ${r.count} PRCs`);
-                });
-                lines.push(' 🔍 Click bar to view detailed reasons & PRCs');
-                return lines;
-              }
-            }
-          }
-        },
-        onClick: (e, elements) => {
-          if (elements && elements.length) {
-            const idx = elements[0].index;
-            openFunnelReasonsModal(idx);
-          }
-        },
-        scales: {
-          x: { grid: { color: grid } },
-          y: { grid: { display: false } }
-        }
-      }
-    });
+  const funnelContainer = document.getElementById('chart-funnel-container');
+  if (funnelContainer) {
+    funnelContainer.innerHTML = generate3DFunnelSVG(funnelStages, prcs.length, { prcs });
   }
 
-  // Vendor Distribution (Top 10 Vendors)
+  // Global re-render hook for 5-stage / 6-stage mode toggle buttons embedded inside the SVG
+  window._rerenderFunnelOnly = function() {
+    const fc = document.getElementById('chart-funnel-container');
+    if (fc) {
+      const liveStages = getProcurementFunnelBreakdown(prcs);
+      fc.innerHTML = generate3DFunnelSVG(liveStages, prcs.length, { prcs });
+    }
+  };
+
+
   const vendorDist = {};
   prcs.forEach(p => {
     const vSet = new Set();

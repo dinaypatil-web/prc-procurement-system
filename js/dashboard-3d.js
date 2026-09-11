@@ -247,145 +247,350 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Generate 3D Stepped Ribbon Funnel SVG
- * Uses real live stages from getProcurementFunnelBreakdown(prcs)
- * Renders high-visibility isometric facets, depth lighting, connector pins,
- * and exact live conversion and drop-off metrics.
+ * Generate 3D Stepped Ribbon Funnel SVG (Vector Diagram Template)
+ * Matches the user's executive vector funnel design:
+ * - 3D folded origami ribbon funnel with vibrant gradients and dimensional shadows
+ * - Left callout outline boxes with stage names and horizontal connector lines
+ * - Center ribbon funnel with live PRC metrics and drop-offs
+ * - Right horizontal connector lines with value in ₹ Cr, retention %, and drop reasons
+ * - Interactive drilldown into openFunnelReasonsModal
  */
-export function generate3DFunnelSVG(stages, totalPRCs) {
-  const width = 640;
-  const height = 370;
-  
+export function generate3DFunnelSVG(stages, totalPRCs, options = {}) {
+  const width = 1060;
+  const height = 580;
+  const mode = (typeof window !== 'undefined' && window._funnelMode) || '5-stage';
+
   if (!stages || !stages.length) {
     return `<div style="text-align:center;padding:40px;color:var(--color-text-secondary)">No funnel stages available</div>`;
   }
 
-  // Curated high-contrast gradients for the 6 stages
-  const tierPalettes = [
-    { start: '#6366f1', end: '#4f46e5', bevel: '#818cf8', text: '#ffffff' }, // Purple (Imported)
-    { start: '#0284c7', end: '#0369a1', bevel: '#38bdf8', text: '#ffffff' }, // Deep Blue (Allocated)
-    { start: '#0ea5e9', end: '#0284c7', bevel: '#7dd3fc', text: '#ffffff' }, // Sky/Blue (RFQ Issued)
-    { start: '#0d9488', end: '#0f766e', bevel: '#2dd4bf', text: '#ffffff' }, // Teal (Offers In)
-    { start: '#10b981', end: '#059669', bevel: '#34d399', text: '#ffffff' }, // Emerald (TCD Done)
-    { start: '#059669', end: '#047857', bevel: '#10b981', text: '#ffffff' }  // Dark Emerald (PO Issued)
-  ];
+  const allPRCs = options.prcs || (typeof getState === 'function' ? getState().prcs : []) || [];
+  
+  // ---------------------------------------------------------------------------
+  // calcPRCListValue: sum monetary value across a PRC list
+  // Priority: p.totalAmount > material.value > quantity*suggestedRate
+  // Fix #3: explicit Number() guards on all paths to avoid NaN contamination
+  // ---------------------------------------------------------------------------
+  const calcPRCListValue = (prcList) => {
+    let covered = 0; // PRCs with at least one cost field
+    const totalVal = prcList.reduce((sum, p) => {
+      const topLevel = Number(p.totalAmount);
+      if (topLevel > 0) { covered++; return sum + topLevel; }
+      const matVal = (p.materials || []).reduce((mSum, m) => {
+        const mv = Number(m.value);
+        if (mv > 0) return mSum + mv;
+        const qty = Number(m.quantity);
+        const rate = Number(m.suggestedRate);
+        if (qty > 0 && rate > 0) return mSum + qty * rate;
+        return mSum;
+      }, 0);
+      if (matVal > 0) covered++;
+      return sum + matVal;
+    }, 0);
+    if (totalVal <= 0) return '—';
+    if (totalVal >= 10000000) return `₹${(totalVal / 10000000).toFixed(1)} Cr`;
+    if (totalVal >= 100000)   return `₹${(totalVal / 100000).toFixed(1)} L`;
+    return `₹${Math.round(totalVal).toLocaleString()}`;
+  };
 
-  let defs = '';
-  let elements = '';
-  const numTiers = stages.length;
-  const startY = 14;
-  const tierHeight = 44;
-  const tierGap = 10;
-  const centerX = 140;
-  const maxTopWidth = 240;
-  const minTopWidth = 90;
+  const totalValueStr = calcPRCListValue(allPRCs);
+
+  // Define the 5 Core Milestones (default, matching reference image) or 6 Detailed Steps
+  let displayStages = [];
+  if (mode === '5-stage') {
+    const sImported = stages[0] || { count: totalPRCs || allPRCs.length };
+    const sAlloc = stages[1] || { count: 0, dropCount: 0 };
+    const sRfq = stages[2] || { count: 0, dropCount: 0 };
+    const sTcd = stages[4] || stages[3] || { count: 0, dropCount: 0 };
+    const sPo = stages[5] || stages[stages.length - 1] || { count: 0, dropCount: 0 };
+
+    displayStages = [
+      {
+        id: 'imported',
+        name: 'PRC CREATED',
+        label: 'Requisitions Raised',
+        count: sImported.count || allPRCs.length,
+        valueStr: totalValueStr,
+        dropCount: 0,
+        subtext: '100% Retained · Top of Pipeline',
+        modalIdx: 0,
+        palette: {
+          gradStart: '#FFEB60',
+          gradEnd: '#FFB703',
+          foldStart: '#C26A00',
+          foldEnd: '#733900',
+          accent: '#FFC000',
+          text: '#FFE044'
+        }
+      },
+      {
+        id: 'allocated',
+        name: 'ALLOCATED',
+        label: 'Buyer Assigned',
+        count: sAlloc.count || 0,
+        // Fix #1: match the same allocation signals status-engine uses
+        valueStr: calcPRCListValue(allPRCs.filter(p =>
+          p.allocationDate || p.allocatedDate || p.allocatedBuyer || p.allocationNumber ||
+          (p.materials || []).some(m => m.allocationDate || m.allocationNumber || (m.allocatedQty || 0) > 0)
+        )),
+        dropCount: (sImported.count || allPRCs.length) - (sAlloc.count || 0),
+        subtext: `${totalPRCs > 0 ? Math.round((sAlloc.count / totalPRCs) * 100) : 0}% Retained · ${Math.max(0, (sImported.count || allPRCs.length) - (sAlloc.count || 0))} Pending Alloc`,
+        modalIdx: 1,
+        palette: {
+          gradStart: '#FF9233',
+          gradEnd: '#FB5607',
+          foldStart: '#A83000',
+          foldEnd: '#5E1600',
+          accent: '#FF9233',
+          text: '#FF9233'
+        }
+      },
+      {
+        id: 'rfq',
+        name: 'RFQ FLOATED',
+        label: 'Market Enquiries Sent',
+        count: sRfq.count || 0,
+        valueStr: calcPRCListValue(allPRCs.filter(p => p.rfqNumber || (p.materials || []).some(m => m.rfqNumber))),
+        dropCount: (sAlloc.count || 0) - (sRfq.count || 0),
+        subtext: `${totalPRCs > 0 ? Math.round((sRfq.count / totalPRCs) * 100) : 0}% Retained · ${Math.max(0, (sAlloc.count || 0) - (sRfq.count || 0))} In Sourcing`,
+        modalIdx: 2,
+        palette: {
+          gradStart: '#FF2A85',
+          gradEnd: '#D80064',
+          foldStart: '#8F003D',
+          foldEnd: '#4D001F',
+          accent: '#FF2A85',
+          text: '#FF2A85'
+        }
+      },
+      {
+        id: 'tcd',
+        name: 'TCD PROCESSED',
+        label: 'Techno-Commercial Clearance',
+        count: sTcd.count || 0,
+        valueStr: calcPRCListValue(allPRCs.filter(p => p.tcdNumber || (p.materials || []).some(m => m.tcdNumber))),
+        dropCount: (sRfq.count || 0) - (sTcd.count || 0),
+        subtext: `${totalPRCs > 0 ? Math.round((sTcd.count / totalPRCs) * 100) : 0}% Retained · ${Math.max(0, (sRfq.count || 0) - (sTcd.count || 0))} Evaluation`,
+        modalIdx: 4,
+        palette: {
+          gradStart: '#9333EA',
+          gradEnd: '#3B82F6',
+          foldStart: '#2D126B',
+          foldEnd: '#141E61',
+          accent: '#9333EA',
+          text: '#A855F7'
+        }
+      },
+      {
+        id: 'po',
+        name: 'PO CREATED',
+        label: 'Purchase Orders Awarded',
+        count: sPo.count || 0,
+        valueStr: calcPRCListValue(allPRCs.filter(p => p.poNumber || (p.materials || []).some(m => m.poNumber))),
+        dropCount: (sTcd.count || 0) - (sPo.count || 0),
+        subtext: `${totalPRCs > 0 ? Math.round((sPo.count / totalPRCs) * 100) : 0}% Retained · Orders Issued`,
+        modalIdx: 5,
+        palette: {
+          gradStart: '#10B981',
+          gradEnd: '#059669',
+          foldStart: '#046C4E',
+          foldEnd: '#023D2C',
+          accent: '#10B981',
+          text: '#10B981'
+        }
+      }
+    ];
+  } else {
+    // 6-stage mode
+    // Fix #2: compute per-stage ₹ values using the same document-presence filters as 5-stage mode
+    // Stage-to-filter map keyed by normalized stage name from status-engine
+    const stageValueFilter = {
+      'imported':   (_p) => true,  // all PRCs
+      'allocated':  (p) => p.allocationDate || p.allocatedDate || p.allocatedBuyer || p.allocationNumber ||
+                           (p.materials || []).some(m => m.allocationDate || m.allocationNumber || (m.allocatedQty || 0) > 0),
+      'rfq issued': (p) => p.rfqNumber || (p.materials || []).some(m => m.rfqNumber),
+      'offers in':  (p) => p.offersReceived || p.tcdNumber || p.tcdApproved || p.poNumber ||
+                           (p.materials || []).some(m => m.offersReceived || m.tcdNumber || m.tcdApproved || m.poNumber),
+      'tcd done':   (p) => p.tcdNumber || p.tcdApproved || p.poNumber ||
+                           (p.materials || []).some(m => m.tcdNumber || m.tcdApproved || m.poNumber),
+      'po issued':  (p) => p.poNumber || (p.materials || []).some(m => m.poNumber),
+    };
+
+    const palettes6 = [
+      { gradStart: '#FFEB60', gradEnd: '#FFB703', foldStart: '#C26A00', foldEnd: '#733900', accent: '#FFC000', text: '#FFE044' },
+      { gradStart: '#FF9233', gradEnd: '#FB5607', foldStart: '#A83000', foldEnd: '#5E1600', accent: '#FF9233', text: '#FF9233' },
+      { gradStart: '#FF2A85', gradEnd: '#D80064', foldStart: '#8F003D', foldEnd: '#4D001F', accent: '#FF2A85', text: '#FF2A85' },
+      { gradStart: '#0EA5E9', gradEnd: '#0284C7', foldStart: '#0369A1', foldEnd: '#075985', accent: '#0EA5E9', text: '#38BDF8' },
+      { gradStart: '#9333EA', gradEnd: '#6366F1', foldStart: '#2D126B', foldEnd: '#141E61', accent: '#9333EA', text: '#A855F7' },
+      { gradStart: '#10B981', gradEnd: '#059669', foldStart: '#046C4E', foldEnd: '#023D2C', accent: '#10B981', text: '#10B981' }
+    ];
+    displayStages = stages.map((s, idx) => {
+      const key = s.stage.toLowerCase();
+      const filterFn = stageValueFilter[key] || (() => true);
+      const stageValueStr = calcPRCListValue(allPRCs.filter(filterFn));
+      return {
+        id: s.stage.toLowerCase().replace(/\s+/g, '-'),
+        name: s.stage.toUpperCase(),
+        label: s.label,
+        count: s.count,
+        valueStr: stageValueStr,
+        dropCount: s.dropCount || 0,
+        subtext: `${totalPRCs > 0 ? Math.round((s.count / totalPRCs) * 100) : 0}% Retained ${s.dropCount > 0 ? `· 🔻 -${s.dropCount}` : ''}`,
+        modalIdx: idx,
+        palette: palettes6[idx % palettes6.length]
+      };
+    });
+  }
+
+  const numTiers = displayStages.length;
+  const startY = 110;
+  const tierHeight = numTiers === 5 ? 48 : 40;
+  const foldHeight = numTiers === 5 ? 18 : 14;
+  const totalTierStep = tierHeight + foldHeight;
+  const centerX = 500;
+  const maxTopWidth = 350;
+  const minBotWidth = 70;
+
+  let defs = `
+    <filter id="funnelFaceShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="tierHoverGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#FFFFFF" flood-opacity="0.35"/>
+    </filter>
+  `;
+
+  let tiersSVG = '';
 
   for (let i = 0; i < numTiers; i++) {
-    const s = stages[i];
-    const palette = tierPalettes[i % tierPalettes.length];
-    const y = startY + i * (tierHeight + tierGap);
-    
-    // Smooth tapering widths
-    const progressTop = i / numTiers;
-    const progressBottom = (i + 1) / numTiers;
-    const topW = maxTopWidth - (maxTopWidth - minTopWidth) * progressTop;
-    const botW = maxTopWidth - (maxTopWidth - minTopWidth) * progressBottom;
-    
-    const topLeftX = centerX - topW / 2;
-    const topRightX = centerX + topW / 2;
-    const botLeftX = centerX - botW / 2;
-    const botRightX = centerX + botW / 2;
-
+    const s = displayStages[i];
+    const pal = s.palette;
+    const yTop = startY + i * totalTierStep;
+    const yBot = yTop + tierHeight;
     const isLast = (i === numTiers - 1);
+
+    // Progressive tapering widths
+    const progressTop = i / numTiers;
+    const progressBot = (i + 1) / numTiers;
+    const wTop = maxTopWidth - (maxTopWidth - minBotWidth) * progressTop;
+    const wBot = maxTopWidth - (maxTopWidth - minBotWidth) * progressBot;
+
+    const xTl = centerX - wTop / 2;
+    const xTr = centerX + wTop / 2;
+    const xBl = centerX - wBot / 2;
+    const xBr = centerX + wBot / 2;
+
     const gradId = `funnel-grad-${i}`;
-    const shadowId = `funnel-shadow-${i}`;
+    const foldGradId = `funnel-fold-${i}`;
 
     defs += `
-      <linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="${palette.start}"/>
-        <stop offset="100%" stop-color="${palette.end}"/>
+      <linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="${pal.gradStart}"/>
+        <stop offset="100%" stop-color="${pal.gradEnd}"/>
       </linearGradient>
-      <filter id="${shadowId}" x="-10%" y="-10%" width="130%" height="140%">
-        <feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity="0.22"/>
-      </filter>
+      <linearGradient id="${foldGradId}" x1="100%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="${pal.foldStart}"/>
+        <stop offset="100%" stop-color="${pal.foldEnd}"/>
+      </linearGradient>
     `;
 
-    // Ribbon path (or downward arrow for the bottom stage)
-    let ribbonPath = '';
-    if (isLast) {
-      const arrowPointY = y + tierHeight + 12;
-      ribbonPath = `
-        M ${topLeftX},${y}
-        L ${topRightX},${y}
-        L ${centerX},${arrowPointY}
-        Z
-      `;
-    } else {
-      ribbonPath = `
-        M ${topLeftX},${y}
-        L ${topRightX},${y}
-        L ${botRightX},${y + tierHeight}
-        L ${botLeftX},${y + tierHeight}
-        Z
-      `;
+    // 1. Trapezoid Face Points
+    const facePoints = `${xTl},${yTop} ${xTr},${yTop} ${xBr},${yBot} ${xBl},${yBot}`;
+
+    // 2. Fold Ribbon underneath connecting to next tier
+    let foldSVG = '';
+    if (!isLast) {
+      const nextYTop = yBot + foldHeight;
+      const nextProgressTop = (i + 1) / numTiers;
+      const nextWTop = maxTopWidth - (maxTopWidth - minBotWidth) * nextProgressTop;
+      const nextXtl = centerX - nextWTop / 2;
+      const nextXtr = centerX + nextWTop / 2;
+
+      // Fold angles from bottom-right towards the left
+      const foldPoints = `${xBl},${yBot} ${xBr},${yBot} ${nextXtr - 8},${nextYTop} ${nextXtl},${nextYTop}`;
+      foldSVG = `<polygon points="${foldPoints}" fill="url(#${foldGradId})"/>`;
     }
 
-    // Top 3D Bevel Highlight
-    const bevelPath = `
-      M ${topLeftX},${y}
-      Q ${centerX},${y + 3} ${topRightX},${y}
-      L ${topRightX - 2},${y + 3}
-      Q ${centerX},${y + 6} ${topLeftX + 2},${y + 3}
-      Z
-    `;
+    // 3. Connectors and Callouts
+    const yMid = yTop + tierHeight / 2;
+    const leftBoxX = 60;
+    const leftBoxW = 180;
+    const leftBoxH = 40;
+    const rightTextX = 745;
 
-    // Leader pin line to text on the right
-    const pinY = y + tierHeight / 2;
-    const pinStartX = isLast ? centerX + 25 : (topRightX + botRightX) / 2 + 6;
-    const pinMidX = 275;
-    const textStartX = 285;
+    tiersSVG += `
+      <g class="funnel-stage-group" onclick="if(typeof openFunnelReasonsModal==='function'){openFunnelReasonsModal(${s.modalIdx})}" style="cursor:pointer" title="Click to view reasons and drilldown for ${s.name}">
+        <!-- ── Left Callout Box ── -->
+        <rect x="${leftBoxX}" y="${yMid - leftBoxH / 2}" width="${leftBoxW}" height="${leftBoxH}" rx="5" 
+              fill="rgba(255,255,255,0.03)" stroke="${pal.accent}" stroke-width="1.8" class="funnel-callout-box"/>
+        <text x="${leftBoxX + leftBoxW / 2}" y="${yMid + 5}" text-anchor="middle" fill="${pal.text}" 
+              font-size="14" font-weight="800" letter-spacing="1.2" font-family="'Segoe UI', system-ui, sans-serif">
+          ${s.name}
+        </text>
 
-    const convPct = totalPRCs > 0 ? Math.round((s.count / totalPRCs) * 100) : 0;
-    const dropInfo = s.dropCount && s.dropCount > 0 ? `🔻 -${s.dropCount} drop` : '';
+        <!-- ── Left Connector Line ── -->
+        <line x1="${leftBoxX + leftBoxW}" y1="${yMid}" x2="${xTl - 2}" y2="${yMid}" 
+              stroke="${pal.accent}" stroke-width="1.8" stroke-linecap="round"/>
 
-    elements += `
-      <g class="exec3d-funnel-ribbon" onclick="if(typeof openFunnelReasonsModal==='function'){openFunnelReasonsModal(${i})}else if(typeof filterByDashboardTile==='function'){filterByDashboardTile('status','${s.stage||''}')}" style="cursor:pointer" title="Click to view reasons and PRCs for ${s.label}">
-        <!-- 3D Ribbon Face -->
-        <path d="${ribbonPath}" fill="url(#${gradId})" filter="url(#${shadowId})" stroke="rgba(255,255,255,0.3)" stroke-width="1.2"/>
-        
-        <!-- Top Bevel Lighting Curve -->
-        <path d="${bevelPath}" fill="${palette.bevel}" opacity="0.65"/>
-        
-        <!-- Center Count Metric Inside Funnel -->
-        <text x="${centerX}" y="${isLast ? y + tierHeight * 0.55 : y + tierHeight * 0.62}" 
-              text-anchor="middle" fill="#ffffff" font-size="14.5" font-weight="800" letter-spacing="-0.2" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,0.5))">
+        <!-- ── Fold Underside ── -->
+        ${foldSVG}
+
+        <!-- ── 3D Funnel Face ── -->
+        <polygon points="${facePoints}" fill="url(#${gradId})" filter="url(#funnelFaceShadow)" 
+                 stroke="rgba(255,255,255,0.25)" stroke-width="1" class="funnel-face"/>
+
+        <!-- ── Centered Metric Inside Face ── -->
+        <text x="${centerX}" y="${yMid + 5}" text-anchor="middle" fill="#FFFFFF" 
+              font-size="14" font-weight="800" letter-spacing="0.5" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6))">
           ${s.count.toLocaleString()} PRCs
         </text>
 
-        <!-- Connecting Horizontal Leader Pin -->
-        <line x1="${pinStartX}" y1="${pinY}" x2="${pinMidX}" y2="${pinY}" 
-              stroke="var(--color-border)" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.85"/>
-        <circle cx="${pinStartX}" cy="${pinY}" r="3" fill="${palette.end}"/>
-        <circle cx="${pinMidX}" cy="${pinY}" r="3.5" fill="#ffffff" stroke="${palette.end}" stroke-width="2"/>
+        <!-- ── Right Connector Line ── -->
+        <line x1="${xTr + 2}" y1="${yMid}" x2="${rightTextX - 10}" y2="${yMid}" 
+              stroke="${pal.accent}" stroke-width="1.8" stroke-linecap="round"/>
 
-        <!-- Stage Title & Label on Right -->
-        <text x="${textStartX}" y="${pinY - 2}" fill="var(--color-text-primary)" font-size="13" font-weight="700">
-          ${s.label}
+        <!-- ── Right Metrics & Subtext ── -->
+        <text x="${rightTextX}" y="${yMid - 4}" fill="#FFFFFF" font-size="14.5" font-weight="800" font-family="'Segoe UI', system-ui, sans-serif">
+          ${s.count.toLocaleString()} PRCs
         </text>
-        
-        <!-- Conversion % & Drop Delta Tag -->
-        <text x="${textStartX}" y="${pinY + 13}" fill="var(--color-text-secondary)" font-size="11" font-weight="600">
-          ${convPct}% retained · ${s.count} items ${dropInfo ? `  ${dropInfo}` : ''}
+        <text x="${rightTextX}" y="${yMid + 14}" fill="#94A3B8" font-size="11.5" font-weight="600" font-family="'Segoe UI', system-ui, sans-serif">
+          ${s.subtext} <tspan fill="${pal.accent}" font-weight="700" style="text-decoration:underline">Details ↗</tspan>
         </text>
       </g>
     `;
   }
 
   return `
-    <svg class="exec3d-funnel-svg" viewBox="0 0 ${width} ${height}">
-      <defs>${defs}</defs>
-      ${elements}
-    </svg>
+    <div style="position:relative;width:100%;max-width:1080px;margin:0 auto;background:#1b124a;border-radius:16px;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.08)">
+      <!-- Top Control Bar with 5/6-Stage Mode Switcher -->
+      <div style="position:absolute;top:16px;right:20px;z-index:10;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);padding:3px 4px;border-radius:8px;border:1px solid rgba(255,255,255,0.1)">
+        <button type="button" class="btn btn-xs ${mode === '5-stage' ? 'btn-primary' : 'btn-ghost'}" 
+                style="padding:3px 10px;font-size:11px;font-weight:700;border-radius:6px;${mode === '5-stage' ? 'background:#6366f1;color:#fff;' : 'color:#94a3b8;'}"
+                onclick="window._funnelMode='5-stage';if(typeof window._rerenderFunnelOnly==='function'){window._rerenderFunnelOnly()}else if(typeof renderDashboard==='function'){renderDashboard(document.getElementById('page-content'))}">
+          5 Milestones
+        </button>
+        <button type="button" class="btn btn-xs ${mode === '6-stage' ? 'btn-primary' : 'btn-ghost'}" 
+                style="padding:3px 10px;font-size:11px;font-weight:700;border-radius:6px;${mode === '6-stage' ? 'background:#6366f1;color:#fff;' : 'color:#94a3b8;'}"
+                onclick="window._funnelMode='6-stage';if(typeof window._rerenderFunnelOnly==='function'){window._rerenderFunnelOnly()}else if(typeof renderDashboard==='function'){renderDashboard(document.getElementById('page-content'))}">
+          6 Detailed Steps
+        </button>
+      </div>
+
+      <svg class="exec3d-funnel-svg" viewBox="0 0 ${width} ${height}" style="width:100%;height:auto;display:block">
+        <defs>${defs}</defs>
+
+        <!-- ── Center Diagram Titles ── -->
+        <text x="500" y="50" text-anchor="middle" fill="#FFFFFF" font-size="32" font-weight="800" letter-spacing="3" font-family="'Segoe UI', system-ui, sans-serif">
+          PROCUREMENT FUNNEL
+        </text>
+        <text x="500" y="76" text-anchor="middle" fill="#A5B4FC" font-size="13.5" font-weight="500" letter-spacing="0.5" font-family="'Segoe UI', system-ui, sans-serif">
+          Live Sourcing Conversion & Bottleneck Analysis
+        </text>
+
+        <!-- ── All Tier Stages (Callouts, Ribbons, Metrics) ── -->
+        ${tiersSVG}
+      </svg>
+    </div>
   `;
 }
 
@@ -814,11 +1019,11 @@ export function renderExecutive3D(container, prcs, s, helpers = {}) {
     </div>
   </div>
 
-  <!-- ── 3. CHARTS ROW 1: REAL MONTHLY PRC VS TCD (WITH DAY-LEVEL DRILLDOWN) + 3D FUNNEL ── -->
-  <div class="exec3d-charts-row-1">
-    
+  <!-- ── 3. CHARTS ROW 1: MONTHLY PRC VS TCD + 3D PROCUREMENT FUNNEL (SIDE BY SIDE) ── -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;align-items:stretch">
+
     <!-- Chart 1: Real Interactive Monthly PRC Vs Monthly TCD with Day-Level Detailing & Scroller -->
-    <div class="exec3d-card chart-card">
+    <div class="exec3d-card chart-card" style="display:flex;flex-direction:column">
       <div class="exec3d-card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div>
           <div class="exec3d-card-title" id="prc-po-trend-title">Monthly PRC Vs Monthly TCD</div>
@@ -837,27 +1042,17 @@ export function renderExecutive3D(container, prcs, s, helpers = {}) {
           </div>
         </div>
       </div>
-      <div class="chart-canvas-wrap" style="height:280px">
+      <div class="chart-canvas-wrap" style="height:280px;flex:1">
         <canvas id="chart-monthly-trend"></canvas>
       </div>
       <div id="trend-chart-date-scroller" class="trend-date-scroller-wrap"></div>
     </div>
 
-    <!-- Chart 2: 3D STEPPED RIBBON FUNNEL (LIVE ENTERPRISE STAGES) -->
-    <div class="exec3d-card exec3d-funnel-card">
-      <div class="exec3d-card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-        <div>
-          <div class="exec3d-card-title">3D Procurement Sourcing Funnel</div>
-          <div class="exec3d-card-subtitle">Live conversion & bottleneck drop-offs between stages</div>
-        </div>
-        <button class="btn btn-ghost btn-xs" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 8px;border:1px solid var(--color-border);border-radius:6px;background:var(--color-surface);font-weight:600" onclick="if(typeof openFunnelReasonsModal==='function')openFunnelReasonsModal()" title="View detailed drop-off reasons">
-          <span>🔍</span> <span>Drop-off Reasons</span>
-        </button>
-      </div>
-      <div class="exec3d-funnel-container">
-        ${generate3DFunnelSVG(funnelStages, totalPRCs)}
-      </div>
+    <!-- 3D PROCUREMENT SOURCING FUNNEL -->
+    <div id="exec3d-funnel-wrap" style="min-height:400px;display:flex;flex-direction:column">
+      ${generate3DFunnelSVG(funnelStages, totalPRCs, { prcs })}
     </div>
+
   </div>
 
   <!-- ── 3B. PROACTIVE 10-DAY TCD SLA WATCHLIST & BUYER ACTION REGISTER ── -->
