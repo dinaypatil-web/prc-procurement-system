@@ -412,127 +412,183 @@ export function reconcilePRCWorkflowFromDownstream(prcs = state.prcs, allocation
     const prNum = prc.prNumber || prc.id;
     const prNorm = normalizePRNumberForMatch(prNum);
 
-    // Check if PRC or materials are missing workflow fields
-    const missingTopWorkflow = !prc.allocationNumber || !prc.rfqNumber || !prc.tcdNumber || !prc.poNumber;
-    const mats = prc.materials || [];
-    const missingMatWorkflow = mats.some(m => !m.allocationNumber || !m.rfqNumber || !m.tcdNumber || !m.poNumber);
-
-    if (!missingTopWorkflow && !missingMatWorkflow) {
-      return prc;
-    }
-
-    // Lookup downstream records
-    const alloc = Array.isArray(allocations) ? allocations.find(a => (a.items || []).some(i => 
+    // Find ALL allocations matching this PRC
+    const prcAllocs = Array.isArray(allocations) ? allocations.filter(a => (a.items || []).some(i => 
       i.prNumber === prNum || i.prcId === prc.id || normalizePRNumberForMatch(i.prNumber) === prNorm
-    )) : null;
+    )) : [];
 
-    const rfq = Array.isArray(rfqs) ? rfqs.find(r => (r.items || []).some(i => 
+    // Find ALL RFQs matching this PRC
+    const prcRfqs = Array.isArray(rfqs) ? rfqs.filter(r => (r.items || []).some(i => 
       i.prNumber === prNum || i.prcId === prc.id || normalizePRNumberForMatch(i.prNumber) === prNorm
-    )) : null;
+    )) : [];
 
-    const pod = Array.isArray(pods) ? pods.find(p => (p.items || []).some(i => 
-      i.prNumber === prNum || i.prcId === prc.id || normalizePRNumberForMatch(i.prNumber) === prNorm
-    )) : null;
-
-    const tcd = Array.isArray(tcds) ? tcds.find(t => (t.items || []).some(i => 
+    // Find ALL TCDs matching this PRC
+    const prcTcds = Array.isArray(tcds) ? tcds.filter(t => (t.items || []).some(i => 
       i.prNumber === prNum || i.prcId === prc.id || normalizePRNumberForMatch(i.prNumber) === prNorm
     ) || (t.vendorAllocations || []).some(va => (va.items || []).some(it => 
       it.prNumber === prNum || it.prcId === prc.id || normalizePRNumberForMatch(it.prNumber) === prNorm
-    ))) : null;
+    ))) : [];
 
-    const tcdNum = tcd?.tcdNumber || pod?.tcdNumber;
+    // Find ALL PODs matching this PRC
+    const prcPods = Array.isArray(pods) ? pods.filter(p => (p.items || []).some(i => 
+      i.prNumber === prNum || i.prcId === prc.id || normalizePRNumberForMatch(i.prNumber) === prNorm
+    )) : [];
 
     let prcModified = false;
     let prcCopy = { ...prc };
 
-    // Restore Allocation
-    if (!prcCopy.allocationNumber && alloc) {
-      prcCopy.allocationNumber = alloc.allocationNumber;
-      prcCopy.allocationDate = alloc.allocationDate || prcCopy.allocationDate;
-      prcCopy.buyerName = alloc.buyerName || prcCopy.buyerName;
-      prcCopy.allocatedBy = alloc.allocatedBy || alloc.buyerName || prcCopy.allocatedBy;
-      prcModified = true;
-    }
-
-    // Restore RFQ
-    if (!prcCopy.rfqNumber && rfq) {
-      prcCopy.rfqNumber = rfq.rfqNumber;
-      prcCopy.rfqDate = rfq.rfqDate || prcCopy.rfqDate;
-      prcModified = true;
-    }
-
-    // Restore TCD
-    if (!prcCopy.tcdNumber && tcdNum) {
-      prcCopy.tcdNumber = tcdNum;
-      prcCopy.tcdDate = tcd?.tcdDate || pod?.poDate || prcCopy.tcdDate;
-      prcCopy.tcdApproved = true;
-      prcCopy.offersReceived = true;
-      prcModified = true;
-    }
-
-    // Restore PO
-    if (!prcCopy.poNumber && pod) {
-      prcCopy.poNumber = pod.poNumber;
-      prcCopy.poDate = pod.poDate || prcCopy.poDate;
-      prcCopy.vendorName = pod.vendorName || prcCopy.vendorName;
-      prcCopy.vendor = pod.vendorName || prcCopy.vendor;
-      prcModified = true;
-    }
-
-    // Restore material-level fields
+    // 1. Reconcile material-level fields STRICTLY for each individual line item
     let matsModified = false;
     const updatedMats = (prcCopy.materials || []).map(m => {
       let mCopy = { ...m };
       let matModified = false;
       const matNorm = normalizeMatCodeForMatch(mCopy.matCode);
 
-      const rfqItem = rfq ? (rfq.items || []).find(i => 
-        i.materialId === mCopy.id || normalizeMatCodeForMatch(i.matCode) === matNorm
-      ) : null;
-
-      const podItem = pod ? (pod.items || []).find(i => 
-        i.materialId === mCopy.id || normalizeMatCodeForMatch(i.matCode) === matNorm
-      ) : null;
-
-      const allocItem = alloc ? (alloc.items || []).find(i => 
-        i.materialId === mCopy.id || normalizeMatCodeForMatch(i.matCode) === matNorm
-      ) : null;
-
-      if (!mCopy.allocationNumber && (allocItem || prcCopy.allocationNumber)) {
-        mCopy.allocationNumber = prcCopy.allocationNumber;
-        mCopy.allocationDate = prcCopy.allocationDate;
-        mCopy.buyerName = prcCopy.buyerName;
-        mCopy.allocatedBy = prcCopy.allocatedBy;
+      // --- ALLOCATION LOOKUP ---
+      const allocMatch = prcAllocs.find(a => (a.items || []).some(i => 
+        (i.materialId && (i.materialId === mCopy.id || String(i.materialId).includes(mCopy.matCode))) || 
+        (normalizeMatCodeForMatch(i.matCode) === matNorm)
+      ));
+      if (allocMatch) {
+        if (!mCopy.allocationNumber || mCopy.allocationNumber !== allocMatch.allocationNumber) {
+          mCopy.allocationNumber = allocMatch.allocationNumber;
+          matModified = true;
+        }
+        if (allocMatch.allocationDate && mCopy.allocationDate !== allocMatch.allocationDate) {
+          mCopy.allocationDate = allocMatch.allocationDate;
+          matModified = true;
+        }
+        if (allocMatch.buyerName && mCopy.buyerName !== allocMatch.buyerName) {
+          mCopy.buyerName = allocMatch.buyerName;
+          mCopy.allocatedBy = allocMatch.buyerName;
+          matModified = true;
+        }
+      } else if (!mCopy.allocationNumber && prcAllocs.length === 1 && prcAllocs[0].allocationNumber) {
+        mCopy.allocationNumber = prcAllocs[0].allocationNumber;
+        mCopy.allocationDate = prcAllocs[0].allocationDate;
+        mCopy.buyerName = prcAllocs[0].buyerName;
+        mCopy.allocatedBy = prcAllocs[0].allocatedBy || prcAllocs[0].buyerName;
         matModified = true;
       }
 
-      if (!mCopy.rfqNumber && (rfqItem || prcCopy.rfqNumber)) {
-        mCopy.rfqNumber = prcCopy.rfqNumber;
-        mCopy.rfqDate = prcCopy.rfqDate;
-        matModified = true;
+      // --- RFQ LOOKUP (Must match THIS material specifically) ---
+      const rfqMatch = prcRfqs.find(r => (r.items || []).some(i => 
+        (i.materialId && (i.materialId === mCopy.id || String(i.materialId).includes(mCopy.matCode))) || 
+        (normalizeMatCodeForMatch(i.matCode) === matNorm)
+      ));
+      if (rfqMatch) {
+        if (mCopy.rfqNumber !== rfqMatch.rfqNumber) {
+          mCopy.rfqNumber = rfqMatch.rfqNumber;
+          matModified = true;
+        }
+        if (rfqMatch.rfqDate && mCopy.rfqDate !== rfqMatch.rfqDate) {
+          mCopy.rfqDate = rfqMatch.rfqDate;
+          matModified = true;
+        }
       }
 
-      if (!mCopy.tcdNumber && (tcdNum || prcCopy.tcdNumber)) {
-        mCopy.tcdNumber = prcCopy.tcdNumber;
-        mCopy.tcdDate = prcCopy.tcdDate;
-        mCopy.tcdApproved = true;
-        mCopy.offersReceived = true;
-        matModified = true;
+      // --- TCD LOOKUP (Must match THIS material specifically) ---
+      let tcdItemMatch = null;
+      const tcdMatch = prcTcds.find(t => {
+        const item = (t.items || []).find(i => 
+          (i.materialId && (i.materialId === mCopy.id || String(i.materialId).includes(mCopy.matCode))) || 
+          (normalizeMatCodeForMatch(i.matCode) === matNorm)
+        );
+        if (item) { tcdItemMatch = item; return true; }
+        for (const va of (t.vendorAllocations || [])) {
+          const vItem = (va.items || []).find(i => 
+            (i.materialId && (i.materialId === mCopy.id || String(i.materialId).includes(mCopy.matCode))) || 
+            (normalizeMatCodeForMatch(i.matCode) === matNorm)
+          );
+          if (vItem) { tcdItemMatch = vItem; return true; }
+        }
+        return false;
+      });
+
+      if (tcdMatch) {
+        if (mCopy.tcdNumber !== tcdMatch.tcdNumber) {
+          mCopy.tcdNumber = tcdMatch.tcdNumber;
+          matModified = true;
+        }
+        if (tcdMatch.tcdDate && mCopy.tcdDate !== tcdMatch.tcdDate) {
+          mCopy.tcdDate = tcdMatch.tcdDate;
+          matModified = true;
+        }
+        if (tcdMatch.approved && !mCopy.tcdApproved) {
+          mCopy.tcdApproved = true;
+          matModified = true;
+        }
+        if (!mCopy.offersReceived) {
+          mCopy.offersReceived = true;
+          matModified = true;
+        }
+      } else if (prcTcds.length > 0) {
+        // PRC has TCDs, but THIS material is NOT part of any of them!
+        // Clear any mistakenly cascaded TCD values!
+        if (mCopy.tcdNumber) {
+          mCopy.tcdNumber = '';
+          mCopy.tcdDate = '';
+          mCopy.tcdApproved = false;
+          matModified = true;
+        }
       }
 
-      if (!mCopy.poNumber && (podItem || prcCopy.poNumber)) {
-        mCopy.poNumber = prcCopy.poNumber;
-        mCopy.poDate = prcCopy.poDate;
-        mCopy.vendorName = prcCopy.vendorName;
-        const q = parseFloat(podItem?.quantity) || parseFloat(mCopy.quantity) || 0;
-        mCopy.poQuantity = q;
-        mCopy.processedQty = q;
-        mCopy.pendingQty = Math.max(0, (parseFloat(mCopy.quantity) || q) - q - (parseFloat(mCopy.closedQty) || 0));
-        matModified = true;
+      // --- POD LOOKUP (Must match THIS material specifically) ---
+      let podItemMatch = null;
+      const podMatch = prcPods.find(p => {
+        const item = (p.items || []).find(i => 
+          (i.materialId && (i.materialId === mCopy.id || String(i.materialId).includes(mCopy.matCode))) || 
+          (normalizeMatCodeForMatch(i.matCode) === matNorm)
+        );
+        if (item) { podItemMatch = item; return true; }
+        return false;
+      });
+
+      if (podMatch) {
+        if (mCopy.poNumber !== podMatch.poNumber) {
+          mCopy.poNumber = podMatch.poNumber;
+          matModified = true;
+        }
+        if (podMatch.poDate && mCopy.poDate !== podMatch.poDate) {
+          mCopy.poDate = podMatch.poDate;
+          matModified = true;
+        }
+        if (podMatch.vendorName && mCopy.vendorName !== podMatch.vendorName) {
+          mCopy.vendorName = podMatch.vendorName;
+          mCopy.vendor = podMatch.vendorName;
+          matModified = true;
+        }
+        const q = parseFloat(podItemMatch?.quantity) || parseFloat(mCopy.quantity) || 0;
+        if (mCopy.processedQty !== q) {
+          mCopy.processedQty = q;
+          mCopy.poQuantity = q;
+          matModified = true;
+        }
+        const totalQty = parseFloat(mCopy.quantity) || q;
+        const clsQty = parseFloat(mCopy.closedQty) || 0;
+        const pending = Math.max(0, totalQty - q - clsQty);
+        if (mCopy.pendingQty !== pending) {
+          mCopy.pendingQty = pending;
+          matModified = true;
+        }
+      } else if (prcPods.length > 0) {
+        // PRC has PODs, but THIS material is NOT part of any of them!
+        // Clear any mistakenly cascaded PO values!
+        if (mCopy.poNumber) {
+          mCopy.poNumber = '';
+          mCopy.poDate = '';
+          mCopy.processedQty = 0;
+          mCopy.poQuantity = 0;
+          mCopy.pendingQty = Math.max(0, (parseFloat(mCopy.quantity) || 0) - (parseFloat(mCopy.closedQty) || 0));
+          matModified = true;
+        }
       }
 
       if (matModified) {
-        mCopy.status = calculateMaterialStatus(mCopy);
+        const newStatus = calculateMaterialStatus(mCopy);
+        if (mCopy.status !== newStatus) {
+          mCopy.status = newStatus;
+        }
         matsModified = true;
       }
       return mCopy;
@@ -543,9 +599,82 @@ export function reconcilePRCWorkflowFromDownstream(prcs = state.prcs, allocation
       prcModified = true;
     }
 
+    // 2. Reconcile top-level PRC fields from materials
+    const distinctAllocs = Array.from(new Set(prcCopy.materials.map(m => m.allocationNumber).filter(Boolean)));
+    if (distinctAllocs.length === 1 && prcCopy.allocationNumber !== distinctAllocs[0]) {
+      prcCopy.allocationNumber = distinctAllocs[0];
+      prcCopy.allocationDate = prcCopy.materials.find(m => m.allocationDate)?.allocationDate || prcCopy.allocationDate;
+      prcCopy.buyerName = prcCopy.materials.find(m => m.buyerName || m.allocatedBy)?.buyerName || prcCopy.buyerName;
+      prcCopy.allocatedBy = prcCopy.buyerName;
+      prcModified = true;
+    }
+
+    const distinctRfqs = Array.from(new Set(prcCopy.materials.map(m => m.rfqNumber).filter(Boolean)));
+    if (distinctRfqs.length === 1) {
+      if (prcCopy.rfqNumber !== distinctRfqs[0]) {
+        prcCopy.rfqNumber = distinctRfqs[0];
+        prcCopy.rfqDate = prcCopy.materials.find(m => m.rfqDate)?.rfqDate || prcCopy.rfqDate;
+        prcModified = true;
+      }
+    } else if (distinctRfqs.length > 1) {
+      const combined = distinctRfqs.join(', ');
+      if (prcCopy.rfqNumber !== combined) {
+        prcCopy.rfqNumber = combined;
+        prcModified = true;
+      }
+    }
+
+    const distinctTcds = Array.from(new Set(prcCopy.materials.map(m => m.tcdNumber).filter(Boolean)));
+    if (distinctTcds.length === 1) {
+      if (prcCopy.tcdNumber !== distinctTcds[0]) {
+        prcCopy.tcdNumber = distinctTcds[0];
+        prcCopy.tcdDate = prcCopy.materials.find(m => m.tcdDate)?.tcdDate || prcCopy.tcdDate;
+        prcModified = true;
+      }
+    } else if (distinctTcds.length > 1) {
+      const combined = distinctTcds.join(', ');
+      if (prcCopy.tcdNumber !== combined) {
+        prcCopy.tcdNumber = combined;
+        prcModified = true;
+      }
+    } else if (distinctTcds.length === 0 && prcCopy.tcdNumber) {
+      prcCopy.tcdNumber = '';
+      prcCopy.tcdDate = '';
+      prcModified = true;
+    }
+
+    const distinctPos = Array.from(new Set(prcCopy.materials.map(m => m.poNumber).filter(Boolean)));
+    if (distinctPos.length === 1) {
+      if (prcCopy.poNumber !== distinctPos[0]) {
+        prcCopy.poNumber = distinctPos[0];
+        prcCopy.poDate = prcCopy.materials.find(m => m.poDate)?.poDate || prcCopy.poDate;
+        prcCopy.vendorName = prcCopy.materials.find(m => m.vendorName || m.vendor)?.vendorName || prcCopy.vendorName;
+        prcModified = true;
+      }
+    } else if (distinctPos.length > 1) {
+      const combined = distinctPos.join(', ');
+      if (prcCopy.poNumber !== combined) {
+        prcCopy.poNumber = combined;
+        prcModified = true;
+      }
+    } else if (distinctPos.length === 0 && prcCopy.poNumber) {
+      prcCopy.poNumber = '';
+      prcCopy.poDate = '';
+      prcModified = true;
+    }
+
+    // 3. Recalculate PRC overall status
+    const newPrcStatus = calculateStatus(prcCopy, prcCopy.materials);
+    if (prcCopy.status !== newPrcStatus || prcCopy.prStatus !== newPrcStatus) {
+      prcCopy.status = newPrcStatus;
+      prcCopy.prStatus = newPrcStatus;
+      prcModified = true;
+    }
+
     if (prcModified) {
-      prcCopy.status = calculateStatus(prcCopy, prcCopy.materials);
+      prcCopy.updatedAt = new Date().toISOString();
       anyPrcChanged = true;
+      directSavePRC(_getEffectiveUid(), prcCopy);
       return prcCopy;
     }
 
@@ -1024,8 +1153,10 @@ export function getPODItems(pod, prcs = state.prcs, tcds = state.tcds) {
 
   if (poNum) {
     (prcs || []).forEach(p => {
+      const singleMat = !p.materials || p.materials.length <= 1;
       (p.materials || []).forEach(m => {
-        if (String(m.poNumber || p.poNumber || '').trim().toUpperCase() === poNum) {
+        const itemPo = m.poNumber || (singleMat ? p.poNumber : '');
+        if (String(itemPo || '').trim().toUpperCase() === poNum) {
           items.push({
             prcId: p.id,
             prNumber: p.prNumber,
@@ -1034,7 +1165,7 @@ export function getPODItems(pod, prcs = state.prcs, tcds = state.tcds) {
             description: m.description,
             quantity: parseFloat(m.quantity) || 0,
             unit: m.unit || '',
-            vendorName: m.vendorName || m.vendor || p.vendorName || p.vendor || pod.vendorName
+            vendorName: m.vendorName || m.vendor || (singleMat ? (p.vendorName || p.vendor) : '') || pod.vendorName
           });
         }
       });
@@ -1048,9 +1179,10 @@ export function getPODItems(pod, prcs = state.prcs, tcds = state.tcds) {
       }
     }
     (prcs || []).forEach(p => {
+      const singleMat = !p.materials || p.materials.length <= 1;
       (p.materials || []).forEach(m => {
-        const matTcd = String(m.tcdNumber || p.tcdNumber || '').trim().toUpperCase();
-        const matVendor = String(m.vendorName || m.vendor || p.vendorName || p.vendor || '').trim().toUpperCase();
+        const matTcd = String(m.tcdNumber || (singleMat ? p.tcdNumber : '') || '').trim().toUpperCase();
+        const matVendor = String(m.vendorName || m.vendor || (singleMat ? (p.vendorName || p.vendor) : '') || '').trim().toUpperCase();
         if (matTcd === tcdNum && (!vendor || matVendor === vendor)) {
           items.push({
             prcId: p.id,
@@ -1060,7 +1192,7 @@ export function getPODItems(pod, prcs = state.prcs, tcds = state.tcds) {
             description: m.description,
             quantity: parseFloat(m.quantity) || 0,
             unit: m.unit || '',
-            vendorName: m.vendorName || m.vendor || p.vendorName || p.vendor || pod.vendorName
+            vendorName: m.vendorName || m.vendor || (singleMat ? (p.vendorName || p.vendor) : '') || pod.vendorName
           });
         }
       });
@@ -1095,11 +1227,12 @@ export function reconcilePODRouting(prcs = state.prcs, pods = state.pods, tcds =
   // 2. Synthesize PODs for materials with PO Numbers that don't have a POD record yet
   const poGroups = {};
   prcs.forEach(p => {
+    const singleMat = !p.materials || p.materials.length <= 1;
     (p.materials || []).forEach(m => {
-      const poNum = String(m.poNumber || p.poNumber || '').trim();
-      const vendorName = String(m.vendorName || m.vendor || p.vendorName || p.vendor || '').trim();
-      const poDate = String(m.poDate || p.poDate || '').trim();
-      const tcdNum = String(m.tcdNumber || p.tcdNumber || '').trim();
+      const poNum = String(m.poNumber || (singleMat ? p.poNumber : '') || '').trim();
+      const vendorName = String(m.vendorName || m.vendor || (singleMat ? (p.vendorName || p.vendor) : '') || '').trim();
+      const poDate = String(m.poDate || (singleMat ? p.poDate : '') || '').trim();
+      const tcdNum = String(m.tcdNumber || (singleMat ? p.tcdNumber : '') || '').trim();
 
       if (poNum) {
         const key = poNum.toUpperCase();
@@ -2447,21 +2580,22 @@ export function getFilteredMaterials(bypassColumnField = null) {
   const allMats = [];
 
   prcs.forEach(p => {
+    const singleMat = !p.materials || p.materials.length <= 1;
     (p.materials || []).forEach(m => {
       allMats.push({
-        allocationNumber: m.allocationNumber || p.allocationNumber || '',
-        allocationDate: m.allocationDate || p.allocationDate || '',
-        buyerName: m.buyerName || m.allocatedBy || p.buyerName || p.allocatedBy || '',
-        allocatedBy: m.allocatedBy || m.buyerName || p.allocatedBy || p.buyerName || '',
-        rfqNumber: m.rfqNumber || p.rfqNumber || '',
-        rfqDate: m.rfqDate || p.rfqDate || '',
-        tcdNumber: m.tcdNumber || p.tcdNumber || '',
-        tcdDate: m.tcdDate || p.tcdDate || '',
-        poNumber: m.poNumber || p.poNumber || '',
-        poDate: m.poDate || p.poDate || '',
-        vendorName: m.vendorName || m.vendor || p.vendorName || p.vendor || '',
-        vendor: m.vendorName || m.vendor || p.vendorName || p.vendor || '',
-        deliveryDate: m.deliveryDate || m.deliveryEndDate || p.deliveryDate || p.deliveryEndDate || '',
+        allocationNumber: m.allocationNumber || (singleMat ? p.allocationNumber : '') || '',
+        allocationDate: m.allocationDate || (singleMat ? p.allocationDate : '') || '',
+        buyerName: m.buyerName || m.allocatedBy || (singleMat ? (p.buyerName || p.allocatedBy) : '') || '',
+        allocatedBy: m.allocatedBy || m.buyerName || (singleMat ? (p.allocatedBy || p.buyerName) : '') || '',
+        rfqNumber: m.rfqNumber || (singleMat ? p.rfqNumber : '') || '',
+        rfqDate: m.rfqDate || (singleMat ? p.rfqDate : '') || '',
+        tcdNumber: m.tcdNumber || (singleMat ? p.tcdNumber : '') || '',
+        tcdDate: m.tcdDate || (singleMat ? p.tcdDate : '') || '',
+        poNumber: m.poNumber || (singleMat ? p.poNumber : '') || '',
+        poDate: m.poDate || (singleMat ? p.poDate : '') || '',
+        vendorName: m.vendorName || m.vendor || (singleMat ? (p.vendorName || p.vendor) : '') || '',
+        vendor: m.vendorName || m.vendor || (singleMat ? (p.vendorName || p.vendor) : '') || '',
+        deliveryDate: m.deliveryDate || m.deliveryEndDate || (singleMat ? (p.deliveryDate || p.deliveryEndDate) : '') || '',
         prDate: m.prDate || p.prDate || p.createdAt || '',
         ...m,
         prcId: p.id,
@@ -4838,12 +4972,13 @@ export function createTCD(data) {
         tcdNumber: tcd.tcdNumber,
         tcdDate: tcd.tcdDate
       };
-      prc.tcdNumber = tcd.tcdNumber;
+      const distinctTcds = Array.from(new Set(prc.materials.map(m => m.tcdNumber).filter(Boolean)));
+      prc.tcdNumber = distinctTcds.length === 1 ? distinctTcds[0] : distinctTcds.join(', ');
       prc.tcdDate = tcd.tcdDate;
       prc.tcdBy = prc.tcdBy || state.currentUser?.name || 'Admin';
-      prc.prStatus = 'Process Completed';
       prc.materials[matIdx].status = calculateMaterialStatus(prc.materials[matIdx]);
       prc.status = calculateStatus(prc, prc.materials);
+      prc.prStatus = prc.status;
       prc.updatedAt = new Date().toISOString();
       prcs[prcIdx] = prc;
 
@@ -4917,11 +5052,12 @@ export function approveTCD(tcdId) {
       mat.vendor = va.vendorName;
       mat.status = calculateMaterialStatus(mat);
       prc.materials[matIdx] = mat;
-      prc.tcdApproved = true;
+      const allApproved = prc.materials.length > 0 && prc.materials.every(m => m.tcdApproved);
+      prc.tcdApproved = allApproved;
       prc.tcdApprovedDate = tcd.approvedDate;
       prc.tcdApprovedBy = tcd.approvedBy;
-      prc.prStatus = 'Process Completed';
       prc.status = calculateStatus(prc, prc.materials);
+      prc.prStatus = prc.status;
       prc.updatedAt = new Date().toISOString();
       prcs[prcIdx] = prc;
 
@@ -5149,13 +5285,17 @@ export function createPOD(data) {
       mat.pendingQty = Math.max(0, totalQty - mat.processedQty - clsQty);
       mat.status = calculateMaterialStatus(mat);
       prc.materials[matIdx] = mat;
-      if (pod.poNumber) prc.poNumber = pod.poNumber;
-      if (pod.poDate) prc.poDate = pod.poDate;
+      const distinctPos = Array.from(new Set(prc.materials.map(m => m.poNumber).filter(Boolean)));
+      prc.poNumber = distinctPos.length === 1 ? distinctPos[0] : distinctPos.join(', ');
+      if (pod.poDate && !prc.poDate) prc.poDate = pod.poDate;
       prc.poBy = state.currentUser?.name || 'Admin';
       if (pod.vendorName) prc.vendorName = pod.vendorName;
-      if (item.tcdNumber || pod.tcdNumber) prc.tcdNumber = item.tcdNumber || pod.tcdNumber;
-      prc.prStatus = 'Process Completed';
+      const distinctTcds = Array.from(new Set(prc.materials.map(m => m.tcdNumber).filter(Boolean)));
+      if (distinctTcds.length > 0) {
+        prc.tcdNumber = distinctTcds.length === 1 ? distinctTcds[0] : distinctTcds.join(', ');
+      }
       prc.status = calculateStatus(prc, prc.materials);
+      prc.prStatus = prc.status;
       prc.updatedAt = new Date().toISOString();
       prcs[prcIdx] = prc;
 
