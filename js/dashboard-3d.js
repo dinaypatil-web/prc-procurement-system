@@ -4,7 +4,7 @@
 // ==========================================================================
 
 import { getProcurementFunnelBreakdown, calcAgeDays } from './status-engine.js';
-import { getState, isSuperAdmin, doesRecordPertainToCurrentUser, setTableColumnFilter, clearAllTableColumnFilters, getFilteredTCDs, getDashboardBuyerFilter, setDashboardBuyerFilter, getAllAvailableBuyers, getDashboardTCDs } from './state.js?v=3';
+import { getState, isSuperAdmin, doesRecordPertainToCurrentUser, setTableColumnFilter, clearAllTableColumnFilters, getFilteredTCDs, getDashboardBuyerFilter, setDashboardBuyerFilter, getAllAvailableBuyers, getDashboardTCDs } from './state.js';
 import { toast } from './utils.js';
 import { renderSLAWatchlistHTML } from './sla-watchlist.js';
 
@@ -822,7 +822,7 @@ export function renderExecutive3D(container, prcs, s, helpers = {}) {
       <div class="exec3d-card-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div>
           <div class="exec3d-card-title" id="prc-po-trend-title">Monthly PRC Vs Monthly TCD</div>
-          <div class="exec3d-card-subtitle" id="prc-po-trend-subtitle">PRCs created vs TCDs finalized per month · 💡 Click any month for weekly breakdown (±2 Wks)</div>
+          <div class="exec3d-card-subtitle" id="prc-po-trend-subtitle">PRCs allocated vs TCDs created per month · 💡 Click any month for weekly breakdown (±2 Wks)</div>
         </div>
         <div style="display:flex;align-items:center;gap:6px">
           <button type="button" id="btn-trend-back-weekly" class="btn btn-secondary btn-xs" style="display:none;padding:3px 9px;font-size:11px;font-weight:600;align-items:center;gap:4px" onclick="returnToWeeklyDrilldown()">

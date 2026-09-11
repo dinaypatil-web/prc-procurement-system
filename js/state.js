@@ -48,7 +48,7 @@ const _listeners = {};
 let _syncTimer = null;
 const SYNC_DEBOUNCE_MS = 1000;
 
-const state = {
+const defaultInitialState = {
   // Auth
   currentUser: { ...DEFAULT_USER },
   isAuthenticated: false,
@@ -104,6 +104,14 @@ const state = {
   dashboardBuyerScope: 'all', // 'all' | 'selective'
   dashboardSelectedBuyers: []  // string[] of selective buyer names
 };
+
+// Singleton guard across separate module resolutions or query strings
+if (typeof window !== 'undefined') {
+  if (!window.__prcAppState) {
+    window.__prcAppState = defaultInitialState;
+  }
+}
+const state = (typeof window !== 'undefined' && window.__prcAppState) ? window.__prcAppState : defaultInitialState;
 
 export function getState() { return state; }
 
@@ -2909,7 +2917,12 @@ export function getDistinctColumnValues(field, isMaterialView = false) {
 }
 
 export function updatePRC(id, patch, cascadeToMaterials = false) {
-  const idx = state.prcs.findIndex(p => p.id === id);
+  const idx = state.prcs.findIndex(p => 
+    p.id === id || 
+    String(p.id) === String(id) || 
+    p.prNumber === id || 
+    String(p.prNumber) === String(id)
+  );
   if (idx === -1) return;
 
   const current = state.prcs[idx];
@@ -2989,7 +3002,12 @@ export function savePRCSLAAction(prcId, actionPlan, targetDate = null) {
 }
 
 export function getPRCById(id) {
-  return state.prcs.find(p => p.id === id) || null;
+  return state.prcs.find(p => 
+    p.id === id || 
+    String(p.id) === String(id) || 
+    p.prNumber === id || 
+    String(p.prNumber) === String(id)
+  ) || null;
 }
 
 export function deletePRC(id, forceCascade = true) {
@@ -5648,6 +5666,20 @@ export function clearUndoHistory() {
   } catch (e) {
     return { success: false, reason: e.message };
   }
+}
+
+// Attach essential state functions to window for cross-module integration
+if (typeof window !== 'undefined') {
+  window.getState = getState;
+  window.setState = setState;
+  window.updatePRC = updatePRC;
+  window.getPRCById = getPRCById;
+  window.savePRCSLAAction = savePRCSLAAction;
+  window.getDashboardPRCs = getDashboardPRCs;
+  window.getDashboardTCDs = getDashboardTCDs;
+  window.getDashboardBuyerFilter = getDashboardBuyerFilter;
+  window.setDashboardBuyerFilter = setDashboardBuyerFilter;
+  window.getAllAvailableBuyers = getAllAvailableBuyers;
 }
 
 

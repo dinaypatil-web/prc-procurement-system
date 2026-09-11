@@ -331,16 +331,49 @@ export function monthlyDistribution(prcs, dateField = 'createdAt') {
   return Object.entries(months).sort(([a],[b]) => a.localeCompare(b));
 }
 
-/** Compute monthly distribution comparing PRCs created vs TCDs finalized, starting from the oldest PRC date in user records */
+/**
+ * Resolves the PRC Allocation Date.
+ * Priority: PRC allocationDate / allocatedDate -> Line materials allocationDate / allocatedDate.
+ */
+export function getPRCAllocationDate(prc) {
+  if (!prc) return null;
+  const raw = prc.allocationDate || prc.allocatedDate;
+  if (raw && String(raw).trim() && String(raw).trim() !== '—' && String(raw).trim() !== '-') {
+    return String(raw).trim();
+  }
+  const mat = (prc.materials || []).find(m => {
+    const mRaw = m.allocationDate || m.allocatedDate;
+    return mRaw && String(mRaw).trim() && String(mRaw).trim() !== '—' && String(mRaw).trim() !== '-';
+  });
+  if (mat) {
+    return String(mat.allocationDate || mat.allocatedDate).trim();
+  }
+  return null;
+}
+
+/**
+ * Resolves the TCD Creation / Finalization Date.
+ * Priority: tcdDate -> tcdCreatedAt -> createdAt -> approvedDate / approvedAt.
+ */
+export function getTCDCreationDate(tcdOrPrc) {
+  if (!tcdOrPrc) return null;
+  const raw = tcdOrPrc.tcdDate || tcdOrPrc.tcdCreatedAt || tcdOrPrc.createdAt || tcdOrPrc.createdDate || tcdOrPrc.approvedDate || tcdOrPrc.approvedAt || tcdOrPrc.tcdApprovedDate;
+  if (raw && String(raw).trim() && String(raw).trim() !== '—' && String(raw).trim() !== '-') {
+    return String(raw).trim();
+  }
+  return null;
+}
+
+/** Compute monthly distribution comparing PRCs allocated vs TCDs created/finalized */
 export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
   const prcMonths = {};
   const tcdMonths = {};
   let oldestDate = null;
   let newestDate = null;
 
-  // Track oldest and newest dates strictly from the user's PRC & Material records (sanitized for realistic modern years >= 2000)
+  // Track oldest and newest dates strictly from the user's records (sanitized for realistic modern years >= 2000)
   const currentYear = new Date().getFullYear();
-  const updatePrcDateBounds = (raw) => {
+  const updateDateBounds = (raw) => {
     if (!raw) return;
     const dt = parseDateObj(raw);
     if (!dt || isNaN(dt.getTime())) return;
@@ -350,37 +383,29 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
     if (!newestDate || dt > newestDate) newestDate = dt;
   };
 
-  // 1. Tally Monthly PRCs & determine starting month strictly from the oldest PRC date in user records
+  // 1. Tally Monthly PRCs strictly by PRC Allocation Date
   prcs.forEach(p => {
-    // Prioritize actual PR Date from PRC header or line materials
-    const prcDateRaw = p.prDate || (p.materials || []).find(m => m.prDate)?.prDate;
-    if (prcDateRaw) {
-      updatePrcDateBounds(prcDateRaw);
-    } else {
-      updatePrcDateBounds(p.createdAt);
-      updatePrcDateBounds(p.allocationDate);
-      updatePrcDateBounds(p.allocatedDate);
+    const allocRaw = getPRCAllocationDate(p);
+    if (allocRaw) {
+      updateDateBounds(allocRaw);
+      const dt = parseDateObj(allocRaw);
+      if (dt && dt.getFullYear() >= 2000) {
+        const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+        prcMonths[key] = (prcMonths[key] || 0) + 1;
+      }
     }
-
-    (p.materials || []).forEach(m => {
-      if (m.prDate) updatePrcDateBounds(m.prDate);
-    });
-
-    const raw = p.prDate || p.createdAt || p.allocationDate || p.updatedAt;
-    const dt = parseDateObj(raw);
-    if (!dt || dt.getFullYear() < 2000) return;
-    const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-    prcMonths[key] = (prcMonths[key] || 0) + 1;
   });
 
-  // 2. Tally Monthly TCDs (from TCDs collection and PRC/material records with tcdNumber & tcdDate)
+  // 2. Tally Monthly TCDs strictly by TCD Creation Date
   const countedTcdKeys = new Set();
 
   (tcds || []).forEach(t => {
     const tcdNum = String(t.tcdNumber || t.id || '').trim();
-    const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
+    const raw = getTCDCreationDate(t);
+    if (!dt_check(raw) || !tcdNum) return;
+    updateDateBounds(raw);
     const dt = parseDateObj(raw);
-    if (!dt || !tcdNum || dt.getFullYear() < 2000) return;
+    if (!dt || dt.getFullYear() < 2000) return;
     const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
     const dedupeKey = `${tcdNum}::${key}`;
     if (!countedTcdKeys.has(dedupeKey)) {
@@ -389,10 +414,17 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
     }
   });
 
+  function dt_check(raw) {
+    if (!raw) return false;
+    const dt = parseDateObj(raw);
+    return dt && dt.getFullYear() >= 2000;
+  }
+
   prcs.forEach(p => {
     const pTcdNum = String(p.tcdNumber || '').trim();
-    const pRaw = p.tcdDate || p.tcdApprovedDate;
+    const pRaw = getTCDCreationDate(p);
     if (pTcdNum && pRaw) {
+      updateDateBounds(pRaw);
       const dt = parseDateObj(pRaw);
       if (dt && dt.getFullYear() >= 2000) {
         const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
@@ -406,8 +438,9 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
 
     (p.materials || []).forEach(m => {
       const mTcdNum = String(m.tcdNumber || '').trim();
-      const mRaw = m.tcdDate || m.tcdApprovedDate;
+      const mRaw = getTCDCreationDate(m);
       if (mTcdNum && mRaw) {
+        updateDateBounds(mRaw);
         const dt = parseDateObj(mRaw);
         if (dt && dt.getFullYear() >= 2000) {
           const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
@@ -421,7 +454,15 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
     });
   });
 
-  // Determine starting month strictly from user's oldest PRC date (up to current/latest month)
+  // Fallback date bounds if no allocation/TCD dates yet
+  if (!oldestDate) {
+    prcs.forEach(p => {
+      updateDateBounds(p.createdAt);
+      updateDateBounds(p.prDate);
+    });
+  }
+
+  // Determine starting month strictly from user's oldest activity date (up to current/latest month)
   const now = new Date();
   const startDt = oldestDate || now;
   const endDt = (newestDate && newestDate > now) ? newestDate : now;
@@ -461,37 +502,50 @@ export function monthlyPRCVsTCDDistribution(prcs = [], tcds = []) {
   });
 }
 
-/** Compute weekly distribution for the last N weeks (default 10) comparing PRCs created vs TCDs finalized */
+/** Compute weekly distribution for the last N weeks (default 10) comparing PRCs allocated vs TCDs created */
 export function weeklyPRCVsTCDDistribution(prcs = [], tcds = [], numWeeks = 10, offsetWeeks = 0) {
   const allTimestamps = [];
 
-  // Collect all valid dates from PRCs
+  // Collect all valid dates from PRCs strictly by PRC Allocation Date
   prcs.forEach(p => {
-    const raw = p.createdAt || p.prDate || p.allocationDate || p.updatedAt;
-    const dt = parseDateObj(raw);
-    if (dt) allTimestamps.push(dt.getTime());
+    const raw = getPRCAllocationDate(p);
+    if (raw) {
+      const dt = parseDateObj(raw);
+      if (dt) allTimestamps.push(dt.getTime());
+    }
   });
 
-  // Collect dates from TCDs
+  // Collect dates from TCDs strictly by TCD Creation Date
   (tcds || []).forEach(t => {
-    const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
-    const dt = parseDateObj(raw);
-    if (dt) allTimestamps.push(dt.getTime());
+    const raw = getTCDCreationDate(t);
+    if (raw) {
+      const dt = parseDateObj(raw);
+      if (dt) allTimestamps.push(dt.getTime());
+    }
   });
 
   // Collect dates from PRC TCD fields & materials
   prcs.forEach(p => {
-    if (p.tcdDate || p.tcdApprovedDate) {
-      const dt = parseDateObj(p.tcdDate || p.tcdApprovedDate);
+    const pRaw = getTCDCreationDate(p);
+    if (p.tcdNumber && pRaw) {
+      const dt = parseDateObj(pRaw);
       if (dt) allTimestamps.push(dt.getTime());
     }
     (p.materials || []).forEach(m => {
-      if (m.tcdDate || m.tcdApprovedDate) {
-        const dt = parseDateObj(m.tcdDate || m.tcdApprovedDate);
+      const mRaw = getTCDCreationDate(m);
+      if (m.tcdNumber && mRaw) {
+        const dt = parseDateObj(mRaw);
         if (dt) allTimestamps.push(dt.getTime());
       }
     });
   });
+
+  if (allTimestamps.length === 0) {
+    prcs.forEach(p => {
+      const dt = parseDateObj(p.createdAt || p.prDate);
+      if (dt) allTimestamps.push(dt.getTime());
+    });
+  }
 
   // Anchor date: use max date in data if available, or today + offsetWeeks
   const now = new Date();
@@ -525,9 +579,10 @@ export function weeklyPRCVsTCDDistribution(prcs = [], tcds = [], numWeeks = 10, 
     });
   }
 
-  // 1. Tally PRCs
+  // 1. Tally PRCs by PRC Allocation Date
   prcs.forEach(p => {
-    const raw = p.createdAt || p.prDate || p.allocationDate || p.updatedAt;
+    const raw = getPRCAllocationDate(p);
+    if (!raw) return;
     const dt = parseDateObj(raw);
     if (!dt) return;
     const ts = dt.getTime();
@@ -535,14 +590,15 @@ export function weeklyPRCVsTCDDistribution(prcs = [], tcds = [], numWeeks = 10, 
     if (w) w.prcCount++;
   });
 
-  // 2. Tally TCDs (deduplicated by TCD number per week)
+  // 2. Tally TCDs by TCD Creation Date (deduplicated by TCD number per week)
   const countedTcdKeys = new Set();
 
   (tcds || []).forEach(t => {
     const tcdNum = String(t.tcdNumber || t.id || '').trim();
-    const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
+    const raw = getTCDCreationDate(t);
+    if (!raw || !tcdNum) return;
     const dt = parseDateObj(raw);
-    if (!dt || !tcdNum) return;
+    if (!dt) return;
     const ts = dt.getTime();
     const w = weeks.find(wk => ts >= wk.start && ts <= wk.end);
     if (w) {
@@ -557,7 +613,7 @@ export function weeklyPRCVsTCDDistribution(prcs = [], tcds = [], numWeeks = 10, 
 
   prcs.forEach(p => {
     const pTcdNum = String(p.tcdNumber || '').trim();
-    const pRaw = p.tcdDate || p.tcdApprovedDate;
+    const pRaw = getTCDCreationDate(p);
     if (pTcdNum && pRaw) {
       const dt = parseDateObj(pRaw);
       if (dt) {
@@ -576,7 +632,7 @@ export function weeklyPRCVsTCDDistribution(prcs = [], tcds = [], numWeeks = 10, 
 
     (p.materials || []).forEach(m => {
       const mTcdNum = String(m.tcdNumber || '').trim();
-      const mRaw = m.tcdDate || m.tcdApprovedDate;
+      const mRaw = getTCDCreationDate(m);
       if (mTcdNum && mRaw) {
         const dt = parseDateObj(mRaw);
         if (dt) {
@@ -658,9 +714,10 @@ export function weeklyPRCVsTCDDistributionForMonth(prcs = [], tcds = [], monthKe
     cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 7, 0, 0, 0, 0);
   }
 
-  // 1. Tally PRCs
+  // 1. Tally PRCs strictly by PRC Allocation Date
   prcs.forEach(p => {
-    const raw = p.createdAt || p.prDate || p.allocationDate || p.updatedAt;
+    const raw = getPRCAllocationDate(p);
+    if (!raw) return;
     const dt = parseDateObj(raw);
     if (!dt) return;
     const ts = dt.getTime();
@@ -668,14 +725,15 @@ export function weeklyPRCVsTCDDistributionForMonth(prcs = [], tcds = [], monthKe
     if (w) w.prcCount++;
   });
 
-  // 2. Tally TCDs (deduplicated by TCD number per week)
+  // 2. Tally TCDs strictly by TCD Creation Date (deduplicated by TCD number per week)
   const countedTcdKeys = new Set();
 
   (tcds || []).forEach(t => {
     const tcdNum = String(t.tcdNumber || t.id || '').trim();
-    const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
+    const raw = getTCDCreationDate(t);
+    if (!raw || !tcdNum) return;
     const dt = parseDateObj(raw);
-    if (!dt || !tcdNum) return;
+    if (!dt) return;
     const ts = dt.getTime();
     const w = weeks.find(wk => ts >= wk.start && ts <= wk.end);
     if (w) {
@@ -690,7 +748,7 @@ export function weeklyPRCVsTCDDistributionForMonth(prcs = [], tcds = [], monthKe
 
   prcs.forEach(p => {
     const pTcdNum = String(p.tcdNumber || '').trim();
-    const pRaw = p.tcdDate || p.tcdApprovedDate;
+    const pRaw = getTCDCreationDate(p);
     if (pTcdNum && pRaw) {
       const dt = parseDateObj(pRaw);
       if (dt) {
@@ -709,7 +767,7 @@ export function weeklyPRCVsTCDDistributionForMonth(prcs = [], tcds = [], monthKe
 
     (p.materials || []).forEach(m => {
       const mTcdNum = String(m.tcdNumber || '').trim();
-      const mRaw = m.tcdDate || m.tcdApprovedDate;
+      const mRaw = getTCDCreationDate(m);
       if (mTcdNum && mRaw) {
         const dt = parseDateObj(mRaw);
         if (dt) {
@@ -731,7 +789,7 @@ export function weeklyPRCVsTCDDistributionForMonth(prcs = [], tcds = [], monthKe
   return weeks;
 }
 
-/** Compute daily distribution for a specific week window comparing PRCs vs TCDs */
+/** Compute daily distribution for a specific week window comparing PRCs allocated vs TCDs created */
 export function dailyPRCVsTCDDistributionForWeek(prcs = [], tcds = [], weekStartTs = 0, weekEndTs = 0) {
   if (!weekStartTs || !weekEndTs) return [];
   const startDt = new Date(weekStartTs);
@@ -765,9 +823,10 @@ export function dailyPRCVsTCDDistributionForWeek(prcs = [], tcds = [], weekStart
     cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1, 0, 0, 0, 0);
   }
 
-  // 1. Tally PRCs
+  // 1. Tally PRCs strictly by PRC Allocation Date
   prcs.forEach(p => {
-    const raw = p.createdAt || p.prDate || p.allocationDate || p.updatedAt;
+    const raw = getPRCAllocationDate(p);
+    if (!raw) return;
     const dt = parseDateObj(raw);
     if (!dt) return;
     const ts = dt.getTime();
@@ -775,14 +834,15 @@ export function dailyPRCVsTCDDistributionForWeek(prcs = [], tcds = [], weekStart
     if (d) d.prcCount++;
   });
 
-  // 2. Tally TCDs (deduplicated by TCD number per day)
+  // 2. Tally TCDs strictly by TCD Creation Date (deduplicated by TCD number per day)
   const countedTcdKeys = new Set();
 
   (tcds || []).forEach(t => {
     const tcdNum = String(t.tcdNumber || t.id || '').trim();
-    const raw = t.tcdDate || t.approvedAt || t.createdAt || t.updatedAt;
+    const raw = getTCDCreationDate(t);
+    if (!raw || !tcdNum) return;
     const dt = parseDateObj(raw);
-    if (!dt || !tcdNum) return;
+    if (!dt) return;
     const ts = dt.getTime();
     const d = days.find(day => ts >= day.start && ts <= day.end);
     if (d) {
@@ -797,7 +857,7 @@ export function dailyPRCVsTCDDistributionForWeek(prcs = [], tcds = [], weekStart
 
   prcs.forEach(p => {
     const pTcdNum = String(p.tcdNumber || '').trim();
-    const pRaw = p.tcdDate || p.tcdApprovedDate;
+    const pRaw = getTCDCreationDate(p);
     if (pTcdNum && pRaw) {
       const dt = parseDateObj(pRaw);
       if (dt) {
@@ -816,7 +876,7 @@ export function dailyPRCVsTCDDistributionForWeek(prcs = [], tcds = [], weekStart
 
     (p.materials || []).forEach(m => {
       const mTcdNum = String(m.tcdNumber || '').trim();
-      const mRaw = m.tcdDate || m.tcdApprovedDate;
+      const mRaw = getTCDCreationDate(m);
       if (mTcdNum && mRaw) {
         const dt = parseDateObj(mRaw);
         if (dt) {

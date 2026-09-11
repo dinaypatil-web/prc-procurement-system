@@ -203,7 +203,7 @@ export function renderSLAWatchlistHTML(prcs, buyerFilter = null) {
           <tr style="border-bottom:1px solid var(--color-border);transition:background 0.15s ease" onmouseover="this.style.background='var(--color-surface-2)'" onmouseout="this.style.background='transparent'">
             <!-- PRC Number & Requisition Info -->
             <td style="padding:12px 14px;vertical-align:top">
-              <div style="font-weight:700;color:var(--color-primary);cursor:pointer;display:inline-flex;align-items:center;gap:4px" onclick="if(typeof openPRCModal==='function')openPRCModal('${escapeJsString(p.id)}')">
+              <div style="font-weight:700;color:var(--color-primary);cursor:pointer;display:inline-flex;align-items:center;gap:4px" onclick="if(typeof window.openPRCDetail==='function'){window.openPRCDetail('${escapeJsString(p.id || p.prNumber)}')}else if(typeof window.openPRCModal==='function'){window.openPRCModal('${escapeJsString(p.id || p.prNumber)}')}" title="Click to view PRC details">
                 <span>📄</span>
                 <span>${escapeHtml(p.prNumber || p.id)}</span>
               </div>
@@ -289,7 +289,7 @@ export function renderSLAWatchlistHTML(prcs, buyerFilter = null) {
                 <button class="btn btn-secondary btn-xs" style="padding:4px 8px;font-size:11px;font-weight:600" onclick="window.openSLAActionModal('${escapeJsString(p.id)}')">
                   📝 Set Action
                 </button>
-                <button class="btn btn-ghost btn-xs" style="padding:2px 8px;font-size:11px" onclick="if(typeof openPRCModal==='function')openPRCModal('${escapeJsString(p.id)}')">
+                <button class="btn btn-ghost btn-xs" style="padding:2px 8px;font-size:11px" onclick="if(typeof window.openPRCDetail==='function'){window.openPRCDetail('${escapeJsString(p.id || p.prNumber)}')}else if(typeof window.openPRCModal==='function'){window.openPRCModal('${escapeJsString(p.id || p.prNumber)}')}">
                   Details 🔍
                 </button>
               </div>
@@ -332,11 +332,36 @@ if (typeof window !== 'undefined') {
   };
 
   /**
+   * Resolve the active application state safely across module scopes
+   */
+  function getEffectiveState() {
+    if (typeof window !== 'undefined' && typeof window.getState === 'function') {
+      const s = window.getState();
+      if (s && Array.isArray(s.prcs) && s.prcs.length > 0) return s;
+    }
+    return getState();
+  }
+
+  /**
+   * Robust lookup for PRC by id or prNumber (string or numeric)
+   */
+  function findWatchlistPRC(prcId, stateObj) {
+    const s = stateObj || getEffectiveState();
+    const list = (s && Array.isArray(s.prcs)) ? s.prcs : [];
+    return list.find(p => 
+      p.id === prcId || 
+      String(p.id) === String(prcId) || 
+      p.prNumber === prcId || 
+      String(p.prNumber) === String(prcId)
+    ) || null;
+  }
+
+  /**
    * Open the Buyer Proactive Action Modal
    */
   window.openSLAActionModal = function(prcId) {
-    const state = getState();
-    const prc = (state.prcs || []).find(p => p.id === prcId);
+    const state = getEffectiveState();
+    const prc = findWatchlistPRC(prcId, state);
     if (!prc) {
       toast('PRC record not found', 'error');
       return;
@@ -490,29 +515,44 @@ if (typeof window !== 'undefined') {
       return;
     }
 
-    const state = getState();
+    const state = getEffectiveState();
     const currentUser = state.currentUser?.name || state.currentUser?.email || 'Buyer';
     const now = new Date().toISOString();
 
-    updatePRC(prcId, {
-      slaActionPlan: note,
-      slaActionDate: date || null,
-      slaActionUpdatedAt: now,
-      slaActionUpdatedBy: currentUser
-    });
+    const saveFn = (typeof window !== 'undefined' && typeof window.savePRCSLAAction === 'function')
+      ? window.savePRCSLAAction
+      : ((typeof window !== 'undefined' && typeof window.updatePRC === 'function') ? window.updatePRC : updatePRC);
+
+    if (typeof window !== 'undefined' && typeof window.savePRCSLAAction === 'function') {
+      window.savePRCSLAAction(prcId, note, date || null);
+    } else {
+      saveFn(prcId, {
+        slaActionPlan: note,
+        slaActionDate: date || null,
+        slaActionUpdatedAt: now,
+        slaActionUpdatedBy: currentUser
+      });
+    }
 
     const modalEl = document.getElementById('sla-action-modal');
     if (modalEl) modalEl.classList.remove('open');
 
     toast(`✅ Proactive Action Plan recorded for PRC!`, 'success');
     refreshSLAWatchlistDOM();
+    if (typeof window.refreshDashboard === 'function') {
+      window.refreshDashboard();
+    }
   };
 
   /**
    * Clear an existing action plan
    */
   window.clearPRCSLAAction = function(prcId) {
-    updatePRC(prcId, {
+    const saveFn = (typeof window !== 'undefined' && typeof window.updatePRC === 'function')
+      ? window.updatePRC
+      : updatePRC;
+
+    saveFn(prcId, {
       slaActionPlan: '',
       slaActionDate: null,
       slaActionUpdatedAt: new Date().toISOString(),
@@ -524,6 +564,9 @@ if (typeof window !== 'undefined') {
 
     toast('Action plan cleared', 'info');
     refreshSLAWatchlistDOM();
+    if (typeof window.refreshDashboard === 'function') {
+      window.refreshDashboard();
+    }
   };
 }
 
@@ -534,7 +577,7 @@ function refreshSLAWatchlistDOM() {
   const container = document.getElementById('sla-watchlist-container');
   if (!container) return;
 
-  const state = getState();
+  const state = getEffectiveState();
   const prcs = typeof window.getDashboardPRCs === 'function' ? window.getDashboardPRCs() : (state.prcs || []);
   const buyerFilter = typeof window.getDashboardBuyerFilter === 'function' ? window.getDashboardBuyerFilter() : null;
 
