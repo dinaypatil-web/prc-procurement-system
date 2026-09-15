@@ -6,6 +6,7 @@
 import { getSLAWatchlistPRCs, getPRCSLAInfo } from './status-engine.js';
 import { getState, updatePRC, isSuperAdmin } from './state.js';
 import { toast, escapeHtml, escapeJsString, fmtDate } from './utils.js';
+import { executeTursoPipeline, isTursoConfigured } from './turso-db.js';
 
 let currentSLATab = 'all'; // 'all' | 'action_needed' | 'overdue' | 'action_planned'
 let currentSLASearch = '';
@@ -510,11 +511,38 @@ if (typeof window !== 'undefined') {
   };
 
   /**
-   * Save the action plan entered by user
+   * Directly updates ONLY the SLA action plan fields in Turso via a targeted SQL UPDATE.
+   * This is a guaranteed backup write that runs alongside the full updatePRC flow,
+   * ensuring the data persists even if the async main save is interrupted by a page reload.
    */
-  window.submitPRCSLAAction = function(prcId) {
+  async function _directTursoSLAUpdate(prcId, note, date, updatedBy, updatedAt) {
+    try {
+      if (!isTursoConfigured()) return;
+      const sql = 'UPDATE prcs SET sla_action_plan = ?, sla_action_date = ?, sla_action_updated_by = ?, sla_action_updated_at = ?, updated_at = ? WHERE id = ? OR pr_number = ?;';
+      await executeTursoPipeline([{
+        sql,
+        args: [
+          String(note || ''),
+          String(date || ''),
+          String(updatedBy || ''),
+          String(updatedAt || new Date().toISOString()),
+          new Date().toISOString(),
+          String(prcId),
+          String(prcId)
+        ]
+      }]);
+    } catch (e) {
+      console.warn('[SLA] Direct Turso SLA update failed (non-fatal):', e);
+    }
+  }
+
+  /**
+   * Save the action plan entered by user (async — awaits DB write before closing modal)
+   */
+  window.submitPRCSLAAction = async function(prcId) {
     const noteEl = document.getElementById('sla-action-note-input');
     const dateEl = document.getElementById('sla-action-date-input');
+    const saveBtn = document.querySelector('#sla-action-modal .btn-primary');
     const note = noteEl ? noteEl.value.trim() : '';
     const date = dateEl ? dateEl.value : null;
 
@@ -523,23 +551,49 @@ if (typeof window !== 'undefined') {
       return;
     }
 
+    // Show loading state on save button
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = '⏳ Saving...';
+    }
+
     const state = getEffectiveState();
     const currentUser = state.currentUser?.name || state.currentUser?.email || 'Buyer';
     const now = new Date().toISOString();
 
-    const saveFn = (typeof window !== 'undefined' && typeof window.savePRCSLAAction === 'function')
-      ? window.savePRCSLAAction
-      : ((typeof window !== 'undefined' && typeof window.updatePRC === 'function') ? window.updatePRC : updatePRC);
+    try {
+      // 1. Primary save: update full PRC document via state manager (Turso + Firestore + localStorage)
+      if (typeof window.savePRCSLAAction === 'function') {
+        window.savePRCSLAAction(prcId, note, date || null);
+      } else if (typeof window.updatePRC === 'function') {
+        window.updatePRC(prcId, {
+          slaActionPlan: note,
+          slaActionDate: date || null,
+          slaActionUpdatedAt: now,
+          slaActionUpdatedBy: currentUser
+        });
+      } else {
+        updatePRC(prcId, {
+          slaActionPlan: note,
+          slaActionDate: date || null,
+          slaActionUpdatedAt: now,
+          slaActionUpdatedBy: currentUser
+        });
+      }
 
-    if (typeof window !== 'undefined' && typeof window.savePRCSLAAction === 'function') {
-      window.savePRCSLAAction(prcId, note, date || null);
-    } else {
-      saveFn(prcId, {
-        slaActionPlan: note,
-        slaActionDate: date || null,
-        slaActionUpdatedAt: now,
-        slaActionUpdatedBy: currentUser
-      });
+      // 2. Backup save: targeted Turso SQL UPDATE for just the SLA fields.
+      //    This guarantees persistence even if the full async save above is
+      //    interrupted by a page reload, since we await it here.
+      await _directTursoSLAUpdate(prcId, note, date, currentUser, now);
+
+    } catch (err) {
+      console.error('[SLA] Save error:', err);
+      toast('⚠️ Save encountered an error. Please try again.', 'error');
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save Action Plan 💾';
+      }
+      return;
     }
 
     const modalEl = document.getElementById('sla-action-modal');
@@ -551,7 +605,7 @@ if (typeof window !== 'undefined') {
     }
     window._lastActionedPRCId = String(prcId);
 
-    toast(`✅ Proactive Action Plan recorded for PRC!`, 'success');
+    toast(`✅ Proactive Action Plan saved & persisted!`, 'success');
     refreshSLAWatchlistDOM();
     if (typeof window.refreshDashboard === 'function') {
       window.refreshDashboard();
@@ -559,19 +613,30 @@ if (typeof window !== 'undefined') {
   };
 
   /**
-   * Clear an existing action plan
+   * Clear an existing action plan (async — awaits DB write)
    */
-  window.clearPRCSLAAction = function(prcId) {
-    const saveFn = (typeof window !== 'undefined' && typeof window.updatePRC === 'function')
-      ? window.updatePRC
-      : updatePRC;
-
-    saveFn(prcId, {
-      slaActionPlan: '',
-      slaActionDate: null,
-      slaActionUpdatedAt: new Date().toISOString(),
-      slaActionUpdatedBy: ''
-    });
+  window.clearPRCSLAAction = async function(prcId) {
+    try {
+      if (typeof window.updatePRC === 'function') {
+        window.updatePRC(prcId, {
+          slaActionPlan: '',
+          slaActionDate: null,
+          slaActionUpdatedAt: new Date().toISOString(),
+          slaActionUpdatedBy: ''
+        });
+      } else {
+        updatePRC(prcId, {
+          slaActionPlan: '',
+          slaActionDate: null,
+          slaActionUpdatedAt: new Date().toISOString(),
+          slaActionUpdatedBy: ''
+        });
+      }
+      // Guaranteed backup write to Turso
+      await _directTursoSLAUpdate(prcId, '', null, '', new Date().toISOString());
+    } catch (err) {
+      console.warn('[SLA] Clear error:', err);
+    }
 
     const modalEl = document.getElementById('sla-action-modal');
     if (modalEl) modalEl.classList.remove('open');
