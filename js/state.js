@@ -1416,6 +1416,25 @@ export async function initAppData(forceClean = false) {
                 pushLocalDataToFirestore();
               }, 100);
             }
+
+            // Guarantee SLA Action Plan resilience:
+            // If local cache contains a proactive SLA action note and the server record has none
+            // (or local is newer), preserve the local action note so reload never wipes it!
+            cached.prcs.forEach(localPrc => {
+              if (localPrc && localPrc.slaActionPlan) {
+                const serverPrc = prcs.find(p => p.id === localPrc.id || p.prNumber === localPrc.prNumber || p.id === localPrc.prNumber);
+                if (serverPrc) {
+                  const localTime = localPrc.slaActionUpdatedAt ? new Date(localPrc.slaActionUpdatedAt).getTime() : 0;
+                  const serverTime = serverPrc.slaActionUpdatedAt ? new Date(serverPrc.slaActionUpdatedAt).getTime() : 0;
+                  if (!serverPrc.slaActionPlan || localTime >= serverTime) {
+                    serverPrc.slaActionPlan = localPrc.slaActionPlan;
+                    serverPrc.slaActionDate = localPrc.slaActionDate || serverPrc.slaActionDate;
+                    serverPrc.slaActionUpdatedBy = localPrc.slaActionUpdatedBy || serverPrc.slaActionUpdatedBy;
+                    serverPrc.slaActionUpdatedAt = localPrc.slaActionUpdatedAt || serverPrc.slaActionUpdatedAt;
+                  }
+                }
+              }
+            });
           }
         }
       }
@@ -3106,8 +3125,8 @@ export function updatePRC(id, patch, cascadeToMaterials = false) {
 
   setState({ prcs, statusSummary: buildStatusSummary(prcs) });
 
-  // Direct Firestore write
-  directSavePRC(_getEffectiveUid(), updated);
+  // Direct DB write (Turso or Firestore via db-adapter)
+  const savePromise = directSavePRC(_getEffectiveUid(), updated);
 
   // If prNumber changed, propagate the new value to all downstream item records
   if (patch.prNumber !== undefined && patch.prNumber !== current.prNumber) {
@@ -3118,6 +3137,8 @@ export function updatePRC(id, patch, cascadeToMaterials = false) {
     action: 'update_prc', collection: 'PRCs', docId: id,
     changes: { ...patch, cascaded: cascadeToMaterials }
   });
+
+  return savePromise;
 }
 
 /**

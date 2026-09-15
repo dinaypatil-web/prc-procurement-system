@@ -6,7 +6,7 @@
 import { getProcurementFunnelBreakdown, calcAgeDays } from './status-engine.js';
 import { getState, isSuperAdmin, doesRecordPertainToCurrentUser, setTableColumnFilter, clearAllTableColumnFilters, getFilteredTCDs, getDashboardBuyerFilter, setDashboardBuyerFilter, getAllAvailableBuyers, getDashboardTCDs } from './state.js';
 import { toast } from './utils.js';
-import { renderSLAWatchlistHTML } from './sla-watchlist.js';
+import { renderSLAWatchlistHTML } from './sla-watchlist.js?v=20260915b';
 
 // Chart instances registry for Executive 3D theme
 export const exec3dCharts = {};

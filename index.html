@@ -397,8 +397,8 @@ import { initTurso, isTursoConfigured, getTursoConfig, testTursoConnection } fro
 import { getActiveDbProvider, setActiveDbProvider } from './js/db-adapter.js';
 import { sendMessage, clearChat, formatAIResponse, AI_SUGGESTIONS } from './js/ai-assistant.js';
 import { exportCSV, exportExcel, exportPDF, getAgeingReport, REPORT_COLUMNS } from './js/reports.js';
-import { renderExecutive3D, cleanupExecutive3DCharts, generate3DFunnelSVG } from './js/dashboard-3d.js';
-import { renderSLAWatchlistHTML } from './js/sla-watchlist.js';
+import { renderExecutive3D, cleanupExecutive3DCharts, generate3DFunnelSVG } from './js/dashboard-3d.js?v=20260915b';
+import { renderSLAWatchlistHTML } from './js/sla-watchlist.js?v=20260915b';
 window.renderSLAWatchlistHTML = renderSLAWatchlistHTML;
 window.openPRCModal = function(id) {
   if (typeof window.openPRCDetail === 'function') {
@@ -1187,7 +1187,7 @@ ${isAdmin ? `
       <div class="notif-icon" style="background:var(--color-info-bg)">${l.action==='import'?'📥':l.action==='create'?'➕':'✏️'}</div>
       <div class="notif-text">
         <div class="notif-title">${l.user} — ${l.action} on ${l.collection}</div>
-        <div class="notif-message">${Object.entries(l.changes||{}).map(([k,v])=>`${k}: ${typeof v==='object'?(v.old||'')+'→'+(v.new||''):v}`).join(', ')||'No changes recorded'}</div>
+        <div class="notif-message">${Object.entries(l.changes||{}).map(([k,v])=>`${k}: ${v && typeof v==='object'?((v.old||'')+'→'+(v.new||'')):(v ?? 'none')}`).join(', ')||'No changes recorded'}</div>
         <div class="notif-time">${fmtDateTime(l.timestamp)}</div>
       </div>
     </div>`).join('')
@@ -5379,7 +5379,7 @@ function renderAudit(container) {
             <td class="font-mono text-sm">${l.collection} / ${l.docId}</td>
             <td style="max-width:300px;font-size:12px;color:var(--color-text-secondary)">
               ${Object.entries(l.changes||{}).map(([k,v])=>
-                `<div><strong>${k}:</strong> ${typeof v==='object'?`${v.old||'—'} → ${v.new||'—'}`:v}</div>`
+                `<div><strong>${k}:</strong> ${v && typeof v==='object'?`${v.old||'—'} → ${v.new||'—'}`:(v ?? '—')}</div>`
               ).join('') || '—'}
             </td>
           </tr>`).join('')}

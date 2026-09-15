@@ -519,7 +519,7 @@ if (typeof window !== 'undefined') {
     try {
       if (!isTursoConfigured()) return;
       const sql = 'UPDATE prcs SET sla_action_plan = ?, sla_action_date = ?, sla_action_updated_by = ?, sla_action_updated_at = ?, updated_at = ? WHERE id = ? OR pr_number = ?;';
-      await executeTursoPipeline([{
+      const res = await executeTursoPipeline([{
         sql,
         args: [
           String(note || ''),
@@ -531,6 +531,11 @@ if (typeof window !== 'undefined') {
           String(prcId)
         ]
       }]);
+      if (res && res.results && res.results[0]?.type === 'ok') {
+        console.info(`[SLA] Turso targeted SLA plan saved for PRC ${prcId} (rows affected: ${res.results[0].response?.result?.affected_row_count ?? 1})`);
+      } else {
+        console.warn('[SLA] Direct Turso SLA update returned non-ok result:', res);
+      }
     } catch (e) {
       console.warn('[SLA] Direct Turso SLA update failed (non-fatal):', e);
     }
@@ -563,22 +568,27 @@ if (typeof window !== 'undefined') {
 
     try {
       // 1. Primary save: update full PRC document via state manager (Turso + Firestore + localStorage)
+      let primarySavePromise = null;
       if (typeof window.savePRCSLAAction === 'function') {
-        window.savePRCSLAAction(prcId, note, date || null);
+        primarySavePromise = window.savePRCSLAAction(prcId, note, date || null);
       } else if (typeof window.updatePRC === 'function') {
-        window.updatePRC(prcId, {
+        primarySavePromise = window.updatePRC(prcId, {
           slaActionPlan: note,
           slaActionDate: date || null,
           slaActionUpdatedAt: now,
           slaActionUpdatedBy: currentUser
         });
       } else {
-        updatePRC(prcId, {
+        primarySavePromise = updatePRC(prcId, {
           slaActionPlan: note,
           slaActionDate: date || null,
           slaActionUpdatedAt: now,
           slaActionUpdatedBy: currentUser
         });
+      }
+
+      if (primarySavePromise && typeof primarySavePromise.then === 'function') {
+        await primarySavePromise;
       }
 
       // 2. Backup save: targeted Turso SQL UPDATE for just the SLA fields.
@@ -608,7 +618,19 @@ if (typeof window !== 'undefined') {
     toast(`✅ Proactive Action Plan saved & persisted!`, 'success');
     refreshSLAWatchlistDOM();
     if (typeof window.refreshDashboard === 'function') {
-      window.refreshDashboard();
+      try {
+        window.refreshDashboard();
+      } catch (e) {
+        console.warn('Dashboard refresh non-fatal:', e);
+      }
+    }
+
+    // If the PRC detail modal is open for this PRC, refresh it so the new note is shown immediately!
+    const detailModal = document.getElementById('prc-detail-modal');
+    if (detailModal && detailModal.classList.contains('open') && typeof window.openPRCDetail === 'function') {
+      try {
+        window.openPRCDetail(prcId);
+      } catch (e) {}
     }
   };
 
@@ -617,20 +639,24 @@ if (typeof window !== 'undefined') {
    */
   window.clearPRCSLAAction = async function(prcId) {
     try {
+      let clearPromise = null;
       if (typeof window.updatePRC === 'function') {
-        window.updatePRC(prcId, {
+        clearPromise = window.updatePRC(prcId, {
           slaActionPlan: '',
           slaActionDate: null,
           slaActionUpdatedAt: new Date().toISOString(),
           slaActionUpdatedBy: ''
         });
       } else {
-        updatePRC(prcId, {
+        clearPromise = updatePRC(prcId, {
           slaActionPlan: '',
           slaActionDate: null,
           slaActionUpdatedAt: new Date().toISOString(),
           slaActionUpdatedBy: ''
         });
+      }
+      if (clearPromise && typeof clearPromise.then === 'function') {
+        await clearPromise;
       }
       // Guaranteed backup write to Turso
       await _directTursoSLAUpdate(prcId, '', null, '', new Date().toISOString());
@@ -645,7 +671,19 @@ if (typeof window !== 'undefined') {
     toast('Action plan cleared', 'info');
     refreshSLAWatchlistDOM();
     if (typeof window.refreshDashboard === 'function') {
-      window.refreshDashboard();
+      try {
+        window.refreshDashboard();
+      } catch (e) {
+        console.warn('Dashboard refresh non-fatal:', e);
+      }
+    }
+
+    // If the PRC detail modal is open for this PRC, refresh it so the cleared note is reflected
+    const detailModal = document.getElementById('prc-detail-modal');
+    if (detailModal && detailModal.classList.contains('open') && typeof window.openPRCDetail === 'function') {
+      try {
+        window.openPRCDetail(prcId);
+      } catch (e) {}
     }
   };
 }
